@@ -1339,6 +1339,9 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
     QList<Resource*> candidates;
     QJsonArray failed;
     bool hasUnresolvedTargets = false;
+    // The mods for which the check failed - the check could not be done, so
+    // they are neither updated nor up to date.
+    bool hasCheckFailures = false;
     if (cmd.all) {
         candidates = model->allResources();
     } else {
@@ -1450,10 +1453,11 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         QObject::connect(checkTask.get(),
                          &CheckUpdateTask::checkFailed,
                          &connectionContext,
-                         [&failedChecks, &failed](Resource* resource, const QString& reason, const QUrl&) {
+                         [&failedChecks, &failed, &hasCheckFailures](Resource* resource, const QString& reason, const QUrl&) {
                              if (!resource) {
                                  return;
                              }
+                             hasCheckFailures = true;
                              failedChecks.append(resource);
                              QJsonObject entry;
                              entry.insert(QStringLiteral("name"), resource->name());
@@ -1500,6 +1504,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
                 QJsonObject entry;
                 entry.insert(QStringLiteral("reason"), QStringLiteral("the dependencies could not be resolved: %1").arg(result.error()));
                 failed.append(entry);
+                hasCheckFailures = true;
             } else {
                 for (const auto& dependency : dependencyTask->getDependecies()) {
                     if (!dependency || !dependency->pack) {
@@ -1568,6 +1573,14 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         return outputError(QStringLiteral("not_found"),
                            QStringLiteral("Some of the targets did not match a mod"),
                            ExitCode::NotFound,
+                           out);
+    }
+    if (hasCheckFailures) {
+        // The update of at least one mod could not be checked - the command
+        // reports the failure.
+        return outputError(QStringLiteral("check_failed"),
+                           QStringLiteral("The update of at least one mod could not be checked"),
+                           ExitCode::Network,
                            out);
     }
     outputJson(QJsonDocument(out));
