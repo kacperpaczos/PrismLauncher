@@ -154,7 +154,10 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     d = json.load(handle)
-print(eval(sys.argv[2], {"d": d}))
+try:
+    print(eval(sys.argv[2], {"d": d}))
+except Exception:
+    print("")
 PY
 }
 
@@ -226,8 +229,16 @@ run_cmd mod info "${MOD_SLUG}"
 expect_rc 0
 check_json 'd["ok"] is True'
 check_json 'd["project"]["slug"] == "jei"'
+check_json 'len(d["project"]["authors"]) > 0'
 check_json 'len(d["versions"]) > 0'
 check_json 'd["installed"] is None'
+# The versions are needed by the `--version` tests below.
+FABRIC_VERSION="$(json_value '[v["version_id"] for v in d["versions"] if "1.21.1-fabric" in v["file_name"]][0]')"
+OLD_FABRIC_VERSION="$(json_value '[v["version_id"] for v in d["versions"] if "1.21.1-fabric" in v["file_name"]][1]')"
+NEOFORGE_VERSION="$(json_value '[v["version_id"] for v in d["versions"] if "1.21.1-neoforge" in v["file_name"]][0]')"
+if [ -z "${FABRIC_VERSION}" ] || [ -z "${OLD_FABRIC_VERSION}" ] || [ -z "${NEOFORGE_VERSION}" ]; then
+    fail "the project does not have the versions the test needs"
+fi
 
 step "mod install"
 run_cmd mod install "${MOD_SLUG}" -i "${INSTANCE_ID}"
@@ -391,6 +402,39 @@ expect_no_mod_file '^jei.*\.jar$'
 
 # A mod that is locked to a specific version can only be removed with
 # `--force` - the lock is written in the packwiz metadata.
+step "mod install --version (a version of the loader of the instance)"
+run_cmd mod install "${MOD_SLUG}" -i "${INSTANCE_ID}" --version "${OLD_FABRIC_VERSION}" --no-deps
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["installed"]) == 1'
+check_json '"1.21.1-fabric" in d["installed"][0]["file"]'
+expect_mod_file '^jei-1\.21\.1-fabric-.*\.jar$'
+
+step "mod update --all --dry-run (the file is not changed)"
+BEFORE="$(cksum "${MODS_DIR}/$(ls "${MODS_DIR}" | grep -E -i '^jei.*\.jar$' | head -n 1)")"
+run_cmd mod update --all -i "${INSTANCE_ID}" --dry-run --no-deps
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["dry_run"] is True'
+check_json 'len(d["updated"]) > 0'
+AFTER="$(cksum "${MODS_DIR}/$(ls "${MODS_DIR}" | grep -E -i '^jei.*\.jar$' | head -n 1)")"
+if [ "${BEFORE}" != "${AFTER}" ]; then
+    fail "the dry run changed the mod file"
+fi
+
+step "mod install --version (a version of another loader)"
+run_cmd mod install "${MOD_SLUG}" -i "${INSTANCE_ID}" --version "${NEOFORGE_VERSION}" --no-deps
+expect_rc 3
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "version_not_found"'
+expect_mod_file '^jei-1\.21\.1-fabric-.*\.jar$'
+
+step "mod remove (the version that was installed)"
+run_cmd mod remove "${MOD_SLUG}" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+expect_no_mod_file '^jei.*\.jar$'
+
 step "mod list (a mod that is locked to a version)"
 printf 'not a real mod\n' > "${MODS_DIR}/fake-mod.jar"
 cat > "${INDEX_DIR}/fake.pw.toml" <<'EOF'
@@ -429,6 +473,51 @@ check_json 'd["ok"] is True'
 check_json 'len(d["removed"]) == 1'
 expect_no_file "${MODS_DIR}/fake-mod.jar"
 expect_no_file "${INDEX_DIR}/fake.pw.toml"
+
+# Two mods with the same name - the name matches both of them.
+step "mod list (two mods with the same name)"
+printf 'not a real mod\n' > "${MODS_DIR}/duplicate-a.jar"
+printf 'not a real mod\n' > "${MODS_DIR}/duplicate-b.jar"
+for mod in a b; do
+    cat > "${INDEX_DIR}/duplicate-${mod}.pw.toml" <<EOF
+name = "Duplicate Mod"
+filename = "duplicate-${mod}.jar"
+side = "required"
+x-prismlauncher-loaders = ["fabric"]
+x-prismlauncher-mc-versions = ["1.21.1"]
+x-prismlauncher-release-type = "Release"
+x-prismlauncher-version-number = "1.0.0"
+[download]
+mode = "url"
+url = "https://example.invalid/duplicate-${mod}.jar"
+hash-format = "sha512"
+hash = "0000"
+[update.modrinth]
+mod-id = "duplicat${mod}"
+version = "duplicat${mod}"
+EOF
+done
+run_cmd mod list -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'len([m for m in d["mods"] if m["name"] == "Duplicate Mod"]) == 2'
+
+step "mod remove (a target that matches two mods)"
+run_cmd mod remove "Duplicate Mod" -i "${INSTANCE_ID}"
+expect_rc 5
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "ambiguous_target"'
+check_json 'len(d["candidates"]) == 1'
+check_json 'len(d["candidates"][0]["candidates"]) == 2'
+expect_file "${MODS_DIR}/duplicate-a.jar"
+expect_file "${MODS_DIR}/duplicate-b.jar"
+
+step "mod remove --force (a target that matches two mods)"
+run_cmd mod remove "Duplicate Mod" -i "${INSTANCE_ID}" --force
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["removed"]) == 2'
+expect_no_file "${MODS_DIR}/duplicate-a.jar"
+expect_no_file "${MODS_DIR}/duplicate-b.jar"
 
 echo
 echo "All smoke test steps passed."

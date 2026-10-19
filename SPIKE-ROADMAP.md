@@ -221,8 +221,8 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
 
 ### Uwagi z review kodu (2 osie: standardy + specyfikacja)
 - **Budżet wywołań API smoke testu** — zmierzony empiretycznie (kategoria `launcher.task.net`
-  w logu): **19 wywołań `api.modrinth.com`** (5 pobrań plików z CDN to osobne zapytania, plus
-  26 zapytań do `i18n.prismlauncher.org` — aktualizacja tłumaczeń przy każdym uruchomieniu
+  w logu): **25 wywołań `api.modrinth.com`** (6 pobrań plików z CDN to osobne zapytania, plus
+  zapytania do `i18n.prismlauncher.org` — aktualizacja tłumaczeń przy każdym uruchomieniu
   launchera). Limit z briefu (< 30 wywołań Modrinth) jest spełniony.
 - **Cel, którego nie ma w instancji → exit 3** — brief C6 mówi „No match → `failed` entry +
   NotFound(3) at end", więc `remove`/`enable`/`disable`/`update` kończą się kodem 3, nawet jeśli
