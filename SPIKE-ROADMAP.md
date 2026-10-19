@@ -30,28 +30,28 @@
 - Smoke: `QT_QPA_PLATFORM=offscreen ./build/prismlauncher --help` działa headless
 
 ### T1 — Moduł wyjścia CLI [subagent: cli-core]
-- [ ] `launcher/cli/Output.h/.cpp`: `outputJson(doc)` / `outputError(code, msg)` — koperta
-      `{"ok":true,"data":…}` / `{"ok":false,"error":{"code":"…","message":"…"}}`,
+- [x] `launcher/cli/Output.h/.cpp`: `outputJson(doc)` / `outputError(code, msg)` — koperta
+      `{"ok":true,…}` / `{"ok":false,"error":{"code":"…","message":"…"}}`,
       `QTextStream(stdout)` UTF-8 + flush
-- [ ] Exit codes w `Commands.h` (enum `Cli::ExitCode`): 0 ok; 1 ogólny; 2 użycie; 3 not-found;
+- [x] Exit codes (`Cli::ExitCode` w `Output.h`): 0 ok; 1 ogólny; 2 użycie; 3 not-found;
       4 konflikt (instance running, brak --force); 5 niejednoznaczność; 6 błąd parsowania;
       7 sieć; 8 wymaga GUI
-- [ ] Testy jednostkowe Output (do istniejącej struktury testów)
+- [x] Testy jednostkowe Output (do istniejącej struktury testów)
 
 ### T2 — Struktury komend + parser [subagent: cli-core]
-- [ ] `launcher/cli/Commands.h`: struktury `Cmd::ModList{instance, includeDisabled}`,
+- [x] `launcher/cli/Commands.h`: struktury `Cmd::ModList{instance, includeDisabled}`,
       `Cmd::ModSearch{query, mcVersions, loaders, limit, offset}`,
       `Cmd::ModInfo{project, instance}`, `Cmd::ModInstall{project, instance, version, noDeps,
-      noMetadata}`, `Cmd::ModRemove{targets, instance, yes}`, `Cmd::ModEnable/Disable{targets,
+      noMetadata}`, `Cmd::ModRemove{targets, instance, force}`, `Cmd::ModEnable/Disable{targets,
       instance, recursive}`, `Cmd::ModUpdate{targets|all, instance, dryRun, noDeps, force}`
       — rozszerzyć `CommandBase` variant; styl: `operator<=> = default` jak istniejące
-- [ ] `launcher/cli/Parser.cpp`: grupa subkomend `mod` (CLI11: `app.require_subcommand()` na
+- [x] `launcher/cli/Parser.cpp`: grupa subkomend `mod` (CLI11: `app.require_subcommand()` na
       poziomie mod), wspólne flagi `-i/--instance`, `--json`, `-y/--yes`, `--force`;
       legacy flags nietknięte
-- [ ] Rozszerzyć `ApplicationMessage::fromCliCommand/toCliCommand` o nowe komendy (spójność CLI/IPC)
+- [x] Rozszerzyć `ApplicationMessage::fromCliCommand/toCliCommand` o nowe komendy (spójność CLI/IPC)
 
 ### T3 — runTaskSync [subagent: cli-core]
-- [ ] `launcher/cli/TaskRunner.h/.cpp`: `Result<> runTaskSync(Task::Ptr, timeoutMs)` —
+- [x] `launcher/cli/TaskRunner.h/.cpp`: `Result<> runTaskSync(Task::Ptr, timeoutMs)` —
       lokalna `QEventLoop` + `Task::finished` + timeout (wzorzec: `FlameAPI::getModFileChangelog`,
       `Meta::Index::loadVersion`); raport postępu 1 linia na stderr
 
@@ -74,10 +74,10 @@
 - [ ] NIE wywoływać `startWatching()`; destruktory modeli domknięte przed wyjściem
 
 ### T5 — Dispatch headless [subagent: cli-core]
-- [ ] `main.cpp`/`Application`: gdy `args.commands` zawiera wyłącznie komendy headless (mod/*,
+- [x] `main.cpp`/`Application`: gdy `args.commands` zawiera wyłącznie komendy headless (mod/*,
       instance list) → `qputenv("QT_QPA_PLATFORM", "offscreen")` jeśli brak DISPLAY/WAYLAND,
-      przed konstrukcją `Application`
-- [ ] `processCommands`: `std::visit` — nowe komendy → `ModCommands::run()` → wynik →
+      przed konstrukcją `Application` (+ pominięcie kreatora konfiguracji)
+- [x] `processCommands`: `std::visit` — nowe komendy → `ModCommands::run()` → wynik →
       `Output::json/exit(code)`; porażka przerywa batch; Launch/Show w headless → exit 8
 
 ### T6 — Smoke testy E2E [subagent: mod-domain]
@@ -86,6 +86,24 @@
       w mods/.index) → `mod disable jei` → `mod enable jei` → `mod update --dry-run` →
       `mod update all` → `mod remove jei`; asercje exit codes + JSON
 - [ ] Uruchomić z `QT_QPA_PLATFORM=offscreen`
+
+## Zaimplementowana składnia `mod` (stan po T1–T5 — T4/T6 muszą się zgadzać)
+
+```
+prismlauncher mod list    -i <id> [--include-disabled] [--json]
+prismlauncher mod search  [query] [--mc <v>...] [--loader <l>...] [--limit N] [--offset N] [--json]
+prismlauncher mod info    <project> [-i <id>] [--json]
+prismlauncher mod install <project> -i <id> [--version <v>] [--no-deps] [--no-metadata] [-y|--yes] [--json]
+prismlauncher mod remove  [target...] -i <id> [--force] [-y|--yes] [--json]
+prismlauncher mod enable  [target...] -i <id> [--recursive] [-y|--yes] [--json]
+prismlauncher mod disable [target...] -i <id> [--recursive] [-y|--yes] [--json]
+prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [--force] [-y|--yes] [--json]
+```
+
+- `-y/--yes` jest przyjmowane, ale nie trafia do struktur `Cmd::Mod*` (headless i tak nie pyta).
+- `Cmd::ModRemove` ma `force` (nie `yes`); `--json` domyślnie włączone (flaga akceptowana, wyjście zawsze JSON).
+- Gdy wszystkie komendy są headless i brak `DISPLAY`/`WAYLAND_DISPLAY` → `QT_QPA_PLATFORM=offscreen`
+  + pominięcie kreatora konfiguracji; mod przez IPC do działającego GUI → `ipc_unsupported` + exit 8 (TODO).
 
 ## Reguły spiKA
 - Rzucalne, ale **nie łamiące legacy flags** ani istniejących testów.
@@ -98,7 +116,7 @@
 - [x] Fork: https://github.com/kacperpaczos/PrismLauncher
 - [x] Branch: `spike/mod-cli` (z 059625c8b)
 - [x] T0 build green
-- [ ] T1+T2+T3 cli-core
+- [x] T1+T2+T3 cli-core
 - [ ] T4 mod-domain
-- [ ] T5 dispatch
+- [x] T5 dispatch
 - [ ] T6 smoke E2E
