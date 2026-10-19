@@ -977,17 +977,48 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     std::optional<ModPlatform::IndexedVersion> selected;
     if (cmd.version.has_value()) {
         const auto& wanted = cmd.version.value();
+        QList<ModPlatform::IndexedVersion> matches;
         for (const auto& version : allVersions) {
             if (version.fileId.toString() == wanted || version.versionNumber == wanted || version.version == wanted) {
-                selected = version;
-                break;
+                matches.append(version);
             }
         }
-        if (!selected.has_value()) {
+        // The version has to support the Minecraft version and the mod loader
+        // of the instance - otherwise a mod for another loader would be
+        // installed into the instance.
+        QList<ModPlatform::IndexedVersion> usable;
+        for (const auto& version : matches) {
+            if (!version.mcVersion.contains(mcVersionString)) {
+                continue;
+            }
+            if (!versionSupportsLoader(version, loaders)) {
+                continue;
+            }
+            usable.append(version);
+        }
+        if (usable.isEmpty()) {
             return outputError(QStringLiteral("version_not_found"),
-                               QStringLiteral("No version '%1' was found for the project '%2'").arg(wanted, cmd.project),
+                               QStringLiteral("No version '%1' of '%2' supports Minecraft %3 and the mod loader of the instance")
+                                   .arg(wanted, cmd.project, mcVersionString),
                                ExitCode::NotFound);
         }
+        if (usable.size() > 1) {
+            QJsonArray candidates;
+            for (const auto& version : usable) {
+                QJsonObject candidate;
+                candidate.insert(QStringLiteral("version_id"), version.fileId.toString());
+                candidate.insert(QStringLiteral("version_number"), version.versionNumber);
+                candidate.insert(QStringLiteral("file_name"), version.fileName);
+                candidates.append(candidate);
+            }
+            QJsonObject out;
+            out.insert(QStringLiteral("candidates"), candidates);
+            return outputError(QStringLiteral("ambiguous_target"),
+                               QStringLiteral("The version '%1' matches more than one file").arg(wanted),
+                               ExitCode::Ambiguous,
+                               out);
+        }
+        selected = usable.first();
     } else {
         for (const auto& version : allVersions) {
             if (!version.mcVersion.contains(mcVersionString)) {
