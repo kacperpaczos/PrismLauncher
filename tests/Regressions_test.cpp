@@ -38,6 +38,16 @@
 
 namespace Cli {
 
+static QString joinForTest(const std::vector<QString>& values)
+{
+    QStringList parts;
+    parts.reserve(static_cast<qsizetype>(values.size()));
+    for (const auto& value : values) {
+        parts << value;
+    }
+    return parts.join(QStringLiteral(", "));
+}
+
 // overload of QTest::toString
 static char* toString(const Args& args)
 {
@@ -87,6 +97,51 @@ static char* toString(const Args& args)
         QString operator()(const Alive& alive)
         {
             return QStringLiteral("Alive{ path: \"%1\"}").arg(QString::fromStdU16String(alive.path.u16string()));
+        }
+        QString operator()(const ModList& modList)
+        {
+            return QStringLiteral("ModList{ instance: \"%1\", includeDisabled: %2 }")
+                .arg(modList.instance, QString::number(modList.includeDisabled));
+        }
+        QString operator()(const ModSearch& modSearch)
+        {
+            return QStringLiteral("ModSearch{ query: \"%1\", mc: [%2], loaders: [%3], limit: %4, offset: %5 }")
+                .arg(modSearch.query, joinForTest(modSearch.mcVersions), joinForTest(modSearch.loaders))
+                .arg(modSearch.limit)
+                .arg(modSearch.offset);
+        }
+        QString operator()(const ModInfo& modInfo)
+        {
+            return QStringLiteral("ModInfo{ project: \"%1\", instance: \"%2\" }")
+                .arg(modInfo.project, modInfo.instance.value_or(QString()));
+        }
+        QString operator()(const ModInstall& modInstall)
+        {
+            return QStringLiteral("ModInstall{ project: \"%1\", instance: \"%2\", version: \"%3\", noDeps: %4, noMetadata: %5 }")
+                .arg(modInstall.project, modInstall.instance, modInstall.version.value_or(QString()),
+                     QString::number(modInstall.noDeps), QString::number(modInstall.noMetadata));
+        }
+        QString operator()(const ModRemove& modRemove)
+        {
+            return QStringLiteral("ModRemove{ targets: [%1], instance: \"%2\", force: %3 }")
+                .arg(joinForTest(modRemove.targets), modRemove.instance, QString::number(modRemove.force));
+        }
+        QString operator()(const ModEnable& modEnable)
+        {
+            return QStringLiteral("ModEnable{ targets: [%1], instance: \"%2\", recursive: %3 }")
+                .arg(joinForTest(modEnable.targets), modEnable.instance, QString::number(modEnable.recursive));
+        }
+        QString operator()(const ModDisable& modDisable)
+        {
+            return QStringLiteral("ModDisable{ targets: [%1], instance: \"%2\", recursive: %3 }")
+                .arg(joinForTest(modDisable.targets), modDisable.instance, QString::number(modDisable.recursive));
+        }
+        QString operator()(const ModUpdate& modUpdate)
+        {
+            return QStringLiteral("ModUpdate{ targets: [%1], all: %2, instance: \"%3\", dryRun: %4, noDeps: %5, force: %6 }")
+                .arg(joinForTest(modUpdate.targets))
+                .arg(QString::number(modUpdate.all), modUpdate.instance, QString::number(modUpdate.dryRun),
+                     QString::number(modUpdate.noDeps), QString::number(modUpdate.force));
         }
     } cmdVisitor;
 
