@@ -12,7 +12,10 @@ build_image() {
 }
 
 run_in() {
-    podman run --rm -v "$REPO_HOST:/repo" -w /repo -e HOME=/tmp "$IMAGE" bash -c "$1"
+    # label=disable: SELinux on the host blocks the container from reading the
+    # bind-mounted repo (user_home_t label) -> "Permission denied" on /repo.
+    podman run --rm --security-opt label=disable \
+        -v "$REPO_HOST:/repo" -w /repo -e HOME=/tmp "$IMAGE" bash -c "$1"
 }
 
 case "$STAGE" in
