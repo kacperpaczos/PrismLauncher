@@ -301,6 +301,22 @@ Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatf
     return versions;
 }
 
+ModPlatform::ModLoaderTypes loadersFromStrings(const std::vector<QString>& loaders, QString* invalid)
+{
+    ModPlatform::ModLoaderTypes types;
+    for (const auto& loader : loaders) {
+        auto type = ModPlatform::getModLoaderFromString(loader.trimmed().toLower());
+        if (type == ModPlatform::ModLoaderType::None) {
+            if (invalid) {
+                *invalid = loader;
+            }
+            continue;
+        }
+        types |= type;
+    }
+    return types;
+}
+
 /**
  * The result of resolving the targets of the remove/enable/disable/update
  * commands.
@@ -351,10 +367,110 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModSearch& /*cmd*/)
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
 {
-    return notImplemented(QStringLiteral("search"));
+    ResourceAPI::SearchArgs args;
+    args.type = ModPlatform::ResourceType::Mod;
+    args.offset = cmd.offset;
+    if (!cmd.query.isEmpty()) {
+        args.search = cmd.query;
+    }
+    if (!cmd.mcVersions.empty()) {
+        std::vector<Version> versions;
+        versions.reserve(cmd.mcVersions.size());
+        for (const auto& version : cmd.mcVersions) {
+            versions.emplace_back(version);
+        }
+        args.versions = versions;
+    }
+    if (!cmd.loaders.empty()) {
+        QString invalid;
+        auto loaders = loadersFromStrings(cmd.loaders, &invalid);
+        if (loaders == ModPlatform::ModLoaderTypes(0)) {
+            return outputError(QStringLiteral("invalid_loader"),
+                               QStringLiteral("'%1' is not a known mod loader").arg(invalid),
+                               ExitCode::Usage);
+        }
+        args.loaders = loaders;
+    }
+
+    QJsonArray results;
+    int total = 0;
+    int offset = cmd.offset;
+
+    while (results.size() < cmd.limit) {
+        args.offset = offset;
+
+        // The search endpoint hardcodes the page size, so the results have to
+        // be requested page by page. The raw response is used (instead of the
+        // RPC sink of `searchProjectsTask`) because it also carries the total
+        // number of hits and the download count of every project.
+        auto spec = ModrinthAPI::get().searchProjects(args);
+        auto [action, response] = Net::ApiRequest::makeByteArray(spec.first.url, Net::Request::Option::AutoRetry);
+        auto job = makeShared<NetJob>(QStringLiteral("Modrinth::Search"), APPLICATION->network());
+        job->addNetAction(action);
+
+        if (auto result = runTaskSync(job, kNetworkTimeoutMs); !result) {
+            return outputError(QStringLiteral("network_error"),
+                               QStringLiteral("The Modrinth search failed: %1").arg(result.error()),
+                               ExitCode::Network);
+        }
+
+        QJsonParseError parseError;
+        auto document = QJsonDocument::fromJson(*response, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            return outputError(QStringLiteral("parse_error"),
+                               QStringLiteral("Could not parse the Modrinth search response: %1").arg(parseError.errorString()),
+                               ExitCode::ParseError);
+        }
+
+        auto object = document.object();
+        total = object.value(QStringLiteral("total_hits")).toInt(total);
+        auto hits = object.value(QStringLiteral("hits")).toArray();
+
+        for (const auto& hit : hits) {
+            if (results.size() >= cmd.limit) {
+                break;
+            }
+            auto hitObject = hit.toObject();
+            ModPlatform::IndexedPack pack;
+            if (auto parsed = Modrinth::Parse::loadIndexedPack(pack, hitObject); !parsed) {
+                qWarning() << "Could not parse a Modrinth search hit:" << parsed.error();
+                continue;
+            }
+
+            QJsonObject entry;
+            entry.insert(QStringLiteral("slug"), pack.slug);
+            entry.insert(QStringLiteral("project_id"), pack.addonId.toString());
+            entry.insert(QStringLiteral("name"), pack.name);
+            entry.insert(QStringLiteral("description"), pack.description);
+            QJsonArray authors;
+            for (const auto& author : pack.authors) {
+                authors.append(author.name);
+            }
+            entry.insert(QStringLiteral("authors"), authors);
+            entry.insert(QStringLiteral("website"), pack.websiteUrl);
+            entry.insert(QStringLiteral("icon_url"), pack.logoUrl);
+            entry.insert(QStringLiteral("downloads"), static_cast<int>(hitObject.value(QStringLiteral("downloads")).toInt(0)));
+            results.append(entry);
+        }
+
+        if (hits.size() < kSearchPageSize) {
+            // The last page was reached.
+            break;
+        }
+        offset += kSearchPageSize;
+    }
+
+    QJsonObject out;
+    out.insert(QStringLiteral("offset"), cmd.offset);
+    out.insert(QStringLiteral("limit"), cmd.limit);
+    out.insert(QStringLiteral("total"), total);
+    out.insert(QStringLiteral("results"), results);
+    outputJson(QJsonDocument(out));
+    return ExitCode::OK;
 }
+
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
 {
     auto project = fetchProject(cmd.project);
