@@ -9,16 +9,25 @@
 ## Kolejność prac (sekwencyjnie, per podagent)
 
 ### T0 — Zielony build [subagent: build]
-- [ ] `git submodule update --init libraries/libnbtplusplus` (+ wszystkie wymagane submoduły)
-- [ ] Java target: `libraries/launcher/CMakeLists.txt` `-target 7 -source 7` → `-target 8 -source 8`
+- [x] `git submodule update --init libraries/libnbtplusplus` (+ wszystkie wymagane submoduły)
+- [x] Java target: `libraries/launcher/CMakeLists.txt` `-target 7 -source 7` → `-target 8 -source 8`
       (Fedora nie ma JDK<21 — build bez tego pada)
-- [ ] Deps dnf: cmake, ninja-build, gcc-c++, extra-cmake-modules, qt6-qtbase-devel,
+      + `libraries/javacheck/CMakeLists.txt` (ten sam fix, inaczej build pada na tym module)
+- [x] Deps dnf: cmake, ninja-build, gcc-c++, extra-cmake-modules, qt6-qtbase-devel,
       qt6-qtnetworkauth-devel, cmark-devel, qrencode-devel, libarchive-devel,
       tomlplusplus-devel, zlib-ng-compat-devel, cli11-devel
-- [ ] `cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+      (`java-25-openjdk-devel` — w Fedorze 44 nie ma `java-openjdk-devel`)
+- [x] `cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
       -DLauncher_BUILD_PLATFORM=dev -DLauncher_ENABLE_JAVA_DOWNLOADER=ON` + build
-- [ ] `QT_QPA_PLATFORM=offscreen ctest --test-dir build` — zielone
-- [ ] Commit: `chore(build): bump java target to 8 for modern JDK compat`
+- [x] `QT_QPA_PLATFORM=offscreen ctest --test-dir build` — zielone (24/24 passed)
+- [x] Commit: `chore(build): bump embedded launcher java target 7 -> 8`
+
+**Środowisko (gotowe, `containers/`)**
+- `./containers/spike-build.sh image` — obraz `localhost/prism-spike-dev` (Fedora 44 + Qt6 + JDK 25)
+- `./containers/spike-build.sh submodules|configure|build|test|all` — stages w rootless podman
+- SELinux na hoście blokuje montowanie repo → `podman run --security-opt label=disable` (już w skrypcie)
+- Build w `build/` (w .gitignore); pliki należą do użytkownika hosta
+- Smoke: `QT_QPA_PLATFORM=offscreen ./build/prismlauncher --help` działa headless
 
 ### T1 — Moduł wyjścia CLI [subagent: cli-core]
 - [ ] `launcher/cli/Output.h/.cpp`: `outputJson(doc)` / `outputError(code, msg)` — koperta
@@ -88,7 +97,7 @@
 ## Status
 - [x] Fork: https://github.com/kacperpaczos/PrismLauncher
 - [x] Branch: `spike/mod-cli` (z 059625c8b)
-- [ ] T0 build green
+- [x] T0 build green
 - [ ] T1+T2+T3 cli-core
 - [ ] T4 mod-domain
 - [ ] T5 dispatch
