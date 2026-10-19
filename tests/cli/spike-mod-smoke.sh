@@ -146,6 +146,18 @@ PY
     fi
 }
 
+# json_value <python expression> - the value is read from the last output.
+json_value() {
+    python3 - "${JSON_FILE}" "$1" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    d = json.load(handle)
+print(eval(sys.argv[2], {"d": d}))  # noqa: S307
+PY
+}
+
 expect_file() {
     if [ ! -e "$1" ]; then
         fail "the file '$1' does not exist"
@@ -202,6 +214,12 @@ check_json 'd["total"] > 0'
 check_json 'len(d["results"]) == 3'
 check_json 'all(r["slug"] for r in d["results"])'
 check_json 'any("jei" in r["slug"] for r in d["results"])'
+
+step "mod search (an unknown loader)"
+run_cmd mod search "${MOD_SLUG}" --loader bukkit
+expect_rc 2
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "invalid_loader"'
 
 step "mod info (before the install)"
 run_cmd mod info "${MOD_SLUG}"
@@ -266,16 +284,25 @@ expect_rc 0
 check_json 'd["ok"] is True'
 check_json 'd["dry_run"] is True'
 check_json 'd["failed"] == []'
-check_json 'isinstance(d["updated"], list)'
-check_json 'isinstance(d["up_to_date"], list)'
-check_json 'isinstance(d["skipped"], list)'
+check_json 'd["updated"] == []'
+check_json 'any("jei" in m["file"] for m in d["up_to_date"])'
+check_json 'isinstance(d["dependencies"], list)'
 
-step "mod update (the installed version is the newest one)"
+step "mod update --all (the installed version is the newest one)"
 run_cmd mod update --all -i "${INSTANCE_ID}"
 expect_rc 0
 check_json 'd["ok"] is True'
 check_json 'd["dry_run"] is False'
 check_json 'd["failed"] == []'
+check_json 'd["updated"] == []'
+check_json 'any("jei" in m["file"] for m in d["up_to_date"])'
+
+step "mod update (a target that does not exist)"
+run_cmd mod update -i "${INSTANCE_ID}" "${MOD_SLUG}" does-not-exist
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["failed"]) == 1'
+check_json 'd["failed"][0]["target"] == "does-not-exist"'
 
 step "mod info (the installed mod)"
 run_cmd mod info "${MOD_SLUG}" -i "${INSTANCE_ID}"
@@ -306,6 +333,101 @@ run_cmd mod remove does-not-exist -i "${INSTANCE_ID}"
 expect_rc 3
 check_json 'd["ok"] is False'
 check_json 'd["error"]["code"] == "not_found"'
+
+step "mod remove (the dependencies of the first round)"
+run_cmd mod remove mezzconfig fabric-api -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["removed"]) == 2'
+
+step "mod install --no-deps"
+run_cmd mod install "${MOD_SLUG}" -i "${INSTANCE_ID}" --no-deps
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["installed"]) == 1'
+check_json 'd["installed"][0]["slug"] == "jei"'
+check_json 'd["installed"][0]["source"] == "modrinth"'
+check_json 'd["dependencies"] == []'
+expect_mod_file '^jei.*\.jar$'
+
+step "mod update --all --dry-run (the dependencies are reported)"
+run_cmd mod update --all -i "${INSTANCE_ID}" --dry-run
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["dry_run"] is True'
+check_json 'any(d["slug"] == "mezzconfig" for d in d["dependencies"])'
+
+step "mod update --all --no-deps (the dependencies are not resolved)"
+run_cmd mod update --all -i "${INSTANCE_ID}" --dry-run --no-deps
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["dependencies"] == []'
+
+step "mod remove (the second round)"
+run_cmd mod remove "${MOD_SLUG}" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["removed"]) == 1'
+expect_no_mod_file '^jei.*\.jar$'
+
+step "mod install --no-metadata"
+run_cmd mod install "${MOD_SLUG}" -i "${INSTANCE_ID}" --no-metadata --no-deps
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["installed"]) == 1'
+check_json 'd["installed"][0]["slug"] == "jei"'
+check_json 'd["installed"][0]["source"] == "modrinth"'
+check_json 'd["installed"][0]["version_number"] != ""'
+expect_no_file "${INDEX_DIR}/jei.pw.toml"
+JEI_FILE="$(json_value 'd["installed"][0]["file"]')"
+
+step "mod remove (the mod without metadata)"
+run_cmd mod remove "${JEI_FILE}" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["removed"]) == 1'
+expect_no_mod_file '^jei.*\.jar$'
+
+# A mod that is locked to a specific version can only be removed with
+# `--force` - the lock is written in the packwiz metadata.
+step "mod list (a mod that is locked to a version)"
+printf 'not a real mod\n' > "${MODS_DIR}/fake-mod.jar"
+cat > "${INDEX_DIR}/fake.pw.toml" <<'EOF'
+name = "Fake Mod"
+filename = "fake-mod.jar"
+side = "required"
+x-prismlauncher-loaders = ["fabric"]
+x-prismlauncher-mc-versions = ["1.21.1"]
+x-prismlauncher-release-type = "Release"
+x-prismlauncher-version-number = "1.0.0"
+x-prismlauncher-lock-update = true
+[download]
+mode = "url"
+url = "https://example.invalid/fake-mod.jar"
+hash-format = "sha512"
+hash = "0000"
+[update.modrinth]
+mod-id = "fakefakefake"
+version = "fakeversion"
+EOF
+run_cmd mod list -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'any(m["slug"] == "fake" and m["lock_update"] is True for m in d["mods"])'
+
+step "mod remove (a mod that is locked to a version)"
+run_cmd mod remove fake -i "${INSTANCE_ID}"
+expect_rc 4
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "locked"'
+expect_file "${MODS_DIR}/fake-mod.jar"
+
+step "mod remove --force (a mod that is locked to a version)"
+run_cmd mod remove fake -i "${INSTANCE_ID}" --force
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["removed"]) == 1'
+expect_no_file "${MODS_DIR}/fake-mod.jar"
+expect_no_file "${INDEX_DIR}/fake.pw.toml"
 
 echo
 echo "All smoke test steps passed."

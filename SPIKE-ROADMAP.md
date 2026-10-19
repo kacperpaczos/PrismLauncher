@@ -150,6 +150,7 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 | `feat(cli): mod install with dependency resolution` | `install` + `GetModDependenciesTask` |
 | `feat(cli): mod remove, enable, disable` | `remove`/`enable`/`disable` + `--recursive` |
 | `feat(cli): mod update with metadata ensure and dry-run` | `update` + `EnsureMetadataTask` + `ModrinthCheckUpdate` |
+| `fix(cli): review fixes for the mod commands` | zależności `mod update`, `checkFailed`, `--force` w `remove`, `affected_by`, `--no-metadata`, walidacja loadera, koperty błędów |
 | `test(spike): end-to-end mod management smoke test` | `tests/cli/spike-mod-smoke.sh` |
 
 ### Kształt JSON-a (przykłady realne, 1.21.1 + fabric)
@@ -196,9 +197,14 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   exit 0, a `changed` jest pustą listą.
 - **`Cli::outputError` ma dodatkowy overload** z obiektem `QJsonObject` — pozwala dołożyć do koperty
   błędu listy `failed`/`candidates` (koperta sukcesu `outputJson` zawsze dostaje `ok:true`).
-- **`mod update --no-deps`** — zależności aktualizowanych modów są tylko raportowane w polu
-  `dependencies` (nie są pobierane, tak jak w GUI nie ma osobnego zadania dla zależności przy
-  `CheckUpdateTask`); `--no-deps` pomija raportowanie zależności.
+- **`mod update --no-deps`** — lista, którą zwraca `CheckUpdateTask::getDependencies()`, zawiera
+  same aktualizowane mody (jest wejściem dla `GetModDependenciesTask`), więc zależności są
+  rozwiązywane osobnym `GetModDependenciesTask` i raportowane w polu `dependencies`. Zależności
+  nie są pobierane — aktualizacja podmienia tylko mody, które mają nowszą wersję. `--no-deps`
+  pomija rozwiązywanie zależności.
+- **`mod remove --force`** — zgodnie z opisem flagi usuwa też mody zablokowane (`lockUpdate`) i
+  nie zgłasza błędu niejednoznaczności (usuwane są wszystkie dopasowania). Bez `--force` zablokowany
+  mod jest odmawiany (exit 4, kod `locked`).
 - **Smoke test nie jest w ctest** — wymaga sieci (realne API Modrinth). Uruchamiany ręcznie:
   `tests/cli/spike-mod-smoke.sh` (wewnątrz kontenera). Asercje exit code + JSON (python3, bez jq).
 
@@ -212,6 +218,18 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   dla timeoutu — to kandydat do rozdzielenia w fazie 2+.
 - **W1/W3/W4/W8** — hardening parsera (`--mc`/`--loader` nie połykają query, walidacja liczby
   celów, `Range` dla `--limit`/`--offset`, `fallthrough`) był z T2 i pozostaje w mocy.
+
+### Znane ograniczenia (po review kodu)
+- `waitForModel()` nie odróżnia nieudanego skanu modelu od udanego (`updateFinished` jest
+  emitowane niezależnie od wyniku, a `onUpdateFailed()` w bazie jest pusty) — uszkodzony folder
+  `mods/` jest raportowany jako pusta lista modów. Tak samo zachowuje się GUI.
+- `Cli::outputJson()` (z T1) wypisuje kopertę błędu, ale nie może zmienić kodu wyjścia procesu —
+  wywołujący zwraca `ExitCode::OK`. Do poprawki w fazie 2+.
+- Każde uruchomienie CLI sprawdza aktualizacje tłumaczeń (23 zapytania do
+  `i18n.prismlauncher.org` w smoke teście) — to zachowanie launchera, nie mod-komend; w wersji
+  headless warto je pominąć.
+- Mod, dla którego nie znaleziono wersji dla loadera instancji (np. mod tylko na Forge w
+  instancji Fabric), trafia do `failed` z komunikatem API (nie do `up_to_date`).
 
 ### Ograniczenia
 - Tylko Modrinth. Flame/FTB/legacy nie są obsługiwane (`source` z metadanych Flame jest czytane,

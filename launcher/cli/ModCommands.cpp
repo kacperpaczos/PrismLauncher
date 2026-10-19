@@ -50,6 +50,7 @@
 #include "minecraft/mod/ModFolderModel.h"
 #include "minecraft/mod/ResourceFolderModel.h"
 #include "minecraft/mod/tasks/GetModDependenciesTask.h"
+#include "modplatform/CheckUpdateTask.h"
 #include "modplatform/EnsureMetadataTask.h"
 #include "modplatform/ModIndex.h"
 #include "modplatform/ResourceAPI.h"
@@ -387,7 +388,7 @@ ModPlatform::ModLoaderTypes loadersFromStrings(const std::vector<QString>& loade
             if (invalid) {
                 *invalid = loader;
             }
-            continue;
+            return types;
         }
         types |= type;
     }
@@ -419,7 +420,7 @@ struct ResolvedTargets {
     bool ambiguous = false;
 };
 
-ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QString>& targets)
+ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QString>& targets, bool force = false)
 {
     ResolvedTargets resolved;
     for (const auto& target : targets) {
@@ -432,7 +433,6 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
             continue;
         }
         if (matches.size() > 1) {
-            resolved.ambiguous = true;
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), target);
             QJsonArray candidateNames;
@@ -446,11 +446,15 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
             }
             entry.insert(QStringLiteral("candidates"), candidateNames);
             resolved.candidates.append(entry);
-            continue;
+            if (!force) {
+                resolved.ambiguous = true;
+                continue;
+            }
         }
-        auto* resource = matches.first();
-        if (!resolved.resources.contains(resource)) {
-            resolved.resources.append(resource);
+        for (auto* resource : matches) {
+            if (!resolved.resources.contains(resource)) {
+                resolved.resources.append(resource);
+            }
         }
     }
     return resolved;
@@ -459,11 +463,12 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
 /**
  * Collect the mods that depend on the given ones (or that are required by
  * them). The relation graph of the model is used, the same way the GUI does
- * it for the "disable dependants" prompt.
+ * it for the "disable dependants" prompt. The result maps every affected mod
+ * to the mods that caused it to be affected.
  */
-QList<Mod*> collectAffectedMods(ModFolderModel* model, const QList<Mod*>& selected, EnableAction action)
+QHash<Mod*, QStringList> collectAffectedMods(ModFolderModel* model, const QList<Mod*>& selected, EnableAction action)
 {
-    QList<Mod*> affected;
+    QHash<Mod*, QStringList> affected;
     QList<Mod*> queue = selected;
     QSet<QString> seen;
 
@@ -472,12 +477,12 @@ QList<Mod*> collectAffectedMods(ModFolderModel* model, const QList<Mod*>& select
     }
 
     while (!queue.isEmpty()) {
-        auto* mod = queue.takeFirst();
+        auto* parent = queue.takeFirst();
         QStringList relations;
         if (action == EnableAction::ENABLE) {
-            relations = model->requiresList(mod->modId());
+            relations = model->requiresList(parent->modId());
         } else {
-            relations = model->requiredByList(mod->modId());
+            relations = model->requiredByList(parent->modId());
         }
         for (const auto& relation : relations) {
             for (auto* candidate : model->allMods()) {
@@ -485,7 +490,7 @@ QList<Mod*> collectAffectedMods(ModFolderModel* model, const QList<Mod*>& select
                     continue;
                 }
                 seen.insert(candidate->internalId());
-                affected.append(candidate);
+                affected.insert(candidate, QStringList{ parent->name() });
                 queue.append(candidate);
             }
         }
@@ -555,18 +560,13 @@ ExitCode runEnableDisable(ModContext& ctx,
                 selectedMods.append(mod);
             }
         }
-        for (auto* mod : collectAffectedMods(model, selectedMods, action)) {
-            auto* resource = static_cast<Resource*>(mod);
+        const auto affectedMods = collectAffectedMods(model, selectedMods, action);
+        for (auto it = affectedMods.constBegin(); it != affectedMods.constEnd(); ++it) {
+            auto* resource = static_cast<Resource*>(it.key());
             if (!resolved.resources.contains(resource)) {
                 resolved.resources.append(resource);
             }
-            QStringList causes;
-            if (action == EnableAction::ENABLE) {
-                causes = model->requiresList(mod->modId());
-            } else {
-                causes = model->requiredByList(mod->modId());
-            }
-            affectedBy.insert(resource, causes);
+            affectedBy.insert(resource, it.value());
         }
     }
 
@@ -665,7 +665,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
     if (!cmd.loaders.empty()) {
         QString invalid;
         auto loaders = loadersFromStrings(cmd.loaders, &invalid);
-        if (loaders == ModPlatform::ModLoaderTypes(0)) {
+        if (!invalid.isEmpty()) {
             return outputError(QStringLiteral("invalid_loader"),
                                QStringLiteral("'%1' is not a known mod loader").arg(invalid),
                                ExitCode::Usage);
@@ -953,6 +953,11 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     struct DownloadEntry {
         QString slug;
         QString fileName;
+        QString projectId;
+        QString versionId;
+        QString versionNumber;
+        QString releaseType;
+        QString source;
         bool isDependency = false;
     };
     std::vector<DownloadEntry> entries;
@@ -972,7 +977,14 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
             failed->append(entry);
         });
         download->addTask(task);
-        entries.push_back({ pack->slug, version.fileName, isDependency });
+        entries.push_back({ .slug = pack->slug,
+                            .fileName = version.fileName,
+                            .projectId = pack->addonId.toString(),
+                            .versionId = version.fileId.toString(),
+                            .versionNumber = version.versionNumber,
+                            .releaseType = version.versionType.isValid() ? version.versionType.toString() : QString(),
+                            .source = sourceName(pack->provider),
+                            .isDependency = isDependency });
     };
 
     addDownload(packPtr, selected.value(), false);
@@ -999,8 +1011,33 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
         auto* resource = findResourceByFileName(model, entry.fileName);
         QJsonObject object = resource ? modToJson(resource) : QJsonObject();
         if (object.isEmpty()) {
+            // The mod was not picked up by the model (or it has no metadata,
+            // because it was installed with `--no-metadata`), so the data of
+            // the download is used instead.
+            object.insert(QStringLiteral("name"), entry.slug);
             object.insert(QStringLiteral("slug"), entry.slug);
+            object.insert(QStringLiteral("project_id"), entry.projectId);
+            object.insert(QStringLiteral("version_id"), entry.versionId);
+            object.insert(QStringLiteral("version_number"), entry.versionNumber);
             object.insert(QStringLiteral("file"), entry.fileName);
+            object.insert(QStringLiteral("enabled"), true);
+            object.insert(QStringLiteral("date"), QJsonValue(QJsonValue::Null));
+            QJsonObject hash;
+            hash.insert(QStringLiteral("sha1"), QJsonValue(QJsonValue::Null));
+            hash.insert(QStringLiteral("sha512"), QJsonValue(QJsonValue::Null));
+            object.insert(QStringLiteral("hash"), hash);
+            object.insert(QStringLiteral("source"), entry.source);
+            object.insert(QStringLiteral("release_type"), entry.releaseType);
+            object.insert(QStringLiteral("lock_update"), false);
+        } else if (!resource->metadata()) {
+            // The mod was installed without metadata, so the metadata of the
+            // download is reported instead of the missing one.
+            object.insert(QStringLiteral("slug"), entry.slug);
+            object.insert(QStringLiteral("project_id"), entry.projectId);
+            object.insert(QStringLiteral("version_id"), entry.versionId);
+            object.insert(QStringLiteral("version_number"), entry.versionNumber);
+            object.insert(QStringLiteral("source"), entry.source);
+            object.insert(QStringLiteral("release_type"), entry.releaseType);
         }
         if (entry.isDependency) {
             dependencyObjects.append(object);
@@ -1041,7 +1078,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
                            ExitCode::Generic);
     }
 
-    auto resolved = resolveTargets(model, cmd.targets);
+    auto resolved = resolveTargets(model, cmd.targets, cmd.force);
     if (resolved.ambiguous) {
         QJsonObject out;
         out.insert(QStringLiteral("candidates"), resolved.candidates);
@@ -1054,12 +1091,21 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
 
     QJsonArray removed;
     QJsonArray failed = resolved.failed;
+    bool lockedRefused = false;
     const auto indexDir = model->indexDir();
     // The model is not updated in between the removals - the resolved list is
     // iterated instead.
     for (auto* resource : resolved.resources) {
         auto fileName = resource->fileinfo().fileName();
         auto name = resource->name();
+        if (resource->lockUpdate() && !cmd.force) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), fileName);
+            entry.insert(QStringLiteral("reason"), QStringLiteral("the mod is locked to a specific version (use --force)"));
+            failed.append(entry);
+            lockedRefused = true;
+            continue;
+        }
         // The metadata is gone once the mod is destroyed, so it has to be
         // read before.
         auto meta = resource->metadata();
@@ -1082,9 +1128,21 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
     out.insert(QStringLiteral("removed"), removed);
     out.insert(QStringLiteral("failed"), failed);
     if (removed.isEmpty() && !failed.isEmpty()) {
-        return outputError(QStringLiteral("not_found"),
-                           QStringLiteral("None of the targets matched a mod"),
-                           ExitCode::NotFound,
+        if (resolved.resources.isEmpty()) {
+            return outputError(QStringLiteral("not_found"),
+                               QStringLiteral("None of the targets matched a mod"),
+                               ExitCode::NotFound,
+                               out);
+        }
+        if (lockedRefused) {
+            return outputError(QStringLiteral("locked"),
+                               QStringLiteral("The mod is locked to a specific version (use --force to remove it anyway)"),
+                               ExitCode::Conflict,
+                               out);
+        }
+        return outputError(QStringLiteral("remove_failed"),
+                           QStringLiteral("None of the mods could be removed"),
+                           ExitCode::Generic,
                            out);
     }
     outputJson(QJsonDocument(out));
@@ -1141,7 +1199,14 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
                            ExitCode::Generic);
     }
 
+    // The context of the connections that are made below. It is declared
+    // after the variables that the lambdas use, so that it is destroyed first
+    // and the connections cannot outlive them.
+    QList<Resource*> failedChecks;
+    QObject connectionContext;
+
     QList<Resource*> candidates;
+    QJsonArray failed;
     if (cmd.all) {
         candidates = model->allResources();
     } else {
@@ -1164,10 +1229,11 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
                                out);
         }
         candidates = resolved.resources;
+        // The targets that did not match any mod are reported as failed.
+        failed = resolved.failed;
     }
 
     QJsonArray skipped;
-    QJsonArray failed;
     QList<Resource*> updatable;
 
     for (auto* resource : candidates) {
@@ -1245,6 +1311,21 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         auto loaders = profile->getModLoadersList();
 
         auto checkTask = makeShared<ModrinthCheckUpdate>(checkable, mcVersions, loaders, model);
+
+        // The mods for which no version was found are reported as failed -
+        // they are not up to date, they could not be checked at all.
+        QObject::connect(checkTask.get(), &CheckUpdateTask::checkFailed, &connectionContext, [&failedChecks, &failed](Resource* resource, const QString& reason, const QUrl&) {
+            if (!resource) {
+                return;
+            }
+            failedChecks.append(resource);
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), resource->name());
+            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("reason"), reason);
+            failed.append(entry);
+        });
+
         if (auto result = runTaskSync(checkTask, kNetworkTimeoutMs); !result) {
             QJsonObject out;
             out.insert(QStringLiteral("failed"), failed);
@@ -1272,26 +1353,39 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
             updated.append(entry);
         }
 
-        // The dependencies of the updated mods are only reported, they are not
-        // downloaded - the update itself only replaces the mods that have a
-        // newer version.
-        if (!cmd.noDeps) {
-            for (const auto& dependency : checkTask->getDependencies()) {
-                if (!dependency || !dependency->pack) {
-                    continue;
-                }
+        // The list that the check task returns holds the updated mods
+        // themselves - it is the input of the dependency resolution. The
+        // dependencies are resolved (and reported), but they are not
+        // downloaded: the update only replaces the mods that have a newer
+        // version.
+        if (!cmd.noDeps && !checkTask->getDependencies().isEmpty()) {
+            auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, checkTask->getDependencies());
+            if (auto result = runTaskSync(dependencyTask, kNetworkTimeoutMs); !result) {
                 QJsonObject entry;
-                entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
-                entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
-                entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
-                entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
-                entry.insert(QStringLiteral("file"), dependency->version.fileName);
-                dependencies.append(entry);
+                entry.insert(QStringLiteral("reason"), QStringLiteral("the dependencies could not be resolved: %1").arg(result.error()));
+                failed.append(entry);
+            } else {
+                for (const auto& dependency : dependencyTask->getDependecies()) {
+                    if (!dependency || !dependency->pack) {
+                        continue;
+                    }
+                    QJsonObject entry;
+                    entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
+                    entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
+                    entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
+                    entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
+                    entry.insert(QStringLiteral("file"), dependency->version.fileName);
+                    dependencies.append(entry);
+                }
             }
         }
 
         // Everything that was checked but has no update available.
         for (auto* resource : checkable) {
+            if (failedChecks.contains(resource)) {
+                // The check failed for this mod - it is already reported.
+                continue;
+            }
             auto meta = resource->metadata();
             auto hasUpdate = std::any_of(updates.begin(), updates.end(), [meta](const auto& update) {
                 return update.download && update.download->getPack()->addonId.toString() == meta->projectId.toString();

@@ -75,6 +75,10 @@ ExitCode outputError(const QString& code, const QString& message, ExitCode exitC
     envelope.insert(QStringLiteral("ok"), false);
     envelope.insert(QStringLiteral("error"), error);
     for (auto it = details.constBegin(); it != details.constEnd(); ++it) {
+        // The status of the envelope must not be overwritten by the details.
+        if (it.key() == QLatin1String("ok") || it.key() == QLatin1String("error")) {
+            continue;
+        }
         envelope.insert(it.key(), it.value());
     }
 
