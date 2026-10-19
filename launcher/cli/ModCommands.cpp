@@ -1200,6 +1200,9 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         }
     }
     if (!withoutMetadata.empty()) {
+        // The managed pack type is only used to pick the provider - there is
+        // no interactive provider chooser in a headless run, so Modrinth is
+        // used for every mod.
         auto provider = ModPlatform::ResourceProvider::MODRINTH;
         auto metadataTask = makeShared<EnsureMetadataTask>(withoutMetadata, model->indexDir(), provider);
         auto sequence = makeShared<SequentialTask>(QStringLiteral("Looking for metadata"));
@@ -1269,17 +1272,22 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
             updated.append(entry);
         }
 
-        for (const auto& dependency : checkTask->getDependencies()) {
-            if (!dependency || !dependency->pack) {
-                continue;
+        // The dependencies of the updated mods are only reported, they are not
+        // downloaded - the update itself only replaces the mods that have a
+        // newer version.
+        if (!cmd.noDeps) {
+            for (const auto& dependency : checkTask->getDependencies()) {
+                if (!dependency || !dependency->pack) {
+                    continue;
+                }
+                QJsonObject entry;
+                entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
+                entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
+                entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
+                entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
+                entry.insert(QStringLiteral("file"), dependency->version.fileName);
+                dependencies.append(entry);
             }
-            QJsonObject entry;
-            entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
-            entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
-            entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
-            entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
-            entry.insert(QStringLiteral("file"), dependency->version.fileName);
-            dependencies.append(entry);
         }
 
         // Everything that was checked but has no update available.

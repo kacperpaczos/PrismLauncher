@@ -196,6 +196,9 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   exit 0, a `changed` jest pustą listą.
 - **`Cli::outputError` ma dodatkowy overload** z obiektem `QJsonObject` — pozwala dołożyć do koperty
   błędu listy `failed`/`candidates` (koperta sukcesu `outputJson` zawsze dostaje `ok:true`).
+- **`mod update --no-deps`** — zależności aktualizowanych modów są tylko raportowane w polu
+  `dependencies` (nie są pobierane, tak jak w GUI nie ma osobnego zadania dla zależności przy
+  `CheckUpdateTask`); `--no-deps` pomija raportowanie zależności.
 - **Smoke test nie jest w ctest** — wymaga sieci (realne API Modrinth). Uruchamiany ręcznie:
   `tests/cli/spike-mod-smoke.sh` (wewnątrz kontenera). Asercje exit code + JSON (python3, bez jq).
 
