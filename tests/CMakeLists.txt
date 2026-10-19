@@ -76,5 +76,8 @@ ecm_add_test(CliOutput_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJ
 ecm_add_test(CliParser_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME CliParser)
 
+ecm_add_test(CliTaskRunner_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME CliTaskRunner)
+
 ecm_add_test(Regressions_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME RegressionTests)

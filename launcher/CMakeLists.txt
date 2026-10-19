@@ -801,6 +801,8 @@ SET(LAUNCHER_SOURCES
     cli/Parser.cpp
     cli/Output.h
     cli/Output.cpp
+    cli/TaskRunner.h
+    cli/TaskRunner.cpp
 
     # GUI - general utilities
     DesktopServices.h
