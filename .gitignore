@@ -62,3 +62,7 @@ flatbuild
 
 # Snap
 *.snap
+
+# flatpak-builder output
+build-flatpak/
+.flatpak-builder/
