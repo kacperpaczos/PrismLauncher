@@ -31,42 +31,42 @@ ExitCode notImplemented(const QString& subcommand)
 
 }  // namespace
 
-ExitCode runModCommand(const Cmd::ModList& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModList& /*cmd*/)
 {
     return notImplemented(QStringLiteral("list"));
 }
 
-ExitCode runModCommand(const Cmd::ModSearch& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModSearch& /*cmd*/)
 {
     return notImplemented(QStringLiteral("search"));
 }
 
-ExitCode runModCommand(const Cmd::ModInfo& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModInfo& /*cmd*/)
 {
     return notImplemented(QStringLiteral("info"));
 }
 
-ExitCode runModCommand(const Cmd::ModInstall& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModInstall& /*cmd*/)
 {
     return notImplemented(QStringLiteral("install"));
 }
 
-ExitCode runModCommand(const Cmd::ModRemove& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModRemove& /*cmd*/)
 {
     return notImplemented(QStringLiteral("remove"));
 }
 
-ExitCode runModCommand(const Cmd::ModEnable& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModEnable& /*cmd*/)
 {
     return notImplemented(QStringLiteral("enable"));
 }
 
-ExitCode runModCommand(const Cmd::ModDisable& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModDisable& /*cmd*/)
 {
     return notImplemented(QStringLiteral("disable"));
 }
 
-ExitCode runModCommand(const Cmd::ModUpdate& /*cmd*/)
+ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModUpdate& /*cmd*/)
 {
     return notImplemented(QStringLiteral("update"));
 }

@@ -1290,6 +1290,9 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                       "pure headless runs; continuing with the remaining commands.";
     }
 
+    // Application context for the mod command runners; built once per dispatch.
+    Cli::ModContext modContext{ *this };
+
     struct CommandVisitor {
         Application* app;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
@@ -1298,6 +1301,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         Cli::ExitCode& exitCode;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         bool& stop;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::ModContext& modContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1394,15 +1399,15 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         }
         // headless mod commands - each prints its own JSON envelope and reports
         // an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::ModList& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModSearch& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModInfo& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModInstall& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModRemove& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(cmd)); }
-        void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(cmd)); }
-    } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing };
+        void operator()(const Cli::Cmd::ModList& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModSearch& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModInfo& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModInstall& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModRemove& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+    } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing, .modContext = modContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

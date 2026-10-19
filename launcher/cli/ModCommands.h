@@ -27,15 +27,24 @@
 #include "cli/Commands.h"
 #include "cli/Output.h"
 
+class Application;
+
 namespace Cli {
 
-ExitCode runModCommand(const Cmd::ModList& cmd);
-ExitCode runModCommand(const Cmd::ModSearch& cmd);
-ExitCode runModCommand(const Cmd::ModInfo& cmd);
-ExitCode runModCommand(const Cmd::ModInstall& cmd);
-ExitCode runModCommand(const Cmd::ModRemove& cmd);
-ExitCode runModCommand(const Cmd::ModEnable& cmd);
-ExitCode runModCommand(const Cmd::ModDisable& cmd);
-ExitCode runModCommand(const Cmd::ModUpdate& cmd);
+/// Context handed to every mod command runner. It carries the application
+/// (instances, settings, network, ...) without pulling Application.h into this
+/// header. Construct it once per process/dispatch.
+struct ModContext {
+    Application& app;
+};
+
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModEnable& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd);
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd);
 
 }  // namespace Cli
