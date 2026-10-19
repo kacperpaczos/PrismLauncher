@@ -186,6 +186,23 @@ MinecraftInstance* resolveInstance(ModContext& ctx, const QString& id)
  * Make sure the component profile of the instance is loaded. The GUI does
  * that when the instance is opened, a headless run has to do it itself.
  */
+bool loadComponentProfile(MinecraftInstance* instance)
+{
+    auto* profile = instance->getPackProfile();
+    if (!profile) {
+        return false;
+    }
+    if (!profile->getComponentVersion("net.minecraft").isEmpty()) {
+        // The profile was already loaded.
+        return true;
+    }
+    if (auto result = profile->reload(Net::Mode::Offline); !result) {
+        qWarning() << "Could not load the component profile of the instance:" << result.error();
+        return false;
+    }
+    return true;
+}
+
 /**
  * Wait for the resource model to finish its (re)scan and all pending parse
  * tasks. The model update runs on a thread pool, so a plain event loop with a
@@ -229,6 +246,19 @@ bool waitForModel(ResourceFolderModel* model, int timeoutMs = kModelWaitMs)
 /**
  * Find a resource by the name of the file it is stored in.
  */
+Resource* findResourceByFileName(ResourceFolderModel* model, const QString& fileName)
+{
+    if (!model || fileName.isEmpty()) {
+        return nullptr;
+    }
+    for (auto* resource : model->allResources()) {
+        if (resource->fileinfo().fileName() == fileName) {
+            return resource;
+        }
+    }
+    return nullptr;
+}
+
 /**
  * Resolve a user provided target (file name, slug, project id or display name)
  * into the matching resources. The lookup order is:
@@ -315,6 +345,20 @@ ModPlatform::ModLoaderTypes loadersFromStrings(const std::vector<QString>& loade
         types |= type;
     }
     return types;
+}
+
+bool versionSupportsLoader(const ModPlatform::IndexedVersion& version, const QList<ModPlatform::ModLoaderType>& loaders)
+{
+    if (version.loaders == ModPlatform::ModLoaderTypes(0)) {
+        // The provider did not tell us anything about the loader.
+        return true;
+    }
+    for (const auto loader : loaders) {
+        if (version.loaders.testAnyFlags(loader)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -563,10 +607,181 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModInstall& /*cmd*/)
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
 {
-    return notImplemented(QStringLiteral("install"));
+    auto* instance = resolveInstance(ctx, cmd.instance);
+    if (!instance) {
+        return outputError(QStringLiteral("instance_not_found"),
+                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance),
+                           ExitCode::NotFound);
+    }
+    if (instance->isRunning()) {
+        return outputError(QStringLiteral("instance_running"),
+                           QStringLiteral("The instance '%1' is running, refusing to install mods").arg(cmd.instance),
+                           ExitCode::Conflict);
+    }
+
+    auto* model = instance->loaderModList();
+    if (!model) {
+        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
+    }
+    if (!waitForModel(model)) {
+        return outputError(QStringLiteral("model_timeout"),
+                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(cmd.instance),
+                           ExitCode::Generic);
+    }
+
+    if (!loadComponentProfile(instance)) {
+        return outputError(QStringLiteral("no_profile"),
+                           QStringLiteral("The component profile of the instance could not be loaded"),
+                           ExitCode::Generic);
+    }
+    auto* profile = instance->getPackProfile();
+    if (!profile) {
+        return outputError(QStringLiteral("no_profile"), QStringLiteral("The instance has no component profile"), ExitCode::Generic);
+    }
+
+    const QString mcVersionString = profile->getComponentVersion(QStringLiteral("net.minecraft"));
+    if (mcVersionString.isEmpty()) {
+        return outputError(QStringLiteral("no_minecraft_version"),
+                           QStringLiteral("The instance '%1' has no Minecraft component").arg(cmd.instance),
+                           ExitCode::Generic);
+    }
+    const auto loaders = profile->getModLoadersList();
+    if (loaders.isEmpty()) {
+        return outputError(QStringLiteral("no_mod_loader"),
+                           QStringLiteral("The instance '%1' has no mod loader").arg(cmd.instance),
+                           ExitCode::Generic);
+    }
+
+    auto project = fetchProject(cmd.project);
+    if (!project) {
+        if (project.error().contains(QStringLiteral("was not found"))) {
+            return outputError(QStringLiteral("project_not_found"), project.error(), ExitCode::NotFound);
+        }
+        return outputError(QStringLiteral("network_error"), project.error(), ExitCode::Network);
+    }
+    auto packPtr = std::make_shared<ModPlatform::IndexedPack>(project.value());
+
+    auto versionsResult = fetchProjectVersions(packPtr);
+    if (!versionsResult) {
+        return outputError(QStringLiteral("network_error"), versionsResult.error(), ExitCode::Network);
+    }
+    const auto allVersions = versionsResult.value();
+
+    std::optional<ModPlatform::IndexedVersion> selected;
+    if (cmd.version.has_value()) {
+        const auto& wanted = cmd.version.value();
+        for (const auto& version : allVersions) {
+            if (version.fileId.toString() == wanted || version.versionNumber == wanted || version.version == wanted) {
+                selected = version;
+                break;
+            }
+        }
+        if (!selected.has_value()) {
+            return outputError(QStringLiteral("version_not_found"),
+                               QStringLiteral("No version '%1' was found for the project '%2'").arg(wanted, cmd.project),
+                               ExitCode::NotFound);
+        }
+    } else {
+        for (const auto& version : allVersions) {
+            if (!version.mcVersion.contains(mcVersionString)) {
+                continue;
+            }
+            if (!versionSupportsLoader(version, loaders)) {
+                continue;
+            }
+            selected = version;
+            break;
+        }
+        if (!selected.has_value()) {
+            return outputError(QStringLiteral("version_not_found"),
+                               QStringLiteral("No version of '%1' was found for Minecraft %2").arg(cmd.project, mcVersionString),
+                               ExitCode::NotFound);
+        }
+    }
+
+    // Resolve the dependencies of the selected version.
+    QList<std::shared_ptr<GetModDependenciesTask::PackDependency>> dependencies;
+    if (!cmd.noDeps) {
+        QList<std::shared_ptr<GetModDependenciesTask::PackDependency>> selectedDeps;
+        selectedDeps.append(std::make_shared<GetModDependenciesTask::PackDependency>(packPtr, selected.value()));
+        auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, selectedDeps);
+        if (auto result = runTaskSync(dependencyTask, kNetworkTimeoutMs); !result) {
+            return outputError(QStringLiteral("network_error"),
+                               QStringLiteral("Could not resolve the dependencies: %1").arg(result.error()),
+                               ExitCode::Network);
+        }
+        dependencies = dependencyTask->getDependecies();
+    }
+
+    struct DownloadEntry {
+        QString slug;
+        QString fileName;
+        bool isDependency = false;
+    };
+    std::vector<DownloadEntry> entries;
+
+    // The failure list is shared with the download task, which may outlive
+    // this function (the tasks are deleted through the event loop).
+    auto failed = std::make_shared<QJsonArray>();
+    auto download = makeShared<ConcurrentTask>(
+        QStringLiteral("Download Mods"), qMax(1, APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt()));
+
+    auto addDownload = [&](const ModPlatform::IndexedPack::Ptr& pack, const ModPlatform::IndexedVersion& version, bool isDependency) {
+        auto task = makeShared<ResourceDownloadTask>(pack, version, model, !cmd.noMetadata, isDependency ? "dependency" : "install");
+        QObject::connect(task.get(), &Task::failed, download.get(), [pack, failed](const QString& reason) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("slug"), pack->slug);
+            entry.insert(QStringLiteral("reason"), reason);
+            failed->append(entry);
+        });
+        download->addTask(task);
+        entries.push_back({ pack->slug, version.fileName, isDependency });
+    };
+
+    addDownload(packPtr, selected.value(), false);
+    for (const auto& dependency : dependencies) {
+        if (!dependency || !dependency->pack) {
+            continue;
+        }
+        addDownload(dependency->pack, dependency->version, true);
+    }
+
+    if (auto result = runTaskSync(download, kNetworkTimeoutMs); !result) {
+        QJsonObject out;
+        out.insert(QStringLiteral("failed"), *failed);
+        out.insert(QStringLiteral("reason"), result.error());
+        return outputError(QStringLiteral("download_failed"), result.error(), ExitCode::Network, out);
+    }
+
+    // Refresh the model so the freshly installed mods show up in the output.
+    waitForModel(model);
+
+    QJsonArray installed;
+    QJsonArray dependencyObjects;
+    for (const auto& entry : entries) {
+        auto* resource = findResourceByFileName(model, entry.fileName);
+        QJsonObject object = resource ? modToJson(resource) : QJsonObject();
+        if (object.isEmpty()) {
+            object.insert(QStringLiteral("slug"), entry.slug);
+            object.insert(QStringLiteral("file"), entry.fileName);
+        }
+        if (entry.isDependency) {
+            dependencyObjects.append(object);
+        } else {
+            installed.append(object);
+        }
+    }
+
+    QJsonObject out;
+    out.insert(QStringLiteral("installed"), installed);
+    out.insert(QStringLiteral("dependencies"), dependencyObjects);
+    out.insert(QStringLiteral("failed"), *failed);
+    outputJson(QJsonDocument(out));
+    return ExitCode::OK;
 }
+
 ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModRemove& /*cmd*/)
 {
     return notImplemented(QStringLiteral("remove"));
