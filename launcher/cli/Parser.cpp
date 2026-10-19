@@ -209,6 +209,9 @@ void ModCli::addModArgs(CLI::App& app)
 {
     mod = app.add_subcommand("mod", "Manage the mods of an instance.");
     mod->require_subcommand();
+    // Let global options (e.g. `-d/--dir`) appear after the `mod` subcommand
+    // (and its subcommands keep their own fallthrough below).
+    mod->fallthrough();
 
     auto addInstanceOption = [](CLI::App* sub, std::string& dest, bool required) {
         auto* opt = sub->add_option("-i,--instance", dest, "Instance ID.")->option_text("instance");
@@ -226,19 +229,31 @@ void ModCli::addModArgs(CLI::App& app)
         addInstanceOption(list, listInstance, /*required=*/true);
         list->add_flag("--include-disabled", listIncludeDisabled, "Include disabled mods.");
         addJsonFlag(list);
+        list->fallthrough();
     }
 
     {
         // mod search [query] [--mc <version>...] [--loader <loader>...] [--limit N] [--offset N] [--json]
         auto* search = mod->add_subcommand("search", "Search for mods on Modrinth.");
         search->add_option("query", searchQuery, "Search query.")->option_text("query");
-        search->add_option("--mc", searchMcVersions, "Filter by Minecraft version (can be repeated).")
+        // Exactly one value per occurrence, so a trailing positional query is not
+        // swallowed: `mod search --mc 1.20.1 jei` => query=jei, mc=[1.20.1].
+        search->add_option("--mc", searchMcVersions, "Filter by Minecraft version (repeat the flag for multiple versions).")
             ->option_text("version")
-            ->take_all();
-        search->add_option("--loader", searchLoaders, "Filter by mod loader (can be repeated).")->option_text("loader")->take_all();
-        search->add_option("--limit", searchLimit, "Maximum number of results.")->option_text("N");
-        search->add_option("--offset", searchOffset, "Result offset, for pagination.")->option_text("N");
+            ->expected(1, -1)
+            ->allow_extra_args(false);
+        search->add_option("--loader", searchLoaders, "Filter by mod loader (repeat the flag for multiple loaders).")
+            ->option_text("loader")
+            ->expected(1, -1)
+            ->allow_extra_args(false);
+        search->add_option("--limit", searchLimit, "Maximum number of results (0-100).")
+            ->option_text("N")
+            ->check(CLI::Range(0, 100));
+        search->add_option("--offset", searchOffset, "Result offset, for pagination (0-1000).")
+            ->option_text("N")
+            ->check(CLI::Range(0, 1000));
         addJsonFlag(search);
+        search->fallthrough();
     }
 
     {
@@ -247,6 +262,7 @@ void ModCli::addModArgs(CLI::App& app)
         info->add_option("project", infoProject, "Mod slug or project ID.")->option_text("project")->required();
         infoInstance = addInstanceOption(info, infoInstanceValue, /*required=*/false);
         addJsonFlag(info);
+        info->fallthrough();
     }
 
     {
@@ -257,8 +273,9 @@ void ModCli::addModArgs(CLI::App& app)
         installVersion = install->add_option("--version", installVersionValue, "Install a specific version.")->option_text("version");
         install->add_flag("--no-deps", installNoDeps, "Do not install dependencies.");
         install->add_flag("--no-metadata", installNoMetadata, "Do not write packwiz metadata for the mod.");
-        install->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        install->add_flag("-y,--yes", installAssumeYes, "Do not ask for confirmation.");
         addJsonFlag(install);
+        install->fallthrough();
     }
 
     {
@@ -266,11 +283,13 @@ void ModCli::addModArgs(CLI::App& app)
         auto* remove = mod->add_subcommand("remove", "Remove one or more mods from an instance.");
         remove->add_option("targets", removeTargets, "Mod filename, slug, project ID or name.")
             ->option_text("target")
-            ->expected(0, -1);
+            ->expected(1, -1)
+            ->required();
         addInstanceOption(remove, removeInstance, /*required=*/true);
         remove->add_flag("--force", removeForce, "Remove even if the mod is locked or ambiguous.");
-        remove->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        remove->add_flag("-y,--yes", removeAssumeYes, "Do not ask for confirmation.");
         addJsonFlag(remove);
+        remove->fallthrough();
     }
 
     {
@@ -278,11 +297,13 @@ void ModCli::addModArgs(CLI::App& app)
         auto* enable = mod->add_subcommand("enable", "Enable one or more mods in an instance.");
         enable->add_option("targets", enableTargets, "Mod filename, slug, project ID or name.")
             ->option_text("target")
-            ->expected(0, -1);
+            ->expected(1, -1)
+            ->required();
         addInstanceOption(enable, enableInstance, /*required=*/true);
         enable->add_flag("--recursive", enableRecursive, "Also enable dependencies.");
-        enable->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        enable->add_flag("-y,--yes", enableAssumeYes, "Do not ask for confirmation.");
         addJsonFlag(enable);
+        enable->fallthrough();
     }
 
     {
@@ -290,27 +311,51 @@ void ModCli::addModArgs(CLI::App& app)
         auto* disable = mod->add_subcommand("disable", "Disable one or more mods in an instance.");
         disable->add_option("targets", disableTargets, "Mod filename, slug, project ID or name.")
             ->option_text("target")
-            ->expected(0, -1);
+            ->expected(1, -1)
+            ->required();
         addInstanceOption(disable, disableInstance, /*required=*/true);
         disable->add_flag("--recursive", disableRecursive, "Also disable dependants.");
-        disable->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        disable->add_flag("-y,--yes", disableAssumeYes, "Do not ask for confirmation.");
         addJsonFlag(disable);
+        disable->fallthrough();
     }
 
     {
         // mod update [<target>...] --all -i <instance> [--dry-run] [--no-deps] [--force] [-y] [--json]
         auto* update = mod->add_subcommand("update", "Update one or more mods in an instance.");
-        update->add_option("targets", updateTargets, "Mod filename, slug, project ID or name.")
-            ->option_text("target")
-            ->expected(0, -1);
-        update->add_flag("--all", updateAll, "Update every mod in the instance.");
+        auto* updateTargetsOpt = update->add_option("targets", updateTargets, "Mod filename, slug, project ID or name.")
+                                     ->option_text("target")
+                                     ->expected(1, -1);
+        auto* updateAllOpt = update->add_flag("--all", updateAll, "Update every mod in the instance.");
         addInstanceOption(update, updateInstance, /*required=*/true);
         update->add_flag("--dry-run", updateDryRun, "Only report what would be updated.");
         update->add_flag("--no-deps", updateNoDeps, "Do not update dependencies.");
         update->add_flag("--force", updateForce, "Update mods that are locked to a version.");
-        update->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        update->add_flag("-y,--yes", updateAssumeYes, "Do not ask for confirmation.");
         addJsonFlag(update);
+        update->fallthrough();
+
+        // `--all` and explicit targets are mutually exclusive, and at least one
+        // of them has to be given.
+        updateAllOpt->excludes(updateTargetsOpt);
+        updateTargetsOpt->excludes(updateAllOpt);
+        update->parse_complete_callback([&] {
+            if (!updateAll && updateTargets.empty()) {
+                throw CLI::ValidationError("mod update", "either `--all` or at least one target is required");
+            }
+        });
     }
+
+    // `mod` has no positional of its own, so an unmatched positional would
+    // currently fall through to the top-level `uri` import option and be
+    // silently accepted. Mixing a mod command with a resource import is not
+    // supported, so reject it explicitly.
+    mod->parse_complete_callback([&app] {
+        auto* uri = app.get_option_no_throw("uri");
+        if (uri != nullptr && uri->count() > 0) {
+            throw CLI::ValidationError("mod", "unexpected positional argument for a mod subcommand");
+        }
+    });
 }
 
 void ModCli::flush(Args& args) const
@@ -362,24 +407,28 @@ void ModCli::flush(Args& args) const
         }
         cmd.noDeps = installNoDeps;
         cmd.noMetadata = installNoMetadata;
+        cmd.assumeYes = installAssumeYes;
         args.commands.emplace_back(std::move(cmd));
     } else if (subParsed("remove")) {
         Cmd::ModRemove cmd;
         cmd.targets = toQStringList(removeTargets);
         cmd.instance = QString::fromStdString(removeInstance);
         cmd.force = removeForce;
+        cmd.assumeYes = removeAssumeYes;
         args.commands.emplace_back(std::move(cmd));
     } else if (subParsed("enable")) {
         Cmd::ModEnable cmd;
         cmd.targets = toQStringList(enableTargets);
         cmd.instance = QString::fromStdString(enableInstance);
         cmd.recursive = enableRecursive;
+        cmd.assumeYes = enableAssumeYes;
         args.commands.emplace_back(std::move(cmd));
     } else if (subParsed("disable")) {
         Cmd::ModDisable cmd;
         cmd.targets = toQStringList(disableTargets);
         cmd.instance = QString::fromStdString(disableInstance);
         cmd.recursive = disableRecursive;
+        cmd.assumeYes = disableAssumeYes;
         args.commands.emplace_back(std::move(cmd));
     } else if (subParsed("update")) {
         Cmd::ModUpdate cmd;
@@ -389,6 +438,7 @@ void ModCli::flush(Args& args) const
         cmd.dryRun = updateDryRun;
         cmd.noDeps = updateNoDeps;
         cmd.force = updateForce;
+        cmd.assumeYes = updateAssumeYes;
         args.commands.emplace_back(std::move(cmd));
     }
 }

@@ -224,6 +224,7 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
             .instance = instance,
             .noDeps = argToBool(args.value("noDeps")),
             .noMetadata = argToBool(args.value("noMetadata")),
+            .assumeYes = argToBool(args.value("assumeYes")),
         };
         if (args.contains("version")) {
             cmd.version = args.value("version");
@@ -239,6 +240,7 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
             .targets = splitStringList(args.value("targets")),
             .instance = instance,
             .force = argToBool(args.value("force")),
+            .assumeYes = argToBool(args.value("assumeYes")),
         };
     }
 
@@ -250,6 +252,7 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
             .targets = splitStringList(args.value("targets")),
             .instance = instance,
             .recursive = argToBool(args.value("recursive")),
+            .assumeYes = argToBool(args.value("assumeYes")),
         };
     }
 
@@ -261,6 +264,7 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
             .targets = splitStringList(args.value("targets")),
             .instance = instance,
             .recursive = argToBool(args.value("recursive")),
+            .assumeYes = argToBool(args.value("assumeYes")),
         };
     }
 
@@ -275,6 +279,7 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
             .dryRun = argToBool(args.value("dryRun")),
             .noDeps = argToBool(args.value("noDeps")),
             .force = argToBool(args.value("force")),
+            .assumeYes = argToBool(args.value("assumeYes")),
         };
     }
 
@@ -371,6 +376,7 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             }
             message.args.insert("noDeps", boolToArg(modInstall.noDeps));
             message.args.insert("noMetadata", boolToArg(modInstall.noMetadata));
+            message.args.insert("assumeYes", boolToArg(modInstall.assumeYes));
         }
         void operator()(const Cli::Cmd::ModRemove& modRemove)
         {
@@ -378,6 +384,7 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("targets", joinStringList(modRemove.targets));
             message.args.insert("instance", modRemove.instance);
             message.args.insert("force", boolToArg(modRemove.force));
+            message.args.insert("assumeYes", boolToArg(modRemove.assumeYes));
         }
         void operator()(const Cli::Cmd::ModEnable& modEnable)
         {
@@ -385,6 +392,7 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("targets", joinStringList(modEnable.targets));
             message.args.insert("instance", modEnable.instance);
             message.args.insert("recursive", boolToArg(modEnable.recursive));
+            message.args.insert("assumeYes", boolToArg(modEnable.assumeYes));
         }
         void operator()(const Cli::Cmd::ModDisable& modDisable)
         {
@@ -392,6 +400,7 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("targets", joinStringList(modDisable.targets));
             message.args.insert("instance", modDisable.instance);
             message.args.insert("recursive", boolToArg(modDisable.recursive));
+            message.args.insert("assumeYes", boolToArg(modDisable.assumeYes));
         }
         void operator()(const Cli::Cmd::ModUpdate& modUpdate)
         {
@@ -402,6 +411,7 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("dryRun", boolToArg(modUpdate.dryRun));
             message.args.insert("noDeps", boolToArg(modUpdate.noDeps));
             message.args.insert("force", boolToArg(modUpdate.force));
+            message.args.insert("assumeYes", boolToArg(modUpdate.assumeYes));
         }
     } serializer{};
 

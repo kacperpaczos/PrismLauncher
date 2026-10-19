@@ -124,6 +124,9 @@ struct ModInstall {
     std::optional<QString> version;
     bool noDeps = false;
     bool noMetadata = false;
+    // Accepted for forward compatibility. Headless runs never prompt, so this
+    // is currently a no-op (see SPIKE-ROADMAP.md).
+    bool assumeYes = false;
     auto operator<=>(const ModInstall&) const = default;
 };
 
@@ -131,6 +134,7 @@ struct ModRemove {
     std::vector<QString> targets;
     QString instance;
     bool force = false;
+    bool assumeYes = false;
     auto operator<=>(const ModRemove&) const = default;
 };
 
@@ -138,6 +142,7 @@ struct ModEnable {
     std::vector<QString> targets;
     QString instance;
     bool recursive = false;
+    bool assumeYes = false;
     auto operator<=>(const ModEnable&) const = default;
 };
 
@@ -145,6 +150,7 @@ struct ModDisable {
     std::vector<QString> targets;
     QString instance;
     bool recursive = false;
+    bool assumeYes = false;
     auto operator<=>(const ModDisable&) const = default;
 };
 
@@ -155,6 +161,7 @@ struct ModUpdate {
     bool dryRun = false;
     bool noDeps = false;
     bool force = false;
+    bool assumeYes = false;
     auto operator<=>(const ModUpdate&) const = default;
 };
 

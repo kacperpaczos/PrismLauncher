@@ -73,21 +73,25 @@ struct ModCli {
     std::string installVersionValue;
     bool installNoDeps = false;
     bool installNoMetadata = false;
+    bool installAssumeYes = false;
 
     // mod remove
     std::vector<std::string> removeTargets;
     std::string removeInstance;
     bool removeForce = false;
+    bool removeAssumeYes = false;
 
     // mod enable
     std::vector<std::string> enableTargets;
     std::string enableInstance;
     bool enableRecursive = false;
+    bool enableAssumeYes = false;
 
     // mod disable
     std::vector<std::string> disableTargets;
     std::string disableInstance;
     bool disableRecursive = false;
+    bool disableAssumeYes = false;
 
     // mod update
     std::vector<std::string> updateTargets;
@@ -96,9 +100,7 @@ struct ModCli {
     bool updateDryRun = false;
     bool updateNoDeps = false;
     bool updateForce = false;
-
-    // shared flags
-    bool assumeYes = false;
+    bool updateAssumeYes = false;
 
     void addModArgs(CLI::App& app);
     void flush(Args& args) const;

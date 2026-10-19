@@ -109,7 +109,7 @@ class CliParserTest : public QObject {
 
     void test_modSearch()
     {
-        const auto args = parseOk({ "prismlauncher", "mod", "search", "jei", "--mc", "1.20.1", "1.21", "--loader", "fabric",
+        const auto args = parseOk({ "prismlauncher", "mod", "search", "jei", "--mc", "1.20.1", "--mc", "1.21", "--loader", "fabric",
                                     "--limit", "5", "--offset", "10" });
         const auto& cmd = onlyCommand<Cli::Cmd::ModSearch>(args);
         QCOMPARE(cmd.query, QString("jei"));
@@ -120,6 +120,42 @@ class CliParserTest : public QObject {
         QCOMPARE(cmd.loaders.at(0), QString("fabric"));
         QCOMPARE(cmd.limit, 5);
         QCOMPARE(cmd.offset, 10);
+    }
+
+    void test_modSearch_queryAfterFilterOptions()
+    {
+        // Regression (review W1): `--mc <version>` used to greedily consume the
+        // positional query, silently turning `mod search --mc 1.20.1 jei` into a
+        // search for "1.20.1".
+        const auto afterMc = parseOk({ "prismlauncher", "mod", "search", "--mc", "1.20.1", "jei" });
+        const auto& cmdA = onlyCommand<Cli::Cmd::ModSearch>(afterMc);
+        QCOMPARE(cmdA.query, QString("jei"));
+        QCOMPARE(cmdA.mcVersions.size(), std::size_t{ 1 });
+        QCOMPARE(cmdA.mcVersions.at(0), QString("1.20.1"));
+
+        const auto afterLoader = parseOk({ "prismlauncher", "mod", "search", "--loader", "fabric", "jei" });
+        const auto& cmdB = onlyCommand<Cli::Cmd::ModSearch>(afterLoader);
+        QCOMPARE(cmdB.query, QString("jei"));
+        QCOMPARE(cmdB.loaders.size(), std::size_t{ 1 });
+        QCOMPARE(cmdB.loaders.at(0), QString("fabric"));
+
+        // no query at all is still a valid (browse) search
+        const auto noQuery = parseOk({ "prismlauncher", "mod", "search", "--mc", "1.20.1" });
+        const auto& cmdC = onlyCommand<Cli::Cmd::ModSearch>(noQuery);
+        QCOMPARE(cmdC.query, QString());
+        QCOMPARE(cmdC.mcVersions.size(), std::size_t{ 1 });
+    }
+
+    void test_modSearch_valueRanges()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "search", "--limit", "101", "jei" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "search", "--offset", "1001", "jei" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "search", "--limit", "-1", "jei" }), true);
+        // boundary values are fine
+        const auto args = parseOk({ "prismlauncher", "mod", "search", "--limit", "100", "--offset", "1000", "jei" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ModSearch>(args);
+        QCOMPARE(cmd.limit, 100);
+        QCOMPARE(cmd.offset, 1000);
     }
 
     void test_modInfo_optionalInstance()
@@ -164,6 +200,15 @@ class CliParserTest : public QObject {
         QCOMPARE(cmd.force, true);
     }
 
+    void test_modRemoveEnableDisable_requireTargets()
+    {
+        // Review W3: mutating commands without a target used to parse fine and
+        // then fail (or, worse, act on everything) at runtime.
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "remove", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "enable", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "disable", "-i", "X" }), true);
+    }
+
     void test_modEnableDisable()
     {
         const auto enable = parseOk({ "prismlauncher", "mod", "enable", "jei", "-i", "X", "--recursive" });
@@ -191,6 +236,57 @@ class CliParserTest : public QObject {
         QCOMPARE(targetsCmd.targets.size(), std::size_t{ 1 });
         QCOMPARE(targetsCmd.noDeps, true);
         QCOMPARE(targetsCmd.force, true);
+    }
+
+    void test_modUpdate_requiresTargetsOrDefault()
+    {
+        // Review W3: neither `--all` nor an explicit target is a usage error...
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "update", "-i", "X" }), true);
+        // ...and the two are mutually exclusive.
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "update", "--all", "jei", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "update", "jei", "--all", "-i", "X" }), true);
+    }
+
+    void test_modAssumeYes_perCommand()
+    {
+        // Review W4: `-y/--yes` used to be one shared variable, so a flag on one
+        // command could leak into the state observed by another. It is now stored
+        // on each command.
+        const auto install = parseOk({ "prismlauncher", "mod", "install", "jei", "-i", "X", "-y" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ModInstall>(install).assumeYes, true);
+
+        const auto remove = parseOk({ "prismlauncher", "mod", "remove", "jei", "-i", "X", "--yes" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ModRemove>(remove).assumeYes, true);
+
+        const auto enable = parseOk({ "prismlauncher", "mod", "enable", "jei", "-i", "X", "-y" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ModEnable>(enable).assumeYes, true);
+
+        const auto disable = parseOk({ "prismlauncher", "mod", "disable", "jei", "-i", "X", "-y" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ModDisable>(disable).assumeYes, true);
+
+        const auto update = parseOk({ "prismlauncher", "mod", "update", "--all", "-i", "X", "-y" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ModUpdate>(update).assumeYes, true);
+
+        // default is false
+        const auto plain = parseOk({ "prismlauncher", "mod", "remove", "jei", "-i", "X" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ModRemove>(plain).assumeYes, false);
+    }
+
+    void test_globalDir_acceptedAfterModSubcommand()
+    {
+        // Review W8: `-d/--dir` is declared on the top-level app, so the mod
+        // subcommands need fallthrough for it to work in any position.
+        const auto afterLeaf = parseOk({ "prismlauncher", "mod", "list", "-i", "X", "-d", "/tmp" });
+        QCOMPARE(afterLeaf.dataPath.source, Startup::DataPathSource::Commandline);
+        QCOMPARE(QString::fromStdString(afterLeaf.dataPath.dataPath.string()), QString("/tmp"));
+
+        const auto afterGroup = parseOk({ "prismlauncher", "mod", "-d", "/tmp", "list", "-i", "X" });
+        QCOMPARE(QString::fromStdString(afterGroup.dataPath.dataPath.string()), QString("/tmp"));
+
+        // fallthrough must not turn unknown options or stray positionals into
+        // silently ignored input.
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "list", "-i", "X", "--bogus" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "mod", "list", "-i", "X", "stray" }), true);
     }
 
     void test_legacyLaunch_untouched()
