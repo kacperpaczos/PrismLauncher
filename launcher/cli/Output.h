@@ -52,4 +52,8 @@ ExitCode outputError(const QString& code, const QString& message);
 /// Same as above but returns the supplied exit code.
 ExitCode outputError(const QString& code, const QString& message, ExitCode exitCode);
 
+/// Same as above, but with additional top level fields in the envelope (for
+/// example the list of the items that could not be processed).
+ExitCode outputError(const QString& code, const QString& message, ExitCode exitCode, const QJsonObject& details);
+
 }  // namespace Cli

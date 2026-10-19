@@ -62,6 +62,11 @@ ExitCode outputError(const QString& code, const QString& message)
 
 ExitCode outputError(const QString& code, const QString& message, ExitCode exitCode)
 {
+    return outputError(code, message, exitCode, QJsonObject());
+}
+
+ExitCode outputError(const QString& code, const QString& message, ExitCode exitCode, const QJsonObject& details)
+{
     QJsonObject error;
     error.insert(QStringLiteral("code"), code);
     error.insert(QStringLiteral("message"), message);
@@ -69,6 +74,9 @@ ExitCode outputError(const QString& code, const QString& message, ExitCode exitC
     QJsonObject envelope;
     envelope.insert(QStringLiteral("ok"), false);
     envelope.insert(QStringLiteral("error"), error);
+    for (auto it = details.constBegin(); it != details.constEnd(); ++it) {
+        envelope.insert(it.key(), it.value());
+    }
 
     writeDocument(QJsonDocument(envelope));
     return exitCode;
