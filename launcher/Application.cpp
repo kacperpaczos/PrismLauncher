@@ -252,6 +252,10 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
     setDesktopFileName(BuildConfig.LAUNCHER_APPID);
     m_startTime = QDateTime::currentDateTime();
 
+    // Decide once whether this process is a pure headless run. The result gates
+    // the headless exit in processCommands() and suppressing the main window.
+    m_headlessRun = Cli::allCommandsHeadless(args.commands);
+
     // Don't quit on hiding the last window
     Application::setQuitOnLastWindowClosed(false);
     Application::setQuitLockEnabled(false);
@@ -1238,7 +1242,10 @@ void Application::performMainStartupAction(const std::vector<Cli::Command>& cmds
     };
 
     // if there are no commands or none of the commands implicitly hide the window
-    if (cmds.empty() || std::ranges::none_of(cmds, isHideMainWindowCmd)) {
+    // (a pure headless run never shows a window at all)
+    if (m_headlessRun) {
+        qDebug() << "<> Headless run: main window suppressed.";
+    } else if (cmds.empty() || std::ranges::none_of(cmds, isHideMainWindowCmd)) {
         showMainWindow(false);
         qDebug() << "<> Main window shown.";
     }
@@ -1272,8 +1279,16 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
 
     // headless command handling (mod management)
     Cli::ExitCode headlessExitCode = Cli::ExitCode::OK;
-    bool handledHeadless = false;
     bool stopProcessing = false;
+
+    if (!m_headlessRun && std::ranges::any_of(cmds, Cli::isHeadlessCommand)) {
+        // Mixed startup run (headless + GUI commands): execute the headless
+        // commands in sequence without exiting, so the remaining commands still
+        // run. Structured JSON output/exit codes only apply to pure headless
+        // runs.
+        qWarning() << "Headless command mixed with GUI commands: JSON output and headless exit codes only apply to "
+                      "pure headless runs; continuing with the remaining commands.";
+    }
 
     struct CommandVisitor {
         Application* app;
@@ -1282,14 +1297,11 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::ExitCode& exitCode;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        bool& handledHeadless;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         bool& stop;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
         {
-            handledHeadless = true;
             if (code != Cli::ExitCode::OK) {
                 exitCode = code;
                 stop = true;
@@ -1390,7 +1402,7 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(cmd)); }
         void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(cmd)); }
         void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(cmd)); }
-    } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .handledHeadless = handledHeadless, .stop = stopProcessing };
+    } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);
@@ -1399,16 +1411,17 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         }
     }
 
-    if (handledHeadless) {
-        // a headless command was executed: never show the main window, just exit
-        // (runs inside the event loop, so this is safe)
-        QCoreApplication::exit(static_cast<int>(headlessExitCode));
-        return;
-    }
-
     if (!toProcessURIs.isEmpty()) {
         qDebug() << "<> Processing urls:" << toProcessURIs;
         processURIs(toProcessURIs);
+    }
+
+    if (m_headlessRun) {
+        // Pure headless startup: the exit decision was made once from the
+        // startup command set. processCommands is also called from IPC
+        // (messageReceived), so a GUI launcher must never reach this branch.
+        // Runs inside the event loop, so QCoreApplication::exit() is safe.
+        QCoreApplication::exit(static_cast<int>(headlessExitCode));
     }
 }
 

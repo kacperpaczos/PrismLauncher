@@ -285,6 +285,11 @@ class Application : public QApplication {
     Capabilities m_capabilities;
     bool m_portable = false;
 
+    // True when the *startup* command set contains only headless commands.
+    // Decided once in the constructor: processCommands is also reached over IPC
+    // (messageReceived) and must never turn a running GUI launcher headless.
+    bool m_headlessRun = false;
+
 #ifdef Q_OS_MACOS
     Qt::ApplicationState m_prevAppState = Qt::ApplicationInactive;
 #endif

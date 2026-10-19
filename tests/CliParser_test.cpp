@@ -179,6 +179,24 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "mod", "update", "--all" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "mod" }), true);
     }
+
+    void test_allCommandsHeadless()
+    {
+        // pure headless startup: the only case that may exit the launcher
+        Cli::Args pure{};
+        pure.commands.emplace_back(Cli::Cmd::ModList{ .instance = QStringLiteral("X") });
+        QCOMPARE(Cli::allCommandsHeadless(pure.commands), true);
+
+        // mixed startup: headless commands must run without exiting the app
+        Cli::Args mixed{};
+        mixed.commands.emplace_back(Cli::Cmd::ModList{ .instance = QStringLiteral("X") });
+        mixed.commands.emplace_back(Cli::Cmd::Launch{ .id = "foo" });
+        QCOMPARE(Cli::allCommandsHeadless(mixed.commands), false);
+
+        // empty command set is a normal GUI startup
+        Cli::Args empty{};
+        QCOMPARE(Cli::allCommandsHeadless(empty.commands), false);
+    }
 };
 
 QTEST_GUILESS_MAIN(CliParserTest)
