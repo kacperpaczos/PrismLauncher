@@ -120,3 +120,22 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - [ ] T4 mod-domain
 - [x] T5 dispatch
 - [ ] T6 smoke E2E
+
+## Review round 1 (MiniMax): K1-K3 fixed
+- **K1** `fix(cli): headless exit scoped to startup commands` — decyzja „headless i wyjdź" zapada raz,
+  w konstruktorze `Application` (`m_headlessRun = Cli::allCommandsHeadless(args.commands)`);
+  `processCommands` (także z IPC/`messageReceived`) nie kończy już działającego GUI; mixed startup
+  (headless + Launch/URI) wykonuje komendy bez exit (warning na stderr), a `performMainStartupAction`
+  blokuje okno tylko przy `m_headlessRun`.
+- **K2** `fix(cli): json envelope for parse errors` — błędy parsowania CLI11 → koperta
+  `{"ok":false,"error":{"code":"parse_error","message":"…"}}` na stdout + exit 2; `--help`/`--version`
+  bez zmian (exit 0, wyjście CLI11). Test `CliParser` uruchamia realny binarny launcher (QProcess).
+- **K3** `fix(cli): application context for mod command runners` — `Cli::ModContext { Application& app; }`
+  + `runModCommand(ModContext&, const Cmd::ModX&)`; `ModCommands.h` bez include'ów GUI (forward-decl
+  `class Application;`), kontekst budowany raz w `processCommands`.
+- **Nity** `fix(cli): review nits` — usunięty nieużywany `#include <QByteArray>`; `qputenv` offscreen
+  respektuje jawne `QT_QPA_PLATFORM` (W7); `outputJson` odrzuca nie-obiektowe dokumenty.
+- Build + `ctest`: 27/27 zielone. `mod list` (bez `-i`) → exit 2 + JSON; `--help`/`--version` → exit 0.
+- Pozostałe uwagi z review (W1-W9 poza W7 i „drobnica" przy `outputJson`) są funkcjonalne i wchodzą
+  w zakres T4 (mod-domain) — nie dotykane w tym przebiegu.
+
