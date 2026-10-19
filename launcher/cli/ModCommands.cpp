@@ -69,11 +69,11 @@ namespace {
 
 // The Modrinth search API always uses a page size of 25, so the results have
 // to be requested page by page.
-constexpr int kSearchPageSize = 25;
+constexpr int g_SearchPageSize = 25;
 // Upper bound for the model (re)scan + parse wait.
-constexpr int kModelWaitMs = 180000;
+constexpr int g_ModelWaitMs = 180000;
 // Upper bound for a single network request.
-constexpr int kNetworkTimeoutMs = 180000;
+constexpr int g_NetworkTimeoutMs = 180000;
 
 QJsonValue jsonNullIfEmpty(const QString& value)
 {
@@ -106,9 +106,9 @@ QString sourceName(ModPlatform::ResourceProvider provider)
  */
 QString normalizedSlug(const QString& slug)
 {
-    static const QString suffix = QStringLiteral(".pw.toml");
-    if (slug.endsWith(suffix)) {
-        return slug.left(slug.size() - suffix.size());
+    static const QString s_suffix = QStringLiteral(".pw.toml");
+    if (slug.endsWith(s_suffix)) {
+        return slug.left(slug.size() - s_suffix.size());
     }
     return slug;
 }
@@ -205,7 +205,7 @@ bool loadComponentProfile(MinecraftInstance* instance)
  * polling timer is used here - the same approach the GUI takes with its
  * progress dialog.
  */
-bool waitForModel(ResourceFolderModel* model, int timeoutMs = kModelWaitMs)
+bool waitForModel(ResourceFolderModel* model)
 {
     if (!model) {
         return false;
@@ -232,11 +232,99 @@ bool waitForModel(ResourceFolderModel* model, int timeoutMs = kModelWaitMs)
     });
 
     poll.start();
-    timeout.start(timeoutMs);
+    timeout.start(g_ModelWaitMs);
     model->update();
     loop.exec();
 
     return !timedOut;
+}
+
+/**
+ * Resolve the instance of a mod command. The error is reported and the exit
+ * code is returned when the instance does not exist.
+ */
+ExitCode resolveModInstance(ModContext& ctx, const QString& instanceId, MinecraftInstance*& instance)
+{
+    instance = resolveInstance(ctx, instanceId);
+    if (!instance) {
+        return outputError(QStringLiteral("instance_not_found"),
+                           QStringLiteral("No instance with the id '%1' was found").arg(instanceId),
+                           ExitCode::NotFound);
+    }
+    return ExitCode::OK;
+}
+
+/**
+ * Open the mod model of an instance and wait for it to be up to date. The
+ * error is reported and the exit code is returned when it fails.
+ */
+ExitCode openModModel(MinecraftInstance* instance, const QString& instanceId, ModFolderModel*& model)
+{
+    model = instance->loaderModList();
+    if (!model) {
+        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
+    }
+    if (!waitForModel(model)) {
+        return outputError(QStringLiteral("model_timeout"),
+                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(instanceId),
+                           ExitCode::Generic);
+    }
+    return ExitCode::OK;
+}
+
+/**
+ * A mutating command refuses to work on a running instance. The hint tells
+ * the user how the command can be forced.
+ */
+ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint = {})
+{
+    if (!instance->isRunning()) {
+        return ExitCode::OK;
+    }
+    auto message = QStringLiteral("The instance '%1' is running, refusing to %2").arg(instanceId, action);
+    if (!hint.isEmpty()) {
+        message += QStringLiteral(" (%1)").arg(hint);
+    }
+    return outputError(QStringLiteral("instance_running"), message, ExitCode::Conflict);
+}
+
+/**
+ * A mod that is being (or has been) downloaded.
+ */
+struct DownloadEntry {
+    QString slug;
+    QString fileName;
+    QString projectId;
+    QString versionId;
+    QString versionNumber;
+    QString releaseType;
+    QString source;
+    bool isDependency = false;
+};
+
+/**
+ * The JSON of a downloaded mod. It is used when the mod is not in the model
+ * or when it has no metadata (because it was installed with `--no-metadata`).
+ */
+QJsonObject downloadedModToJson(const DownloadEntry& entry)
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("name"), entry.slug);
+    object.insert(QStringLiteral("slug"), entry.slug);
+    object.insert(QStringLiteral("project_id"), entry.projectId);
+    object.insert(QStringLiteral("version_id"), entry.versionId);
+    object.insert(QStringLiteral("version_number"), entry.versionNumber);
+    object.insert(QStringLiteral("file"), entry.fileName);
+    object.insert(QStringLiteral("enabled"), true);
+    object.insert(QStringLiteral("date"), QJsonValue(QJsonValue::Null));
+    QJsonObject hash;
+    hash.insert(QStringLiteral("sha1"), QJsonValue(QJsonValue::Null));
+    hash.insert(QStringLiteral("sha512"), QJsonValue(QJsonValue::Null));
+    object.insert(QStringLiteral("hash"), hash);
+    object.insert(QStringLiteral("source"), entry.source);
+    object.insert(QStringLiteral("release_type"), entry.releaseType);
+    object.insert(QStringLiteral("lock_update"), false);
+    return object;
 }
 
 /**
@@ -263,7 +351,7 @@ Resource* findResourceByFileName(ResourceFolderModel* model, const QString& file
  *   3. metadata project id
  *   4. display name
  */
-QList<Resource*> resolveTarget(ResourceFolderModel* model, const QString& target)
+QList<Resource*> matchTarget(ResourceFolderModel* model, const QString& target)
 {
     const auto all = model->allResources();
 
@@ -341,7 +429,7 @@ Result<ModPlatform::IndexedPack> fetchProject(const QString& project)
         return std::unexpected(QStringLiteral("could not create the request for '%1'").arg(project));
     }
 
-    if (auto result = runTaskSync(job, kNetworkTimeoutMs); !result) {
+    if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
         if (netStatusCode(job) == 404) {
             return std::unexpected(QStringLiteral("the project '%1' was not found").arg(project));
         }
@@ -372,7 +460,7 @@ Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatf
         return std::unexpected(QStringLiteral("could not create the version request"));
     }
 
-    if (auto result = runTaskSync(task, kNetworkTimeoutMs); !result) {
+    if (auto result = runTaskSync(task, g_NetworkTimeoutMs); !result) {
         return std::unexpected(result.error());
     }
 
@@ -424,7 +512,7 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
 {
     ResolvedTargets resolved;
     for (const auto& target : targets) {
-        auto matches = resolveTarget(model, target);
+        auto matches = matchTarget(model, target);
         if (matches.isEmpty()) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), target);
@@ -508,26 +596,17 @@ ExitCode runEnableDisable(ModContext& ctx,
                           bool recursive,
                           EnableAction action)
 {
-    auto* instance = resolveInstance(ctx, instanceId);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(instanceId),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveModInstance(ctx, instanceId, instance); code != ExitCode::OK) {
+        return code;
     }
-    if (instance->isRunning()) {
-        return outputError(QStringLiteral("instance_running"),
-                           QStringLiteral("The instance '%1' is running, refusing to change mods").arg(instanceId),
-                           ExitCode::Conflict);
+    if (auto code = checkInstanceRunning(instance, instanceId, QStringLiteral("change mods")); code != ExitCode::OK) {
+        return code;
     }
 
-    auto* model = instance->loaderModList();
-    if (!model) {
-        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
-    }
-    if (!waitForModel(model)) {
-        return outputError(QStringLiteral("model_timeout"),
-                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(instanceId),
-                           ExitCode::Generic);
+    ModFolderModel* model = nullptr;
+    if (auto code = openModModel(instance, instanceId, model); code != ExitCode::OK) {
+        return code;
     }
 
     auto resolved = resolveTargets(model, targets);
@@ -612,22 +691,14 @@ ExitCode runEnableDisable(ModContext& ctx,
 
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.instance);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+        return code;
     }
 
-    auto* model = instance->loaderModList();
-    if (!model) {
-        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
-    }
-
-    if (!waitForModel(model)) {
-        return outputError(QStringLiteral("model_timeout"),
-                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(cmd.instance),
-                           ExitCode::Generic);
+    ModFolderModel* model = nullptr;
+    if (auto code = openModModel(instance, cmd.instance, model); code != ExitCode::OK) {
+        return code;
     }
 
     QJsonArray mods;
@@ -689,7 +760,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
         auto job = makeShared<NetJob>(QStringLiteral("Modrinth::Search"), APPLICATION->network());
         job->addNetAction(action);
 
-        if (auto result = runTaskSync(job, kNetworkTimeoutMs); !result) {
+        if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
             return outputError(QStringLiteral("network_error"),
                                QStringLiteral("The Modrinth search failed: %1").arg(result.error()),
                                ExitCode::Network);
@@ -734,11 +805,11 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
             results.append(entry);
         }
 
-        if (hits.size() < kSearchPageSize) {
+        if (hits.size() < g_SearchPageSize) {
             // The last page was reached.
             break;
         }
-        offset += kSearchPageSize;
+        offset += g_SearchPageSize;
     }
 
     QJsonObject out;
@@ -812,14 +883,12 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
     // The installed mod is looked up by slug or project id.
     QJsonValue installed = QJsonValue(QJsonValue::Null);
     if (cmd.instance.has_value()) {
-        auto* instance = resolveInstance(ctx, cmd.instance.value());
-        if (!instance) {
-            return outputError(QStringLiteral("instance_not_found"),
-                               QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance.value()),
-                               ExitCode::NotFound);
+        MinecraftInstance* instance = nullptr;
+        if (auto code = resolveModInstance(ctx, cmd.instance.value(), instance); code != ExitCode::OK) {
+            return code;
         }
-        auto* model = instance->loaderModList();
-        if (model && waitForModel(model)) {
+        ModFolderModel* model = nullptr;
+        if (openModModel(instance, cmd.instance.value(), model) == ExitCode::OK) {
             for (auto* resource : model->allResources()) {
                 auto meta = resource->metadata();
                 if (!meta) {
@@ -844,26 +913,17 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
 
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.instance);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+        return code;
     }
-    if (instance->isRunning()) {
-        return outputError(QStringLiteral("instance_running"),
-                           QStringLiteral("The instance '%1' is running, refusing to install mods").arg(cmd.instance),
-                           ExitCode::Conflict);
+    if (auto code = checkInstanceRunning(instance, cmd.instance, QStringLiteral("install mods")); code != ExitCode::OK) {
+        return code;
     }
 
-    auto* model = instance->loaderModList();
-    if (!model) {
-        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
-    }
-    if (!waitForModel(model)) {
-        return outputError(QStringLiteral("model_timeout"),
-                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(cmd.instance),
-                           ExitCode::Generic);
+    ModFolderModel* model = nullptr;
+    if (auto code = openModModel(instance, cmd.instance, model); code != ExitCode::OK) {
+        return code;
     }
 
     if (!loadComponentProfile(instance)) {
@@ -942,7 +1002,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
         QList<std::shared_ptr<GetModDependenciesTask::PackDependency>> selectedDeps;
         selectedDeps.append(std::make_shared<GetModDependenciesTask::PackDependency>(packPtr, selected.value()));
         auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, selectedDeps);
-        if (auto result = runTaskSync(dependencyTask, kNetworkTimeoutMs); !result) {
+        if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
             return outputError(QStringLiteral("network_error"),
                                QStringLiteral("Could not resolve the dependencies: %1").arg(result.error()),
                                ExitCode::Network);
@@ -950,16 +1010,6 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
         dependencies = dependencyTask->getDependecies();
     }
 
-    struct DownloadEntry {
-        QString slug;
-        QString fileName;
-        QString projectId;
-        QString versionId;
-        QString versionNumber;
-        QString releaseType;
-        QString source;
-        bool isDependency = false;
-    };
     std::vector<DownloadEntry> entries;
 
     // The failure list is shared with the download task, which may outlive
@@ -995,7 +1045,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
         addDownload(dependency->pack, dependency->version, true);
     }
 
-    if (auto result = runTaskSync(download, kNetworkTimeoutMs); !result) {
+    if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
         out.insert(QStringLiteral("reason"), result.error());
@@ -1011,33 +1061,21 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
         auto* resource = findResourceByFileName(model, entry.fileName);
         QJsonObject object = resource ? modToJson(resource) : QJsonObject();
         if (object.isEmpty()) {
-            // The mod was not picked up by the model (or it has no metadata,
-            // because it was installed with `--no-metadata`), so the data of
-            // the download is used instead.
-            object.insert(QStringLiteral("name"), entry.slug);
-            object.insert(QStringLiteral("slug"), entry.slug);
-            object.insert(QStringLiteral("project_id"), entry.projectId);
-            object.insert(QStringLiteral("version_id"), entry.versionId);
-            object.insert(QStringLiteral("version_number"), entry.versionNumber);
-            object.insert(QStringLiteral("file"), entry.fileName);
-            object.insert(QStringLiteral("enabled"), true);
-            object.insert(QStringLiteral("date"), QJsonValue(QJsonValue::Null));
-            QJsonObject hash;
-            hash.insert(QStringLiteral("sha1"), QJsonValue(QJsonValue::Null));
-            hash.insert(QStringLiteral("sha512"), QJsonValue(QJsonValue::Null));
-            object.insert(QStringLiteral("hash"), hash);
-            object.insert(QStringLiteral("source"), entry.source);
-            object.insert(QStringLiteral("release_type"), entry.releaseType);
-            object.insert(QStringLiteral("lock_update"), false);
+            // The mod was not picked up by the model, so the data of the
+            // download is used instead.
+            object = downloadedModToJson(entry);
         } else if (!resource->metadata()) {
             // The mod was installed without metadata, so the metadata of the
             // download is reported instead of the missing one.
-            object.insert(QStringLiteral("slug"), entry.slug);
-            object.insert(QStringLiteral("project_id"), entry.projectId);
-            object.insert(QStringLiteral("version_id"), entry.versionId);
-            object.insert(QStringLiteral("version_number"), entry.versionNumber);
-            object.insert(QStringLiteral("source"), entry.source);
-            object.insert(QStringLiteral("release_type"), entry.releaseType);
+            const auto downloaded = downloadedModToJson(entry);
+            for (auto it = downloaded.constBegin(); it != downloaded.constEnd(); ++it) {
+                if (it.key() == QLatin1String("name") || it.key() == QLatin1String("file") ||
+                    it.key() == QLatin1String("enabled") || it.key() == QLatin1String("date") ||
+                    it.key() == QLatin1String("hash") || it.key() == QLatin1String("lock_update")) {
+                    continue;
+                }
+                object.insert(it.key(), it.value());
+            }
         }
         if (entry.isDependency) {
             dependencyObjects.append(object);
@@ -1056,26 +1094,20 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
 
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.instance);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+        return code;
     }
-    if (instance->isRunning() && !cmd.force) {
-        return outputError(QStringLiteral("instance_running"),
-                           QStringLiteral("The instance '%1' is running, refusing to remove mods (use --force)").arg(cmd.instance),
-                           ExitCode::Conflict);
+    if (!cmd.force) {
+        if (auto code = checkInstanceRunning(instance, cmd.instance, QStringLiteral("remove mods"), QStringLiteral("use --force"));
+            code != ExitCode::OK) {
+            return code;
+        }
     }
 
-    auto* model = instance->loaderModList();
-    if (!model) {
-        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
-    }
-    if (!waitForModel(model)) {
-        return outputError(QStringLiteral("model_timeout"),
-                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(cmd.instance),
-                           ExitCode::Generic);
+    ModFolderModel* model = nullptr;
+    if (auto code = openModModel(instance, cmd.instance, model); code != ExitCode::OK) {
+        return code;
     }
 
     auto resolved = resolveTargets(model, cmd.targets, cmd.force);
@@ -1161,26 +1193,20 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd)
 
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.instance);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+        return code;
     }
-    if (instance->isRunning() && !cmd.force) {
-        return outputError(QStringLiteral("instance_running"),
-                           QStringLiteral("The instance '%1' is running, refusing to update mods (use --force)").arg(cmd.instance),
-                           ExitCode::Conflict);
+    if (!cmd.force) {
+        if (auto code = checkInstanceRunning(instance, cmd.instance, QStringLiteral("update mods"), QStringLiteral("use --force"));
+            code != ExitCode::OK) {
+            return code;
+        }
     }
 
-    auto* model = instance->loaderModList();
-    if (!model) {
-        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
-    }
-    if (!waitForModel(model)) {
-        return outputError(QStringLiteral("model_timeout"),
-                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(cmd.instance),
-                           ExitCode::Generic);
+    ModFolderModel* model = nullptr;
+    if (auto code = openModModel(instance, cmd.instance, model); code != ExitCode::OK) {
+        return code;
     }
 
     if (!loadComponentProfile(instance)) {
@@ -1276,7 +1302,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
             sequence->addTask(hashingTask);
         }
         sequence->addTask(metadataTask);
-        if (auto result = runTaskSync(sequence, kNetworkTimeoutMs); !result) {
+        if (auto result = runTaskSync(sequence, g_NetworkTimeoutMs); !result) {
             QJsonObject out;
             out.insert(QStringLiteral("failed"), failed);
             out.insert(QStringLiteral("reason"), result.error());
@@ -1314,19 +1340,22 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
 
         // The mods for which no version was found are reported as failed -
         // they are not up to date, they could not be checked at all.
-        QObject::connect(checkTask.get(), &CheckUpdateTask::checkFailed, &connectionContext, [&failedChecks, &failed](Resource* resource, const QString& reason, const QUrl&) {
-            if (!resource) {
-                return;
-            }
-            failedChecks.append(resource);
-            QJsonObject entry;
-            entry.insert(QStringLiteral("name"), resource->name());
-            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-            entry.insert(QStringLiteral("reason"), reason);
-            failed.append(entry);
-        });
+        QObject::connect(checkTask.get(),
+                         &CheckUpdateTask::checkFailed,
+                         &connectionContext,
+                         [&failedChecks, &failed](Resource* resource, const QString& reason, const QUrl&) {
+                             if (!resource) {
+                                 return;
+                             }
+                             failedChecks.append(resource);
+                             QJsonObject entry;
+                             entry.insert(QStringLiteral("name"), resource->name());
+                             entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+                             entry.insert(QStringLiteral("reason"), reason);
+                             failed.append(entry);
+                         });
 
-        if (auto result = runTaskSync(checkTask, kNetworkTimeoutMs); !result) {
+        if (auto result = runTaskSync(checkTask, g_NetworkTimeoutMs); !result) {
             QJsonObject out;
             out.insert(QStringLiteral("failed"), failed);
             out.insert(QStringLiteral("reason"), result.error());
@@ -1360,7 +1389,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         // version.
         if (!cmd.noDeps && !checkTask->getDependencies().isEmpty()) {
             auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, checkTask->getDependencies());
-            if (auto result = runTaskSync(dependencyTask, kNetworkTimeoutMs); !result) {
+            if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
                 QJsonObject entry;
                 entry.insert(QStringLiteral("reason"), QStringLiteral("the dependencies could not be resolved: %1").arg(result.error()));
                 failed.append(entry);
@@ -1406,7 +1435,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         for (const auto& update : updateDownloads) {
             download->addTask(update);
         }
-        if (auto result = runTaskSync(download, kNetworkTimeoutMs); !result) {
+        if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
             QJsonObject out;
             out.insert(QStringLiteral("updated"), updated);
             out.insert(QStringLiteral("failed"), failed);

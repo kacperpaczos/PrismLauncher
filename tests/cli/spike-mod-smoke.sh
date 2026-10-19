@@ -128,12 +128,12 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 expr = sys.argv[2]
 try:
     d = json.loads(raw)
-except Exception as exc:  # noqa: BLE001
+except Exception as exc:
     print("FAIL: the output is not valid JSON: %r (%s)" % (raw, exc))
     sys.exit(1)
 try:
-    ok = eval(expr, {"d": d, "len": len, "any": any, "all": all})  # noqa: S307
-except Exception as exc:  # noqa: BLE001
+    ok = eval(expr, {"d": d, "len": len, "any": any, "all": all})
+except Exception as exc:
     print("FAIL: could not evaluate %r: %s" % (expr, exc))
     sys.exit(1)
 if not ok:
@@ -154,7 +154,7 @@ import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     d = json.load(handle)
-print(eval(sys.argv[2], {"d": d}))  # noqa: S307
+print(eval(sys.argv[2], {"d": d}))
 PY
 }
 
@@ -256,7 +256,7 @@ check_json 'len(d["changed"]) == 1'
 check_json 'd["changed"][0]["slug"] == "jei"'
 check_json 'd["changed"][0]["enabled"] is False'
 check_json 'd["failed"] == []'
-expect_mod_file '^jei.*\.jar\.disabled$' 
+expect_mod_file '^jei.*\.jar\.disabled$'
 
 step "mod list (the disabled mod is hidden by default)"
 run_cmd mod list -i "${INSTANCE_ID}"
@@ -276,7 +276,7 @@ check_json 'len(d["changed"]) == 1'
 check_json 'd["changed"][0]["slug"] == "jei"'
 check_json 'd["changed"][0]["enabled"] is True'
 check_json 'd["failed"] == []'
-expect_no_mod_file '^jei.*\.jar\.disabled$' 
+expect_no_mod_file '^jei.*\.jar\.disabled$'
 
 step "mod update --all --dry-run"
 run_cmd mod update --all -i "${INSTANCE_ID}" --dry-run

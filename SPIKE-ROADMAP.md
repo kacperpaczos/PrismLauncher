@@ -219,6 +219,24 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
 - **W1/W3/W4/W8** — hardening parsera (`--mc`/`--loader` nie połykają query, walidacja liczby
   celów, `Range` dla `--limit`/`--offset`, `fallthrough`) był z T2 i pozostaje w mocy.
 
+### Uwagi z review kodu (2 osie: standardy + specyfikacja)
+- **Konwencja nazw z `.clang-tidy`** — `GlobalConstantPrefix: "g_"` / `StaticConstantPrefix: "s_"`:
+  stałe w `ModCommands.cpp` używają prefiksu `g_` (`g_SearchPageSize`, `g_ModelWaitMs`,
+  `g_NetworkTimeoutMs`, `s_suffix`), a nie `k`/`static const` bez prefiksu. `clang-tidy-diff` w CI
+  tego wymaga.
+- **Powtórzony kod** — preamble (rozwiązanie instancji + model + oczekiwanie na skan) był skopiowany
+  w pięciu komendach; wyciągnięty do `resolveModInstance()`, `openModModel()` i
+  `checkInstanceRunning()`. Kształt JSON-a moda pobranego z metadanych był powtórzony w `mod install`
+  — wyciągnięty do `downloadedModToJson()`.
+- **Nazwy** — `resolveTarget()` (dopasowania jednego celu) przemianowane na `matchTarget()`, żeby
+  odróżnić go od `resolveTargets()` (rozwiązanie listy celów).
+- **`Signed-off-by` (DCO)** — `CONTRIBUTING.md` wymaga podpisu DCO, ale **żaden** commit na tej
+  gałęzi (ani wcześniejsze T0–T5, ani te z T4/T6) go nie ma. Poprawki wymaga przepisanie historii
+  (`git rebase --signoff`), a brief zabrania force-pusha — do zrobienia przed otwarciem PR-a.
+- **Rozmiar `ModCommands.cpp`** — plik ma ~1,4 tys. linii i robi kilka rzeczy naraz (formatowanie
+  JSON, paginacja Modrinth, zależności, skan modelu, pobieranie, sprawdzanie aktualizacji). W fazie 2+
+  sensownie podzielić go na `ModCommands.cpp` + moduły per obszar.
+
 ### Znane ograniczenia (po review kodu)
 - `waitForModel()` nie odróżnia nieudanego skanu modelu od udanego (`updateFinished` jest
   emitowane niezależnie od wyniku, a `onUpdateFailed()` w bazie jest pusty) — uszkodzony folder
