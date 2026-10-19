@@ -21,6 +21,8 @@ set(Launcher_Domain "${Launcher_Domain}" PARENT_SCOPE)
 set(Launcher_Git "${Launcher_Git}" PARENT_SCOPE)
 
 set(Launcher_AppSummary
+    "Custom Minecraft Launcher to easily manage multiple Minecraft installations at once")
+set(Launcher_AppSummary
     "Custom Minecraft Launcher to easily manage multiple Minecraft installations at once"
     PARENT_SCOPE)
 
