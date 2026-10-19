@@ -40,6 +40,8 @@
 #include <QObject>
 #include <QString>
 
+#include <QByteArray>
+
 #include "Application.h"
 
 #if defined Q_OS_WIN32
@@ -74,6 +76,13 @@ int main(int argc, char* argv[])
         /// we did a bad job setting up the cli parser
         std::cerr << "BUG! " << err.what();
         return 1;
+    }
+
+    // Headless commands (mod management) never need a display. When no display
+    // is available, force the offscreen platform before Qt is initialized so the
+    // launcher can run from a plain TTY / container.
+    if (Cli::allCommandsHeadless(args.commands) && qEnvironmentVariableIsEmpty("DISPLAY") && qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
     }
 
     // initialize Qt

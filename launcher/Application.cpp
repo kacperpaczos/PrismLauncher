@@ -194,6 +194,8 @@
 #include "logging/Debug.h"
 
 #include "cli/Commands.h"
+#include "cli/ModCommands.h"
+#include "cli/Output.h"
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -329,6 +331,16 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
                 send(Cli::Cmd::ShowMainWindow{});
             }
             for (const auto& cmd : args.commands) {
+                if (Cli::isHeadlessCommand(cmd)) {
+                    // TODO: forward headless (mod) commands to the already running
+                    // instance once the IPC supports it. A GUI instance cannot run
+                    // them through the current fire-and-forget message channel.
+                    auto exitCode = Cli::outputError("ipc_unsupported",
+                                                     "mod commands cannot be forwarded to an already running PrismLauncher instance",
+                                                     Cli::ExitCode::GuiRequired);
+                    // C function not Qt function - event loop not started yet
+                    ::std::exit(static_cast<int>(exitCode));
+                }
                 send(cmd);
             }
 
@@ -1076,7 +1088,9 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
     }
 
     // the setup wizard applies the selected theme itself before it is shown
-    if (!createSetupWizard()) {
+    // headless commands cannot show the interactive setup wizard, so skip it
+    const bool headless = Cli::allCommandsHeadless(args.commands);
+    if (headless || !createSetupWizard()) {
         m_themeManager->applyCurrentlySelectedTheme(true);
     }
     performMainStartupAction(args.commands);
@@ -1208,6 +1222,10 @@ void Application::performMainStartupAction(const std::vector<Cli::Command>& cmds
     m_status = Application::Initialized;
 
     auto isHideMainWindowCmd = [this](const Cli::Command& cmd) -> bool {
+        // headless commands (mod management) never need the main window
+        if (Cli::isHeadlessCommand(cmd)) {
+            return true;
+        }
         // per legacy CLI: when launching as the primary launcher process
         // a command to launch an instance implies that the main window should not be shown.
         // this is so that when the instance exits the launcher will exit.
@@ -1252,10 +1270,31 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
 {
     QList<QUrl> toProcessURIs{};
 
+    // headless command handling (mod management)
+    Cli::ExitCode headlessExitCode = Cli::ExitCode::OK;
+    bool handledHeadless = false;
+    bool stopProcessing = false;
+
     struct CommandVisitor {
         Application* app;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         QList<QUrl>& toProcessURIs;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::ExitCode& exitCode;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        bool& handledHeadless;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        bool& stop;
+
+        // record the result of a headless command; the first failure stops the batch
+        void recordResult(Cli::ExitCode code)
+        {
+            handledHeadless = true;
+            if (code != Cli::ExitCode::OK) {
+                exitCode = code;
+                stop = true;
+            }
+        }
 
         void operator()(const Cli::Cmd::Launch& launch)
         {
@@ -1341,21 +1380,32 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                 qWarning() << "Could not open" << path << "for writing:" << check.errorString();
             }
         }
-        // TODO(T5): mod commands are dispatched headlessly by Cli::runModCommand();
-        // these no-op overloads only keep the visitor exhaustive until that is wired up.
-        void operator()(const Cli::Cmd::ModList& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModSearch& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModInfo& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModInstall& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModRemove& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModEnable& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModDisable& /*unused*/) const {}
-        void operator()(const Cli::Cmd::ModUpdate& /*unused*/) const {}
-    } visitor{ .app = this, .toProcessURIs = toProcessURIs };
+        // headless mod commands - each prints its own JSON envelope and reports
+        // an exit code; the first failure aborts the rest of the batch.
+        void operator()(const Cli::Cmd::ModList& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModSearch& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModInfo& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModInstall& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModRemove& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(cmd)); }
+        void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(cmd)); }
+    } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .handledHeadless = handledHeadless, .stop = stopProcessing };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);
+        if (stopProcessing) {
+            break;
+        }
     }
+
+    if (handledHeadless) {
+        // a headless command was executed: never show the main window, just exit
+        // (runs inside the event loop, so this is safe)
+        QCoreApplication::exit(static_cast<int>(headlessExitCode));
+        return;
+    }
+
     if (!toProcessURIs.isEmpty()) {
         qDebug() << "<> Processing urls:" << toProcessURIs;
         processURIs(toProcessURIs);
