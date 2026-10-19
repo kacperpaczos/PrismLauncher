@@ -249,10 +249,31 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   JSON, paginacja Modrinth, zależności, skan modelu, pobieranie, sprawdzanie aktualizacji). W fazie 2+
   sensownie podzielić go na `ModCommands.cpp` + moduły per obszar.
 
+### Ochrona uruchomionej instancji (W1 — świadomie bez zmian)
+Brief C6 wymaga, żeby mutacja na uruchomionej instancji kończyła się kodem 4. W procesie
+CLI **ta gałąź jest nieosiągalna**: `isRunning()` żyje w procesie GUI, a mod przez IPC do
+działającego launchera zwraca `ipc_unsupported` + exit 8 (gałąź T5, poza zakresem tego sprawozdania).
+Guard został zaimplementowany zgodnie z briefem (`MinecraftInstance::isRunning()` → `Conflict(4)`,
+z `--force`), ale w headless zmianie nie zostanie wywołany — przyjęte i zaakceptowane w ramach spiKA
+(gałąź do rozważenia w fazie 2+, gdy komendy mod będą działały w procesie launchera).
+
 ### Świadome odstępstwa od briefu (uzgodnione w review)
 - `Cli::outputError` ma dodatkowy overload z `QJsonObject` — bez niego nie da się dołożyć listy
   `failed`/`candidates` do koperty błędu, której brief wymaga („multiple matches → Ambiguous(5) +
   candidates array"). API jest tylko rozszerzone, nic nie zmienia się.
+- **Retry przy błędzie sieci** — zadania sieciowe w GUI pytają użytkownika, czy ponowić
+  żądanie (dialog `NetworkJobFailedDialog`). W headless dialogu nie da się odpowiedzieć, więc
+  zadania CLI nigdy o to nie pytają (`makeCliNetJob()`), a `NetJob` nie otwiera dialogu w procesie
+  headless (`Application::isHeadlessRun()`). Bez tego `mod info` nieistniejącego projektu trwał
+  180 s, a `mod search` przeciwko niedziałającemu API nigdy się nie kończył.
+- **`mod install --version`** filtruje wersję tak samo jak wersję wybraną bez `--version` — musi
+  wspierać wersję Minecraft i loadera instancji (w inny sposób jar z NeoForge trafił do instancji
+  Fabric). Wiele dopasowań → `ambiguous_target` (exit 5), brak → `version_not_found` (exit 3).
+- **`mod info` pobiera zespół projektu** — odpowiedź `/project/{id}` nie zawiera autora, tylko id
+  zespołu, więc członkowie zespołu są pobierani z `/project/{id}/members` (dodatkowe zapytanie, gdy
+  projekt nie ma autora).
+- **`mod update` z nieudanym sprawdzeniem** kończy się kodem 7 (`check_failed`), niezależnie od tego
+  czy samo pobieranie się powiodło.
 - `mod remove --force` usuwa też mody zablokowane (`lockUpdate`) i nie zgłasza błędu
   niejednoznaczności — flaga jest opisana w zamrożonej składni CLI jako „Remove even if the mod is
   locked or ambiguous", więc implementacja trzyma się jej opisu, a nie węższego czytania punktu C6.
