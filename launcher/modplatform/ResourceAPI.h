@@ -112,7 +112,9 @@ class ResourceAPI {
 
     virtual std::pair<Task::Ptr, QByteArray*> getProjects(QStringList addonIds) const = 0;
 
-    Task::Ptr getProjectVersions(const VersionSearchArgs& args, const Callback<QVector<ModPlatform::IndexedVersion>>& callbacks) const;
+    Task::Ptr getProjectVersions(const VersionSearchArgs& args,
+                                 const Callback<QVector<ModPlatform::IndexedVersion>>& callbacks,
+                                 bool askRetry = true) const;
     virtual Task::Ptr getDependencyVersion(const DependencySearchArgs&, const Callback<ModPlatform::IndexedVersion>&) const;
 
    public slots:

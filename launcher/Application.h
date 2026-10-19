@@ -147,6 +147,9 @@ class Application : public QApplication {
 
     Status status() const { return m_status; }
 
+    /// @brief whether the process runs headless (no GUI interaction possible)
+    bool isHeadlessRun() const { return m_headlessRun; }
+
     const QMap<QString, std::shared_ptr<BaseProfilerFactory>>& profilers() const { return m_profilers; }
 
     void updateProxySettings(const QString& proxyTypeStr, const QString& addr, int port, const QString& user, const QString& password);

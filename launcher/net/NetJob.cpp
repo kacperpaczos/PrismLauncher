@@ -172,7 +172,10 @@ void NetJob::emitFailed(QString reason)
 {
 #if defined(LAUNCHER_APPLICATION)
 
-    if (APPLICATION_DYN && m_ask_retry && m_manual_try < APPLICATION->settings()->get("NumberOfManualRetries").toInt() && isOnline()) {
+    // A headless process cannot answer the retry dialog - asking would block
+    // the command until it times out.
+    if (APPLICATION_DYN && !APPLICATION->isHeadlessRun() && m_ask_retry &&
+        m_manual_try < APPLICATION->settings()->get("NumberOfManualRetries").toInt() && isOnline()) {
         m_manual_try++;
         auto failed = getFailedActions();
         QWidget* activeWindow = QApplication::activeWindow();

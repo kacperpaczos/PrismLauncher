@@ -408,11 +408,25 @@ int netStatusCode(const NetJob::Ptr& job)
 }
 
 /**
+ * A net job for the headless commands. The jobs of the GUI ask the user
+ * whether a failed request should be retried - a dialog cannot be answered
+ * in a headless run, so the jobs of the CLI never ask.
+ */
+NetJob::Ptr makeCliNetJob(const QString& name)
+{
+    auto job = makeShared<NetJob>(name, APPLICATION->network());
+    job->setAskRetry(false);
+    return job;
+}
+
+/**
  * Resolve a project (slug or id) on Modrinth.
  */
 Result<ModPlatform::IndexedPack> fetchProject(const QString& project)
 {
-    auto [job, response] = ModrinthAPI::get().getProjectTask(project);
+    // The request must not ask for a retry - the retry dialog of the GUI
+    // cannot be answered in a headless run.
+    auto [job, response] = ModrinthAPI::get().getProjectTask(project, false, false);
     if (!job || !response) {
         return std::unexpected(QStringLiteral("could not create the request for '%1'").arg(project));
     }
@@ -443,7 +457,7 @@ Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatf
     callbacks.onSucceed = [&versions](auto& result) { versions = result; };
     callbacks.onFail = [](const QString& reason, int) { qWarning() << "Could not load the project versions:" << reason; };
 
-    auto task = ModrinthAPI::get().getProjectVersions(args, callbacks);
+    auto task = ModrinthAPI::get().getProjectVersions(args, callbacks, false);
     if (!task) {
         return std::unexpected(QStringLiteral("could not create the version request"));
     }
@@ -753,7 +767,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
         // number of hits and the download count of every project.
         auto spec = ModrinthAPI::get().searchProjects(args);
         auto [action, response] = Net::ApiRequest::makeByteArray(spec.first.url, Net::Request::Option::AutoRetry);
-        auto job = makeShared<NetJob>(QStringLiteral("Modrinth::Search"), APPLICATION->network());
+        auto job = makeCliNetJob(QStringLiteral("Modrinth::Search"));
         job->addNetAction(action);
 
         if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {

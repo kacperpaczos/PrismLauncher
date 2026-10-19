@@ -13,7 +13,8 @@
 #include "net/RPCSink.h"
 
 Task::Ptr ResourceAPI::getProjectVersions(const VersionSearchArgs& args,
-                                          const Callback<QVector<ModPlatform::IndexedVersion>>& callbacks) const
+                                          const Callback<QVector<ModPlatform::IndexedVersion>>& callbacks,
+                                          bool askRetry) const
 {
     auto versionsUrlOptional = getVersionsURL(args);
     if (!versionsUrlOptional.has_value()) {
@@ -23,6 +24,7 @@ Task::Ptr ResourceAPI::getProjectVersions(const VersionSearchArgs& args,
     const auto& versionsUrl = versionsUrlOptional.value();
 
     auto netJob = makeShared<NetJob>(QString("%1::Versions").arg(args.pack->name), APPLICATION->network());
+    netJob->setAskRetry(askRetry);
 
     auto [action, response] = Net::ApiRequest::makeByteArray(versionsUrl);
     netJob->addNetAction(action);
