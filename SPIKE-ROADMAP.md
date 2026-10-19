@@ -190,10 +190,12 @@ Przebieg: 33/33 kroków zielonych (w tym kody wyjścia 3 dla „nie znaleziono" 
 
 Nowe przypadki są w istniejących binariach testowych (liczba binariów ctest bez zmian — 28/28):
 
-- `tests/CliParser_test.cpp` — parsowanie trzech grup podkomend, walidacja `--limit`/`--offset`,
-  odrzucanie obcego pozycjonalu, `--mc` nie połyka zapytania.
-- `tests/ApplicationMessage_test.cpp` — round-trip `fromCliCommand`/`toCliCommand` dla komend packów.
-- `tests/Regressions_test.cpp` — regresje parsera.
+- `tests/CliParser_test.cpp` — 14 nowych przypadków: parsowanie trzech grup podkomend, walidacja
+  `--limit`/`--offset`, odrzucanie obcego pozycjonalu, `--mc` nie połyka zapytania, niezależność grup.
+- `tests/ApplicationMessage_test.cpp` — 5 nowych przypadków: round-trip `fromCliCommand`/`toCliCommand`
+  dla komend packów.
+- `tests/Regressions_test.cpp` — obsługa nowych wariantów komend w `toString` (test regresyjny
+  porównujący sparsowane komendy).
 
 ## Reguły spiKA
 - Rzucalne, ale **nie łamiące legacy flags** ani istniejących testów.
