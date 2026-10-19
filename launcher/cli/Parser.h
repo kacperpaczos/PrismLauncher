@@ -161,6 +161,7 @@ struct PackGroupOptions {
 struct PackCli {
     PackGroupOptions resource;
     PackGroupOptions shader;
+    PackGroupOptions texture;
 
     void addPackArgs(CLI::App& app);
     void flush(Args& args) const;

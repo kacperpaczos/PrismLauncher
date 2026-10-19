@@ -188,7 +188,7 @@ class ApplicationMessageTest : public QObject {
 
     void test_packList()
     {
-        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader }) {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
             const Cli::Cmd::PackList cmd{
                 .group = group,
                 .instance = QStringLiteral("My Instance"),
@@ -202,7 +202,7 @@ class ApplicationMessageTest : public QObject {
 
     void test_packSearch()
     {
-        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader }) {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
             const Cli::Cmd::PackSearch cmd{
                 .group = group,
                 .query = QStringLiteral("faithful"),
@@ -218,7 +218,7 @@ class ApplicationMessageTest : public QObject {
 
     void test_packInfo_optionalInstance()
     {
-        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader }) {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
             const Cli::Cmd::PackInfo withoutInstance{
                 .group = group,
                 .project = QStringLiteral("faithful"),
@@ -240,7 +240,7 @@ class ApplicationMessageTest : public QObject {
 
     void test_packInstall_optionalVersionAndFlags()
     {
-        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader }) {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
             const Cli::Cmd::PackInstall withoutVersion{
                 .group = group,
                 .project = QStringLiteral("faithful"),
@@ -266,7 +266,7 @@ class ApplicationMessageTest : public QObject {
 
     void test_packRemoveEnableDisable()
     {
-        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader }) {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
             const Cli::Cmd::PackRemove remove{
                 .group = group,
                 .targets = { QStringLiteral("faithful") },

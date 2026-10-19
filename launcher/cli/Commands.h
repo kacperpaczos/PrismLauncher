@@ -176,7 +176,7 @@ struct ModUpdate {
 ///
 /// The kind selects the model of the instance that the command operates on
 /// (`resourcepacks/`, `shaderpacks/` or `texturepacks/`).
-enum class PackGroup : std::uint8_t { Resource, Shader };
+enum class PackGroup : std::uint8_t { Resource, Shader, Texture };
 
 struct PackList {
     PackGroup group = PackGroup::Resource;

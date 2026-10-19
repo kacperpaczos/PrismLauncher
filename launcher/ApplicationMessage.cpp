@@ -86,6 +86,8 @@ QString packGroupToArg(Cli::Cmd::PackGroup group)
             return QStringLiteral("resource");
         case Cli::Cmd::PackGroup::Shader:
             return QStringLiteral("shader");
+        case Cli::Cmd::PackGroup::Texture:
+            return QStringLiteral("texture");
     }
     return QStringLiteral("resource");
 }
@@ -95,6 +97,9 @@ Cli::Cmd::PackGroup packGroupFromArg(const QString& value)
 {
     if (value == QLatin1String("shader")) {
         return Cli::Cmd::PackGroup::Shader;
+    }
+    if (value == QLatin1String("texture")) {
+        return Cli::Cmd::PackGroup::Texture;
     }
     return Cli::Cmd::PackGroup::Resource;
 }

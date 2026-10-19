@@ -55,6 +55,8 @@ static QString packGroupForTest(Cmd::PackGroup group)
             return QStringLiteral("resource");
         case Cmd::PackGroup::Shader:
             return QStringLiteral("shader");
+        case Cmd::PackGroup::Texture:
+            return QStringLiteral("texture");
     }
     return QStringLiteral("resource");
 }

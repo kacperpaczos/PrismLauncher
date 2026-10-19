@@ -577,6 +577,7 @@ void PackCli::addPackArgs(CLI::App& app)
 
     addGroup(resource, Cmd::PackGroup::Resource, "resource", "Manage the resource packs of an instance.", "resource pack");
     addGroup(shader, Cmd::PackGroup::Shader, "shader", "Manage the shader packs of an instance.", "shader pack");
+    addGroup(texture, Cmd::PackGroup::Texture, "texture", "Manage the texture packs of an instance.", "texture pack");
 }
 
 void PackCli::flush(Args& args) const
@@ -590,7 +591,7 @@ void PackCli::flush(Args& args) const
         return out;
     };
 
-    for (const auto& options : { resource, shader }) {
+    for (const auto& options : { resource, shader, texture }) {
         if (options.app == nullptr || !options.app->parsed()) {
             continue;
         }
