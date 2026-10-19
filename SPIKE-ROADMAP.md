@@ -266,7 +266,7 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   `mods/` jest raportowany jako pusta lista modów. Tak samo zachowuje się GUI.
 - `Cli::outputJson()` (z T1) wypisuje kopertę błędu, ale nie może zmienić kodu wyjścia procesu —
   wywołujący zwraca `ExitCode::OK`. Do poprawki w fazie 2+.
-- Każde uruchomienie CLI sprawdza aktualizacje tłumaczeń (23 zapytania do
+- Każde uruchomienie CLI sprawdza aktualizacje tłumaczeń (26 zapytań do
   `i18n.prismlauncher.org` w smoke teście) — to zachowanie launchera, nie mod-komend; w wersji
   headless warto je pominąć.
 - Mod, dla którego nie znaleziono wersji dla loadera instancji (np. mod tylko na Forge w
