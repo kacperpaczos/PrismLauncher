@@ -60,6 +60,8 @@ const char* packGroupName(Cli::Cmd::PackGroup group)
     switch (group) {
         case Cli::Cmd::PackGroup::Resource:
             return "resource";
+        case Cli::Cmd::PackGroup::Shader:
+            return "shader";
     }
     return "resource";
 }
@@ -67,7 +69,8 @@ const char* packGroupName(Cli::Cmd::PackGroup group)
 /// The pack kinds that the parser knows about.
 const std::vector<Cli::Cmd::PackGroup>& testedPackGroups()
 {
-    static const std::vector<Cli::Cmd::PackGroup> groups{ Cli::Cmd::PackGroup::Resource };
+    static const std::vector<Cli::Cmd::PackGroup> groups{ Cli::Cmd::PackGroup::Resource,
+                                                          Cli::Cmd::PackGroup::Shader };
     return groups;
 }
 

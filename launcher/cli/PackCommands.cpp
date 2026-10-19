@@ -84,8 +84,9 @@ struct PackKind {
 
 const PackKind& packKind(Cmd::PackGroup group)
 {
-    static const std::array<PackKind, 1> kinds{ {
+    static const std::array<PackKind, 2> kinds{ {
         { "resource pack", "resource_packs", ModPlatform::ResourceType::ResourcePack, ModPlatform::ResourceType::ResourcePack },
+        { "shader pack", "shader_packs", ModPlatform::ResourceType::ShaderPack, ModPlatform::ResourceType::ShaderPack },
     } };
     return kinds[static_cast<std::size_t>(group)];
 }
@@ -114,6 +115,8 @@ ResourceFolderModel* packModel(MinecraftInstance* instance, Cmd::PackGroup group
     switch (group) {
         case Cmd::PackGroup::Resource:
             return instance->resourcePackList();
+        case Cmd::PackGroup::Shader:
+            return instance->shaderPackList();
     }
     return nullptr;
 }

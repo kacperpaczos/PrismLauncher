@@ -160,6 +160,7 @@ struct PackGroupOptions {
 /// The `resource`, `shader` and `texture` subcommand groups.
 struct PackCli {
     PackGroupOptions resource;
+    PackGroupOptions shader;
 
     void addPackArgs(CLI::App& app);
     void flush(Args& args) const;

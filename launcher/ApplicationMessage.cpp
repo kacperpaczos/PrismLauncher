@@ -84,6 +84,8 @@ QString packGroupToArg(Cli::Cmd::PackGroup group)
     switch (group) {
         case Cli::Cmd::PackGroup::Resource:
             return QStringLiteral("resource");
+        case Cli::Cmd::PackGroup::Shader:
+            return QStringLiteral("shader");
     }
     return QStringLiteral("resource");
 }
@@ -91,6 +93,9 @@ QString packGroupToArg(Cli::Cmd::PackGroup group)
 /// The pack group of an IPC argument. An unknown value is the resource group.
 Cli::Cmd::PackGroup packGroupFromArg(const QString& value)
 {
+    if (value == QLatin1String("shader")) {
+        return Cli::Cmd::PackGroup::Shader;
+    }
     return Cli::Cmd::PackGroup::Resource;
 }
 
