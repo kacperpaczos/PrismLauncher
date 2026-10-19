@@ -368,12 +368,6 @@ QList<Resource*> matchTarget(ResourceFolderModel* model, const QString& target)
     auto byFileName = matches([&target](Resource* resource) {
         return resource->fileinfo().fileName() == target || resource->getOriginalFileName() == target;
     });
-    if (byFileName.isEmpty()) {
-        byFileName = matches([&target](Resource* resource) {
-            return resource->fileinfo().fileName().compare(target, Qt::CaseInsensitive) == 0 ||
-                   resource->getOriginalFileName().compare(target, Qt::CaseInsensitive) == 0;
-        });
-    }
     if (!byFileName.isEmpty()) {
         return byFileName;
     }
@@ -382,12 +376,6 @@ QList<Resource*> matchTarget(ResourceFolderModel* model, const QString& target)
         auto meta = resource->metadata();
         return meta && normalizedSlug(meta->slug) == target;
     });
-    if (bySlug.isEmpty()) {
-        bySlug = matches([&target](Resource* resource) {
-            auto meta = resource->metadata();
-            return meta && normalizedSlug(meta->slug).compare(target, Qt::CaseInsensitive) == 0;
-        });
-    }
     if (!bySlug.isEmpty()) {
         return bySlug;
     }
@@ -683,6 +671,14 @@ ExitCode runEnableDisable(ModContext& ctx,
                            ExitCode::Generic,
                            out);
     }
+    if (!resolved.failed.isEmpty()) {
+        // Some of the targets did not match a mod - the mods that were found
+        // are changed anyway, but the command reports the failure.
+        return outputError(QStringLiteral("not_found"),
+                           QStringLiteral("Some of the targets did not match a mod"),
+                           ExitCode::NotFound,
+                           out);
+    }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;
 }
@@ -769,9 +765,9 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
         QJsonParseError parseError;
         auto document = QJsonDocument::fromJson(*response, &parseError);
         if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            return outputError(QStringLiteral("parse_error"),
-                               QStringLiteral("Could not parse the Modrinth search response: %1").arg(parseError.errorString()),
-                               ExitCode::ParseError);
+            return outputError(QStringLiteral("network_error"),
+                               QStringLiteral("The Modrinth search returned an invalid response: %1").arg(parseError.errorString()),
+                               ExitCode::Network);
         }
 
         auto object = document.object();
@@ -1018,8 +1014,12 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     auto download = makeShared<ConcurrentTask>(
         QStringLiteral("Download Mods"), qMax(1, APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt()));
 
-    auto addDownload = [&](const ModPlatform::IndexedPack::Ptr& pack, const ModPlatform::IndexedVersion& version, bool isDependency) {
-        auto task = makeShared<ResourceDownloadTask>(pack, version, model, !cmd.noMetadata, isDependency ? "dependency" : "install");
+    auto addDownload = [&](const ModPlatform::IndexedPack::Ptr& pack,
+                           const ModPlatform::IndexedVersion& version,
+                           bool isDependency,
+                           const QString& dependentOn = {}) {
+        auto task =
+            makeShared<ResourceDownloadTask>(pack, version, model, !cmd.noMetadata, isDependency ? "dependency" : "install", dependentOn);
         QObject::connect(task.get(), &Task::failed, download.get(), [pack, failed](const QString& reason) {
             QJsonObject entry;
             entry.insert(QStringLiteral("slug"), pack->slug);
@@ -1042,7 +1042,9 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
         if (!dependency || !dependency->pack) {
             continue;
         }
-        addDownload(dependency->pack, dependency->version, true);
+        // The dependency is required by the mod that was selected, so the
+        // version of that mod is reported to the API.
+        addDownload(dependency->pack, dependency->version, true, selected.value().fileId.toString());
     }
 
     if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
@@ -1177,6 +1179,14 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
                            ExitCode::Generic,
                            out);
     }
+    if (!resolved.failed.isEmpty()) {
+        // Some of the targets did not match a mod - the mods that were found
+        // are removed anyway, but the command reports the failure.
+        return outputError(QStringLiteral("not_found"),
+                           QStringLiteral("Some of the targets did not match a mod"),
+                           ExitCode::NotFound,
+                           out);
+    }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;
 }
@@ -1233,6 +1243,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
 
     QList<Resource*> candidates;
     QJsonArray failed;
+    bool hasUnresolvedTargets = false;
     if (cmd.all) {
         candidates = model->allResources();
     } else {
@@ -1257,6 +1268,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
         candidates = resolved.resources;
         // The targets that did not match any mod are reported as failed.
         failed = resolved.failed;
+        hasUnresolvedTargets = !resolved.failed.isEmpty();
     }
 
     QJsonArray skipped;
@@ -1455,6 +1467,14 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
     out.insert(QStringLiteral("skipped"), skipped);
     out.insert(QStringLiteral("failed"), failed);
     out.insert(QStringLiteral("dependencies"), dependencies);
+    if (hasUnresolvedTargets) {
+        // Some of the targets did not match a mod - the mods that were found
+        // are updated anyway, but the command reports the failure.
+        return outputError(QStringLiteral("not_found"),
+                           QStringLiteral("Some of the targets did not match a mod"),
+                           ExitCode::NotFound,
+                           out);
+    }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;
 }

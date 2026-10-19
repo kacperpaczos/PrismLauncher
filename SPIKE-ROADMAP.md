@@ -220,6 +220,18 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   celów, `Range` dla `--limit`/`--offset`, `fallthrough`) był z T2 i pozostaje w mocy.
 
 ### Uwagi z review kodu (2 osie: standardy + specyfikacja)
+- **Budżet wywołań API smoke testu** — zmierzony empiretycznie (kategoria `launcher.task.net`
+  w logu): **19 wywołań `api.modrinth.com`** (5 pobrań plików z CDN to osobne zapytania, plus
+  26 zapytań do `i18n.prismlauncher.org` — aktualizacja tłumaczeń przy każdym uruchomieniu
+  launchera). Limit z briefu (< 30 wywołań Modrinth) jest spełniony.
+- **Cel, którego nie ma w instancji → exit 3** — brief C6 mówi „No match → `failed` entry +
+  NotFound(3) at end", więc `remove`/`enable`/`disable`/`update` kończą się kodem 3, nawet jeśli
+  część celów została rozwiązana (zmienione mody są raportowane w kopertcie błędu).
+- **`dependentOn`** — zależności pobierane przez `mod install` podają w nagłówku API wersję moda,
+  który ich wymaga (tak jak w GUI).
+- **Nieznany loader w `mod search`** → błąd użycia (exit 2), a nie ciche pominięcie filtra.
+- **Odpowiedź API, która nie jest JSON-em** → `network_error` (exit 7), zgodnie z briefem
+  („Network/API failure → ExitCode::Network"), a nie osobny kod parsowania.
 - **Konwencja nazw z `.clang-tidy`** — `GlobalConstantPrefix: "g_"` / `StaticConstantPrefix: "s_"`:
   stałe w `ModCommands.cpp` używają prefiksu `g_` (`g_SearchPageSize`, `g_ModelWaitMs`,
   `g_NetworkTimeoutMs`, `s_suffix`), a nie `k`/`static const` bez prefiksu. `clang-tidy-diff` w CI
@@ -236,6 +248,17 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
 - **Rozmiar `ModCommands.cpp`** — plik ma ~1,4 tys. linii i robi kilka rzeczy naraz (formatowanie
   JSON, paginacja Modrinth, zależności, skan modelu, pobieranie, sprawdzanie aktualizacji). W fazie 2+
   sensownie podzielić go na `ModCommands.cpp` + moduły per obszar.
+
+### Świadome odstępstwa od briefu (uzgodnione w review)
+- `Cli::outputError` ma dodatkowy overload z `QJsonObject` — bez niego nie da się dołożyć listy
+  `failed`/`candidates` do koperty błędu, której brief wymaga („multiple matches → Ambiguous(5) +
+  candidates array"). API jest tylko rozszerzone, nic nie zmienia się.
+- `mod remove --force` usuwa też mody zablokowane (`lockUpdate`) i nie zgłasza błędu
+  niejednoznaczności — flaga jest opisana w zamrożonej składni CLI jako „Remove even if the mod is
+  locked or ambiguous", więc implementacja trzyma się jej opisu, a nie węższego czytania punktu C6.
+- Dopasowanie celów jest dokładne (nazwa pliku, slug, project id, nazwa) — bez wariantów
+  ignorujących wielkość liter, żeby literówka nie dawała „niejednoznaczności" zamiast
+  „nie znaleziono".
 
 ### Znane ograniczenia (po review kodu)
 - `waitForModel()` nie odróżnia nieudanego skanu modelu od udanego (`updateFinished` jest

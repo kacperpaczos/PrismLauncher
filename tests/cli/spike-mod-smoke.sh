@@ -299,8 +299,9 @@ check_json 'any("jei" in m["file"] for m in d["up_to_date"])'
 
 step "mod update (a target that does not exist)"
 run_cmd mod update -i "${INSTANCE_ID}" "${MOD_SLUG}" does-not-exist
-expect_rc 0
-check_json 'd["ok"] is True'
+expect_rc 3
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "not_found"'
 check_json 'len(d["failed"]) == 1'
 check_json 'd["failed"][0]["target"] == "does-not-exist"'
 
