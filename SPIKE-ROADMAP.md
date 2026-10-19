@@ -56,7 +56,7 @@
       `Meta::Index::loadVersion`); raport postępu 1 linia na stderr
 
 ### T4 — Egzekutor mod [subagent: mod-domain]
-- [ ] `launcher/cli/ModCommands.h/.cpp` — per komenda:
+- [x] `launcher/cli/ModCommands.h/.cpp` — per komenda:
       - `list`: `instance->loaderModList()` → `update()` → czekaj `parseFinished`; JSON z
         `Mod`+packwiz metadata (`Metadata::get`): name/slug/project_id/version_id/version_number/
         file/hash/enabled/date/source/release_type/lock_update
@@ -70,8 +70,8 @@
       - `enable/disable`: `Resource::enable(EnableAction)` (`.disabled`); `--recursive` po grafie zależności
       - `update`: EnsureMetadataTask → ModrinthCheckUpdate → (deps) → download; `--dry-run` z
         `CheckUpdateTask::getUpdates()`; lockUpdate pomijać bez `--force`
-- [ ] Instancja uruchomiona → mutacje odmowa (exit 4) bez `--force`
-- [ ] NIE wywoływać `startWatching()`; destruktory modeli domknięte przed wyjściem
+- [x] Instancja uruchomiona → mutacje odmowa (exit 4) bez `--force`
+- [x] NIE wywoływać `startWatching()`; destruktory modeli domknięte przed wyjściem
 
 ### T5 — Dispatch headless [subagent: cli-core]
 - [x] `main.cpp`/`Application`: gdy `args.commands` zawiera wyłącznie komendy headless (mod/*,
@@ -81,11 +81,11 @@
       `Output::json/exit(code)`; porażka przerywa batch; Launch/Show w headless → exit 8
 
 ### T6 — Smoke testy E2E [subagent: mod-domain]
-- [ ] Skrypt `tests/cli/spike-mod-smoke.sh`: utwórz testową instancję (ręcznie lub istniejącą),
+- [x] Skrypt `tests/cli/spike-mod-smoke.sh`: utwórz testową instancję (ręcznie lub istniejącą),
       `mod search jei --json` → `mod install jei --yes` (deps!) → `mod list` (plik + metadata
       w mods/.index) → `mod disable jei` → `mod enable jei` → `mod update --dry-run` →
       `mod update all` → `mod remove jei`; asercje exit codes + JSON
-- [ ] Uruchomić z `QT_QPA_PLATFORM=offscreen`
+- [x] Uruchomić z `QT_QPA_PLATFORM=offscreen`
 
 ## Zaimplementowana składnia `mod` (stan po T1–T5 — T4/T6 muszą się zgadzać)
 
@@ -117,9 +117,9 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - [x] Branch: `spike/mod-cli` (z 059625c8b)
 - [x] T0 build green
 - [x] T1+T2+T3 cli-core
-- [ ] T4 mod-domain
+- [x] T4 mod-domain
 - [x] T5 dispatch
-- [ ] T6 smoke E2E
+- [x] T6 smoke E2E
 
 ## Review round 1 (MiniMax): K1-K3 fixed
 - **K1** `fix(cli): headless exit scoped to startup commands` — decyzja „headless i wyjdź" zapada raz,
@@ -139,3 +139,82 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - Pozostałe uwagi z review (W1-W9 poza W7 i „drobnica" przy `outputJson`) są funkcjonalne i wchodzą
   w zakres T4 (mod-domain) — nie dotykane w tym przebiegu.
 
+
+## T4+T6 — implementacja (2026-10-19)
+
+### Commity
+| commit | treść |
+|---|---|
+| `feat(cli): mod list and info commands` | `list` + `info` + `Cli::outputError` z dodatkowymi polami |
+| `feat(cli): mod search via modrinth` | `search` z paginacją po 25 |
+| `feat(cli): mod install with dependency resolution` | `install` + `GetModDependenciesTask` |
+| `feat(cli): mod remove, enable, disable` | `remove`/`enable`/`disable` + `--recursive` |
+| `feat(cli): mod update with metadata ensure and dry-run` | `update` + `EnsureMetadataTask` + `ModrinthCheckUpdate` |
+| `test(spike): end-to-end mod management smoke test` | `tests/cli/spike-mod-smoke.sh` |
+
+### Kształt JSON-a (przykłady realne, 1.21.1 + fabric)
+- `mod list` → `{"ok":true,"instance":"spike-test","total":3,"mods":[…]}`
+  - mod: `{"name":"Just Enough Items","slug":"jei","project_id":"u6dRKJwZ","version_id":"XNRMMwd2",
+    "version_number":"19.69.0.456","file":"jei-1.21.1-fabric-19.69.0.456.jar",
+    "hash":{"sha1":null,"sha512":"47d8…"},"enabled":true,"date":"2026-10-19T17:27:23Z",
+    "source":"modrinth","release_type":"Beta","lock_update":false}`
+- `mod search` → `{"ok":true,"offset":0,"limit":3,"total":32,"results":[…]}`
+  - wynik: `{"slug":"jei","project_id":"u6dRKJwZ","name":"Just Enough Items (JEI)","description":"…",
+    "authors":["mezz"],"website":"https://modrinth.com/mod/jei","icon_url":"https://cdn.modrinth.com/…",
+    "downloads":84733031}`
+- `mod info` → `{"ok":true,"project":{…},"versions":[…],"installed":{…}|null}`
+  - wersja: `{"version_id":"XNRMMwd2","version_number":"19.69.0.456","name":"19.69.0.456",
+    "release_type":"Beta","date":"…","file_name":"jei-1.21.1-fabric-19.69.0.456.jar",
+    "mc_versions":["1.21.1",…],"loaders":["fabric"]}`
+- `mod install` → `{"ok":true,"installed":[…],"dependencies":[…],"failed":[]}`
+- `mod remove` → `{"ok":true,"removed":[{"name":…,"file":…,"slug":"jei"}],"failed":[]}`
+- `mod enable`/`disable` → `{"ok":true,"changed":[{"slug":"jei","file":…,"enabled":false,"affected_by":[]}],"failed":[]}`
+- `mod update` → `{"ok":true,"dry_run":false,"updated":[…],"up_to_date":[…],"skipped":[…],"failed":[],"dependencies":[…]}`
+- błędy → `{"ok":false,"error":{"code":"instance_not_found","message":"…"}}` (+ opcjonalne pola: `failed`, `candidates`)
+
+Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt/wersja/cel),
+4 konflikt (instancja uruchomiona), 5 niejednoznaczny cel, 6 błąd parsowania odpowiedzi,
+7 sieć / nieudane pobranie, 1 pozostałe błędy.
+
+### Odstępstwa od planu
+- **`search` używa surowej odpowiedzi API**, a nie sinku RPC z `ResourceAPI::searchProjectsTask`:
+  tylko surowa odpowiedź niesie `total_hits` oraz `downloads` każdego projektu (oba pola
+  są wymagane w wyjściu). Zapytania i parsowanie hitów są identyczne (`Modrinth::Parse::loadIndexedPack`),
+  liczba wywołań API jest taka sama (1 na stronę).
+- **Wersja instancji bierze się z `cachedVersion` komponentu**, nie z `version`. Launcher zapisuje
+  `cachedVersion` dopiero po rozwiązaniu komponentów (to wymaga pobrania metadanych Mojang);
+  `PackProfile::getComponentVersion()` zwraca właśnie `cachedVersion`. Headless nie ma etapu
+  rozwiązywania komponentów, więc `PackProfile::reload(Net::Mode::Offline)` jest wołane, a wartość
+  brana jest z komponentu `net.minecraft`. Bez `cachedVersion` w `mmc-pack.json` komenda `install`
+  kończy się błędem `no_minecraft_version`.
+- **Slug w JSON-ie jest normalizowany** — metadane wczytane przez model mają slug z sufiksem
+  `.pw.toml` (`ResourceFolderLoadTask` podaje nazwę pliku indeksu), więc sufiks jest obcinany
+  (`jei`, nie `jei.pw.toml`).
+- **`mod install` nie ma `--force`** (składnia zamrożona), więc instalacja na uruchomionej
+  instancji jest zawsze odrzucana (exit 4). `remove`/`update` mają `--force` i przepuszczają.
+- **`mod enable`/`disable` na modzie już w stanie docelowym** nie jest błędem — komenda kończy się
+  exit 0, a `changed` jest pustą listą.
+- **`Cli::outputError` ma dodatkowy overload** z obiektem `QJsonObject` — pozwala dołożyć do koperty
+  błędu listy `failed`/`candidates` (koperta sukcesu `outputJson` zawsze dostaje `ok:true`).
+- **Smoke test nie jest w ctest** — wymaga sieci (realne API Modrinth). Uruchamiany ręcznie:
+  `tests/cli/spike-mod-smoke.sh` (wewnątrz kontenera). Asercje exit code + JSON (python3, bez jq).
+
+### Uwagi z review, które wchodzą w zakres T4
+- **W9** — `mod` jest teraz podkomendą (`prismlauncher mod <sub>`). Bare `mod` (bez podkomendy)
+  kończy się błędem parsowania CLI11 (`parse_error`, exit 2); `mod` nie ma już trybu „legacy”.
+  Kompatybilność z `prismlauncher mod list` z T2–T5 zachowana.
+- **W2** — semantyka timeoutu zadań: `Cli::runTaskSync` ma domyślny limit 300 s, ale komendy mod
+  używają własnego limitu (180 s) na żądanie sieciowe; po przekroczeniu zadanie jest przerwane
+  (`abort()`) i zwracany jest błąd `network_error` (exit 7). Nie ma jeszcze osobnego kodu błędu
+  dla timeoutu — to kandydat do rozdzielenia w fazie 2+.
+- **W1/W3/W4/W8** — hardening parsera (`--mc`/`--loader` nie połykają query, walidacja liczby
+  celów, `Range` dla `--limit`/`--offset`, `fallthrough`) był z T2 i pozostaje w mocy.
+
+### Ograniczenia
+- Tylko Modrinth. Flame/FTB/legacy nie są obsługiwane (`source` z metadanych Flame jest czytane,
+  ale instalowanie przez CLI nie).
+- Moduły (`coreModList`, `nilModList`) i pozostałe typy zasobów (resource packi, shader packi,
+  datapacki, texture packi) nie są obsługiwane — tylko `mods/` instancji.
+- `mod search` nie ma sortowania ani filtru po stronie — używa domyślnego sortowania Modrinth.
+- Brak `mod install --version` po `version_number` dla wersji z różnym `fileId` (match po `version_id`,
+  `version_number` albo `name`).
