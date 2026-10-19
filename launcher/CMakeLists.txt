@@ -799,6 +799,8 @@ SET(LAUNCHER_SOURCES
     cli/Commands.h
     cli/Parser.h
     cli/Parser.cpp
+    cli/Output.h
+    cli/Output.cpp
 
     # GUI - general utilities
     DesktopServices.h
