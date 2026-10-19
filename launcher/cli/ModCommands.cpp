@@ -40,6 +40,7 @@
 #include <QUrl>
 
 #include "Application.h"
+#include "BuildConfig.h"
 #include "InstanceList.h"
 #include "ResourceDownloadTask.h"
 #include "Version.h"
@@ -439,6 +440,40 @@ Result<ModPlatform::IndexedPack> fetchProject(const QString& project)
     }
 
     return *response;
+}
+
+/**
+ * The members of the team of a project. The project of the API does not carry
+ * the author, it only carries the id of the team, so the members have to be
+ * fetched separately.
+ */
+Result<QList<ModPlatform::ModpackAuthor>> fetchProjectAuthors(const QString& projectId)
+{
+    const auto url = QUrl(BuildConfig.MODRINTH_PROD_URL + "/project/" + projectId + "/members");
+    auto [action, response] = Net::ApiRequest::makeByteArray(url);
+    auto job = makeCliNetJob(QStringLiteral("Modrinth::ProjectMembers"));
+    job->addNetAction(action);
+
+    if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
+        return std::unexpected(result.error());
+    }
+
+    QJsonParseError parseError;
+    auto document = QJsonDocument::fromJson(*response, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
+        return std::unexpected(QStringLiteral("the Modrinth team response is not a JSON array"));
+    }
+
+    QList<ModPlatform::ModpackAuthor> authors;
+    for (const auto& member : document.array()) {
+        auto user = member.toObject().value(QStringLiteral("user")).toObject();
+        auto name = user.value(QStringLiteral("username")).toString();
+        if (name.isEmpty()) {
+            continue;
+        }
+        authors.append({ .name = name, .url = QStringLiteral("https://modrinth.com/user/") + name });
+    }
+    return authors;
 }
 
 /**
@@ -860,7 +895,11 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
         entry.insert(QStringLiteral("file_name"), version.fileName);
         QJsonArray mcVersions;
         for (const auto& mcVersion : version.mcVersion) {
-            mcVersions.append(mcVersion);
+            // The version carries the Minecraft version twice - once as the
+            // API returns it and once mapped to the version of the launcher.
+            if (!mcVersions.contains(mcVersion)) {
+                mcVersions.append(mcVersion);
+            }
         }
         entry.insert(QStringLiteral("mc_versions"), mcVersions);
         QJsonArray loaders;
@@ -871,13 +910,24 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
         versions.append(entry);
     }
 
+    // The project of the API does not carry the author, so the team of the
+    // project is fetched when the project has no authors.
+    auto projectAuthors = pack.authors;
+    if (projectAuthors.isEmpty()) {
+        if (auto fetched = fetchProjectAuthors(pack.addonId.toString()); fetched) {
+            projectAuthors = fetched.value();
+        } else {
+            qWarning() << "Could not fetch the team of the project:" << fetched.error();
+        }
+    }
+
     QJsonObject projectObject;
     projectObject.insert(QStringLiteral("slug"), pack.slug);
     projectObject.insert(QStringLiteral("project_id"), pack.addonId.toString());
     projectObject.insert(QStringLiteral("name"), pack.name);
     projectObject.insert(QStringLiteral("description"), pack.description);
     QJsonArray authors;
-    for (const auto& author : pack.authors) {
+    for (const auto& author : projectAuthors) {
         authors.append(author.name);
     }
     projectObject.insert(QStringLiteral("authors"), authors);
