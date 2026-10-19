@@ -28,7 +28,6 @@
 
 #include <QDateTime>
 #include <QDir>
-#include <QEventLoop>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -36,13 +35,13 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QSet>
-#include <QTimer>
 #include <QUrl>
 
 #include "Application.h"
 #include "InstanceList.h"
 #include "ResourceDownloadTask.h"
 #include "Version.h"
+#include "cli/CommandUtils.h"
 #include "cli/TaskRunner.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
@@ -59,7 +58,6 @@
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
 #include "modplatform/modrinth/ModrinthPackIndex.h"
 #include "net/ApiRequest.h"
-#include "net/Mode.h"
 #include "net/NetJob.h"
 #include "tasks/ConcurrentTask.h"
 #include "tasks/SequentialTask.h"
@@ -70,174 +68,8 @@ namespace {
 // The Modrinth search API always uses a page size of 25, so the results have
 // to be requested page by page.
 constexpr int g_SearchPageSize = 25;
-// Upper bound for the model (re)scan + parse wait.
-constexpr int g_ModelWaitMs = 180000;
 // Upper bound for a single network request.
 constexpr int g_NetworkTimeoutMs = 180000;
-
-QJsonValue jsonNullIfEmpty(const QString& value)
-{
-    return value.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(value);
-}
-
-QJsonValue jsonNullIfEmpty(const QVariant& value)
-{
-    if (!value.isValid() || value.isNull()) {
-        return QJsonValue(QJsonValue::Null);
-    }
-    return QJsonValue(value.toString());
-}
-
-QString sourceName(ModPlatform::ResourceProvider provider)
-{
-    switch (provider) {
-        case ModPlatform::ResourceProvider::MODRINTH:
-            return QStringLiteral("modrinth");
-        case ModPlatform::ResourceProvider::FLAME:
-            return QStringLiteral("flame");
-    }
-    return QStringLiteral("local");
-}
-
-/**
- * The metadata of a mod is loaded with the name of the index file, so the
- * slug of a mod can carry the `.pw.toml` suffix. The suffix is not part of
- * the slug of the mod, so it is stripped for the output.
- */
-QString normalizedSlug(const QString& slug)
-{
-    static const QString s_suffix = QStringLiteral(".pw.toml");
-    if (slug.endsWith(s_suffix)) {
-        return slug.left(slug.size() - s_suffix.size());
-    }
-    return slug;
-}
-
-QString isoDate(const QDateTime& date)
-{
-    if (!date.isValid()) {
-        return {};
-    }
-    return date.toUTC().toString(Qt::ISODate);
-}
-
-/**
- * Serialize a single installed resource the way the CLI reports it.
- */
-QJsonObject modToJson(const Resource* resource)
-{
-    QJsonObject obj;
-    if (!resource) {
-        return obj;
-    }
-
-    auto meta = resource->metadata();
-
-    obj.insert(QStringLiteral("name"), resource->name());
-    obj.insert(QStringLiteral("slug"), meta ? jsonNullIfEmpty(normalizedSlug(meta->slug)) : QJsonValue(QJsonValue::Null));
-    obj.insert(QStringLiteral("project_id"), meta ? jsonNullIfEmpty(meta->projectId) : QJsonValue(QJsonValue::Null));
-    obj.insert(QStringLiteral("version_id"), meta ? jsonNullIfEmpty(meta->fileId) : QJsonValue(QJsonValue::Null));
-    obj.insert(QStringLiteral("version_number"), meta ? jsonNullIfEmpty(meta->versionNumber) : QJsonValue(QJsonValue::Null));
-    obj.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-    obj.insert(QStringLiteral("enabled"), resource->enabled());
-    obj.insert(QStringLiteral("date"), jsonNullIfEmpty(isoDate(resource->dateTimeChanged())));
-
-    QJsonObject hash;
-    hash.insert(QStringLiteral("sha1"), QJsonValue(QJsonValue::Null));
-    hash.insert(QStringLiteral("sha512"), QJsonValue(QJsonValue::Null));
-    if (meta && !meta->hash.isEmpty()) {
-        if (meta->hashFormat.compare(QStringLiteral("sha1"), Qt::CaseInsensitive) == 0) {
-            hash.insert(QStringLiteral("sha1"), meta->hash);
-        } else if (meta->hashFormat.compare(QStringLiteral("sha512"), Qt::CaseInsensitive) == 0) {
-            hash.insert(QStringLiteral("sha512"), meta->hash);
-        }
-    }
-    obj.insert(QStringLiteral("hash"), hash);
-
-    obj.insert(QStringLiteral("source"), meta ? sourceName(meta->provider) : QStringLiteral("local"));
-    obj.insert(QStringLiteral("release_type"),
-               meta ? jsonNullIfEmpty(meta->releaseType.isValid() ? meta->releaseType.toString() : QString())
-                    : QJsonValue(QJsonValue::Null));
-    obj.insert(QStringLiteral("lock_update"), resource->lockUpdate());
-
-    return obj;
-}
-
-/**
- * Look up an instance by id. Returns nullptr when it does not exist.
- */
-MinecraftInstance* resolveInstance(ModContext& ctx, const QString& id)
-{
-    if (id.isEmpty()) {
-        return nullptr;
-    }
-    auto* instances = ctx.app.instances();
-    if (!instances) {
-        return nullptr;
-    }
-    return instances->getInstanceById(id);
-}
-
-/**
- * Make sure the component profile of the instance is loaded. The GUI does
- * that when the instance is opened, a headless run has to do it itself.
- */
-bool loadComponentProfile(MinecraftInstance* instance)
-{
-    auto* profile = instance->getPackProfile();
-    if (!profile) {
-        return false;
-    }
-    if (!profile->getComponentVersion("net.minecraft").isEmpty()) {
-        // The profile was already loaded.
-        return true;
-    }
-    if (auto result = profile->reload(Net::Mode::Offline); !result) {
-        qWarning() << "Could not load the component profile of the instance:" << result.error();
-        return false;
-    }
-    return true;
-}
-
-/**
- * Wait for the resource model to finish its (re)scan and all pending parse
- * tasks. The model update runs on a thread pool, so a plain event loop with a
- * polling timer is used here - the same approach the GUI takes with its
- * progress dialog.
- */
-bool waitForModel(ResourceFolderModel* model)
-{
-    if (!model) {
-        return false;
-    }
-
-    bool updated = false;
-    QEventLoop loop;
-    QObject::connect(model, &ResourceFolderModel::updateFinished, &loop, [&updated] { updated = true; });
-
-    QTimer poll;
-    poll.setInterval(20);
-    QObject::connect(&poll, &QTimer::timeout, &loop, [model, &updated, &loop] {
-        if (updated && !model->hasPendingParseTasks()) {
-            loop.quit();
-        }
-    });
-
-    QTimer timeout;
-    timeout.setSingleShot(true);
-    bool timedOut = false;
-    QObject::connect(&timeout, &QTimer::timeout, &loop, [&timedOut, &loop] {
-        timedOut = true;
-        loop.quit();
-    });
-
-    poll.start();
-    timeout.start(g_ModelWaitMs);
-    model->update();
-    loop.exec();
-
-    return !timedOut;
-}
 
 /**
  * Resolve the instance of a mod command. The error is reported and the exit
@@ -245,7 +77,7 @@ bool waitForModel(ResourceFolderModel* model)
  */
 ExitCode resolveModInstance(ModContext& ctx, const QString& instanceId, MinecraftInstance*& instance)
 {
-    instance = resolveInstance(ctx, instanceId);
+    instance = resolveInstance(ctx.app, instanceId);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(instanceId),
@@ -343,118 +175,6 @@ Resource* findResourceByFileName(ResourceFolderModel* model, const QString& file
     return nullptr;
 }
 
-/**
- * Resolve a user provided target (file name, slug, project id or display name)
- * into the matching resources. The lookup order is:
- *   1. exact file name (with or without the `.disabled` suffix)
- *   2. metadata slug
- *   3. metadata project id
- *   4. display name
- */
-QList<Resource*> matchTarget(ResourceFolderModel* model, const QString& target)
-{
-    const auto all = model->allResources();
-
-    auto matches = [&all](const auto& predicate) {
-        QList<Resource*> found;
-        for (auto* resource : all) {
-            if (predicate(resource)) {
-                found.append(resource);
-            }
-        }
-        return found;
-    };
-
-    auto byFileName = matches([&target](Resource* resource) {
-        return resource->fileinfo().fileName() == target || resource->getOriginalFileName() == target;
-    });
-    if (!byFileName.isEmpty()) {
-        return byFileName;
-    }
-
-    auto bySlug = matches([&target](Resource* resource) {
-        auto meta = resource->metadata();
-        return meta && normalizedSlug(meta->slug) == target;
-    });
-    if (!bySlug.isEmpty()) {
-        return bySlug;
-    }
-
-    auto byProjectId = matches([&target](Resource* resource) {
-        auto meta = resource->metadata();
-        return meta && meta->projectId.isValid() && meta->projectId.toString() == target;
-    });
-    if (!byProjectId.isEmpty()) {
-        return byProjectId;
-    }
-
-    return matches([&target](Resource* resource) { return resource->name() == target; });
-}
-
-/**
- * The HTTP status code of the first failed action of a net job, if any.
- */
-int netStatusCode(const NetJob::Ptr& job)
-{
-    if (!job) {
-        return -1;
-    }
-    for (auto* action : job->getFailedActions()) {
-        if (action) {
-            return action->replyStatusCode();
-        }
-    }
-    return -1;
-}
-
-/**
- * Resolve a project (slug or id) on Modrinth.
- */
-Result<ModPlatform::IndexedPack> fetchProject(const QString& project)
-{
-    auto [job, response] = ModrinthAPI::get().getProjectTask(project);
-    if (!job || !response) {
-        return std::unexpected(QStringLiteral("could not create the request for '%1'").arg(project));
-    }
-
-    if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-        if (netStatusCode(job) == 404) {
-            return std::unexpected(QStringLiteral("the project '%1' was not found").arg(project));
-        }
-        return std::unexpected(result.error());
-    }
-
-    return *response;
-}
-
-/**
- * Fetch all versions of a project. The list is sorted by date, newest first.
- */
-Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack)
-{
-    QVector<ModPlatform::IndexedVersion> versions;
-
-    ResourceAPI::VersionSearchArgs args;
-    args.pack = pack;
-    args.resourceType = ModPlatform::ResourceType::Mod;
-    args.includeChangelog = false;
-
-    ResourceAPI::Callback<QVector<ModPlatform::IndexedVersion>> callbacks;
-    callbacks.onSucceed = [&versions](auto& result) { versions = result; };
-    callbacks.onFail = [](const QString& reason, int) { qWarning() << "Could not load the project versions:" << reason; };
-
-    auto task = ModrinthAPI::get().getProjectVersions(args, callbacks);
-    if (!task) {
-        return std::unexpected(QStringLiteral("could not create the version request"));
-    }
-
-    if (auto result = runTaskSync(task, g_NetworkTimeoutMs); !result) {
-        return std::unexpected(result.error());
-    }
-
-    return versions;
-}
-
 ModPlatform::ModLoaderTypes loadersFromStrings(const std::vector<QString>& loaders, QString* invalid)
 {
     ModPlatform::ModLoaderTypes types;
@@ -483,57 +203,6 @@ bool versionSupportsLoader(const ModPlatform::IndexedVersion& version, const QLi
         }
     }
     return false;
-}
-
-/**
- * The result of resolving the targets of the remove/enable/disable/update
- * commands.
- */
-struct ResolvedTargets {
-    QList<Resource*> resources;
-    QJsonArray failed;
-    QJsonArray candidates;
-    bool ambiguous = false;
-};
-
-ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QString>& targets, bool force = false)
-{
-    ResolvedTargets resolved;
-    for (const auto& target : targets) {
-        auto matches = matchTarget(model, target);
-        if (matches.isEmpty()) {
-            QJsonObject entry;
-            entry.insert(QStringLiteral("target"), target);
-            entry.insert(QStringLiteral("reason"), QStringLiteral("no mod matched the target"));
-            resolved.failed.append(entry);
-            continue;
-        }
-        if (matches.size() > 1) {
-            QJsonObject entry;
-            entry.insert(QStringLiteral("target"), target);
-            QJsonArray candidateNames;
-            for (auto* resource : matches) {
-                QJsonObject candidate;
-                candidate.insert(QStringLiteral("name"), resource->name());
-                candidate.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-                auto meta = resource->metadata();
-                candidate.insert(QStringLiteral("slug"), meta ? jsonNullIfEmpty(normalizedSlug(meta->slug)) : QJsonValue(QJsonValue::Null));
-                candidateNames.append(candidate);
-            }
-            entry.insert(QStringLiteral("candidates"), candidateNames);
-            resolved.candidates.append(entry);
-            if (!force) {
-                resolved.ambiguous = true;
-                continue;
-            }
-        }
-        for (auto* resource : matches) {
-            if (!resolved.resources.contains(resource)) {
-                resolved.resources.append(resource);
-            }
-        }
-    }
-    return resolved;
 }
 
 /**
@@ -597,7 +266,7 @@ ExitCode runEnableDisable(ModContext& ctx,
         return code;
     }
 
-    auto resolved = resolveTargets(model, targets);
+    auto resolved = resolveTargets(model, targets, QStringLiteral("mod"));
     if (resolved.ambiguous) {
         QJsonObject out;
         out.insert(QStringLiteral("candidates"), resolved.candidates);
@@ -653,7 +322,7 @@ ExitCode runEnableDisable(ModContext& ctx,
             failed.append(entry);
             continue;
         }
-        QJsonObject entry = modToJson(resource);
+        QJsonObject entry = resourceToJson(resource, true);
         QJsonArray affected;
         for (const auto& cause : affectedBy.value(resource)) {
             affected.append(cause);
@@ -702,7 +371,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
         if (!cmd.includeDisabled && !resource->enabled()) {
             continue;
         }
-        mods.append(modToJson(resource));
+        mods.append(resourceToJson(resource, true));
     }
 
     QJsonObject out;
@@ -829,7 +498,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
     const auto pack = project.value();
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(pack);
 
-    auto versionsResult = fetchProjectVersions(packPtr);
+    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
     if (!versionsResult) {
         return outputError(QStringLiteral("network_error"), versionsResult.error(), ExitCode::Network);
     }
@@ -892,7 +561,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
                 }
                 if (normalizedSlug(meta->slug) == pack.slug ||
                     (meta->projectId.isValid() && meta->projectId.toString() == pack.addonId.toString())) {
-                    installed = modToJson(resource);
+                    installed = resourceToJson(resource, true);
                     break;
                 }
             }
@@ -954,7 +623,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     }
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(project.value());
 
-    auto versionsResult = fetchProjectVersions(packPtr);
+    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
     if (!versionsResult) {
         return outputError(QStringLiteral("network_error"), versionsResult.error(), ExitCode::Network);
     }
@@ -1061,7 +730,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     QJsonArray dependencyObjects;
     for (const auto& entry : entries) {
         auto* resource = findResourceByFileName(model, entry.fileName);
-        QJsonObject object = resource ? modToJson(resource) : QJsonObject();
+        QJsonObject object = resource ? resourceToJson(resource, true) : QJsonObject();
         if (object.isEmpty()) {
             // The mod was not picked up by the model, so the data of the
             // download is used instead.
@@ -1112,7 +781,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
         return code;
     }
 
-    auto resolved = resolveTargets(model, cmd.targets, cmd.force);
+    auto resolved = resolveTargets(model, cmd.targets, QStringLiteral("mod"), cmd.force);
     if (resolved.ambiguous) {
         QJsonObject out;
         out.insert(QStringLiteral("candidates"), resolved.candidates);
@@ -1247,7 +916,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
     if (cmd.all) {
         candidates = model->allResources();
     } else {
-        auto resolved = resolveTargets(model, cmd.targets);
+        auto resolved = resolveTargets(model, cmd.targets, QStringLiteral("mod"));
         if (resolved.ambiguous) {
             QJsonObject out;
             out.insert(QStringLiteral("candidates"), resolved.candidates);
