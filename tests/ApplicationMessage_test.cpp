@@ -186,6 +186,118 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedTargets == targets);
     }
 
+    void test_packList()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource }) {
+            const Cli::Cmd::PackList cmd{
+                .group = group,
+                .instance = QStringLiteral("My Instance"),
+                .includeDisabled = true,
+            };
+            const auto decoded = roundTrip(cmd);
+            QVERIFY(decoded.has_value());
+            QVERIFY(*decoded == cmd);
+        }
+    }
+
+    void test_packSearch()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource }) {
+            const Cli::Cmd::PackSearch cmd{
+                .group = group,
+                .query = QStringLiteral("faithful"),
+                .mcVersions = { QStringLiteral("1.20.1"), QStringLiteral("1.21") },
+                .limit = 50,
+                .offset = 25,
+            };
+            const auto decoded = roundTrip(cmd);
+            QVERIFY(decoded.has_value());
+            QVERIFY(*decoded == cmd);
+        }
+    }
+
+    void test_packInfo_optionalInstance()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource }) {
+            const Cli::Cmd::PackInfo withoutInstance{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+            };
+            const auto decodedA = roundTrip(withoutInstance);
+            QVERIFY(decodedA.has_value());
+            QVERIFY(*decodedA == withoutInstance);
+
+            const Cli::Cmd::PackInfo withInstance{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedB = roundTrip(withInstance);
+            QVERIFY(decodedB.has_value());
+            QVERIFY(*decodedB == withInstance);
+        }
+    }
+
+    void test_packInstall_optionalVersionAndFlags()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource }) {
+            const Cli::Cmd::PackInstall withoutVersion{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedA = roundTrip(withoutVersion);
+            QVERIFY(decodedA.has_value());
+            QVERIFY(*decodedA == withoutVersion);
+
+            const Cli::Cmd::PackInstall withVersion{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+                .instance = QStringLiteral("X"),
+                .version = QStringLiteral("32"),
+                .noMetadata = true,
+                .assumeYes = true,
+            };
+            const auto decodedB = roundTrip(withVersion);
+            QVERIFY(decodedB.has_value());
+            QVERIFY(*decodedB == withVersion);
+        }
+    }
+
+    void test_packRemoveEnableDisable()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource }) {
+            const Cli::Cmd::PackRemove remove{
+                .group = group,
+                .targets = { QStringLiteral("faithful") },
+                .instance = QStringLiteral("X"),
+                .force = true,
+                .assumeYes = true,
+            };
+            const auto decodedRemove = roundTrip(remove);
+            QVERIFY(decodedRemove.has_value());
+            QVERIFY(*decodedRemove == remove);
+
+            const Cli::Cmd::PackEnable enable{
+                .group = group,
+                .targets = { QStringLiteral("faithful") },
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedEnable = roundTrip(enable);
+            QVERIFY(decodedEnable.has_value());
+            QVERIFY(*decodedEnable == enable);
+
+            const Cli::Cmd::PackDisable disable{
+                .group = group,
+                .targets = { QStringLiteral("faithful") },
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedDisable = roundTrip(disable);
+            QVERIFY(decodedDisable.has_value());
+            QVERIFY(*decodedDisable == disable);
+        }
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

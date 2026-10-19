@@ -22,6 +22,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <ranges>
@@ -165,6 +166,78 @@ struct ModUpdate {
     auto operator<=>(const ModUpdate&) const = default;
 };
 
+// ---- resource / shader / texture pack management (headless) ----
+//
+// The packs are managed the same way the mods are, but they live in their own
+// folder of the instance and they have no dependency graph - so there is no
+// `update` command and no dependency resolution.
+
+/// @brief the kind of pack a pack command works on
+///
+/// The kind selects the model of the instance that the command operates on
+/// (`resourcepacks/`, `shaderpacks/` or `texturepacks/`).
+enum class PackGroup : std::uint8_t { Resource };
+
+struct PackList {
+    PackGroup group = PackGroup::Resource;
+    QString instance;
+    bool includeDisabled = false;
+    auto operator<=>(const PackList&) const = default;
+};
+
+struct PackSearch {
+    PackGroup group = PackGroup::Resource;
+    QString query;
+    std::vector<QString> mcVersions;
+    int limit = 25;
+    int offset = 0;
+    auto operator<=>(const PackSearch&) const = default;
+};
+
+struct PackInfo {
+    PackGroup group = PackGroup::Resource;
+    QString project;
+    std::optional<QString> instance;
+    auto operator<=>(const PackInfo&) const = default;
+};
+
+struct PackInstall {
+    PackGroup group = PackGroup::Resource;
+    QString project;
+    QString instance;
+    std::optional<QString> version;
+    bool noMetadata = false;
+    // Accepted for forward compatibility. Headless runs never prompt, so this
+    // is currently a no-op (see SPIKE-ROADMAP.md).
+    bool assumeYes = false;
+    auto operator<=>(const PackInstall&) const = default;
+};
+
+struct PackRemove {
+    PackGroup group = PackGroup::Resource;
+    std::vector<QString> targets;
+    QString instance;
+    bool force = false;
+    bool assumeYes = false;
+    auto operator<=>(const PackRemove&) const = default;
+};
+
+struct PackEnable {
+    PackGroup group = PackGroup::Resource;
+    std::vector<QString> targets;
+    QString instance;
+    bool assumeYes = false;
+    auto operator<=>(const PackEnable&) const = default;
+};
+
+struct PackDisable {
+    PackGroup group = PackGroup::Resource;
+    std::vector<QString> targets;
+    QString instance;
+    bool assumeYes = false;
+    auto operator<=>(const PackDisable&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -179,7 +252,14 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::ModRemove,
                                  Cmd::ModEnable,
                                  Cmd::ModDisable,
-                                 Cmd::ModUpdate>;
+                                 Cmd::ModUpdate,
+                                 Cmd::PackList,
+                                 Cmd::PackSearch,
+                                 Cmd::PackInfo,
+                                 Cmd::PackInstall,
+                                 Cmd::PackRemove,
+                                 Cmd::PackEnable,
+                                 Cmd::PackDisable>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -190,7 +270,11 @@ inline bool isHeadlessCommand(const Command& cmd)
     return std::holds_alternative<Cmd::ModList>(cmd) || std::holds_alternative<Cmd::ModSearch>(cmd) ||
            std::holds_alternative<Cmd::ModInfo>(cmd) || std::holds_alternative<Cmd::ModInstall>(cmd) ||
            std::holds_alternative<Cmd::ModRemove>(cmd) || std::holds_alternative<Cmd::ModEnable>(cmd) ||
-           std::holds_alternative<Cmd::ModDisable>(cmd) || std::holds_alternative<Cmd::ModUpdate>(cmd);
+           std::holds_alternative<Cmd::ModDisable>(cmd) || std::holds_alternative<Cmd::ModUpdate>(cmd) ||
+           std::holds_alternative<Cmd::PackList>(cmd) || std::holds_alternative<Cmd::PackSearch>(cmd) ||
+           std::holds_alternative<Cmd::PackInfo>(cmd) || std::holds_alternative<Cmd::PackInstall>(cmd) ||
+           std::holds_alternative<Cmd::PackRemove>(cmd) || std::holds_alternative<Cmd::PackEnable>(cmd) ||
+           std::holds_alternative<Cmd::PackDisable>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

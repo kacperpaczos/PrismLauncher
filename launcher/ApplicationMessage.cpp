@@ -78,6 +78,22 @@ std::vector<QString> splitStringList(const QString& value)
     return out;
 }
 
+/// The name of a pack group in the IPC encoding.
+QString packGroupToArg(Cli::Cmd::PackGroup group)
+{
+    switch (group) {
+        case Cli::Cmd::PackGroup::Resource:
+            return QStringLiteral("resource");
+    }
+    return QStringLiteral("resource");
+}
+
+/// The pack group of an IPC argument. An unknown value is the resource group.
+Cli::Cmd::PackGroup packGroupFromArg(const QString& value)
+{
+    return Cli::Cmd::PackGroup::Resource;
+}
+
 }  // namespace
 
 Result<> ApplicationMessage::parse(const QByteArray& input)
@@ -283,6 +299,97 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         };
     }
 
+    // PackList
+    if (command == "pack_list") {
+        const QString notFoundMsg = "missing `%1` for pack_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackList{
+            .group = packGroupFromArg(args.value("group")),
+            .instance = instance,
+            .includeDisabled = argToBool(args.value("includeDisabled")),
+        };
+    }
+
+    // PackSearch
+    if (command == "pack_search") {
+        return Cli::Cmd::PackSearch{
+            .group = packGroupFromArg(args.value("group")),
+            .query = args.value("query"),
+            .mcVersions = splitStringList(args.value("mcVersions")),
+            .limit = args.value("limit").toInt(),
+            .offset = args.value("offset").toInt(),
+        };
+    }
+
+    // PackInfo
+    if (command == "pack_info") {
+        const QString notFoundMsg = "missing `%1` for pack_info command";
+        TRY_INTO(auto project, Try::findByMapKey(args, "project", notFoundMsg));
+        Cli::Cmd::PackInfo cmd{
+            .group = packGroupFromArg(args.value("group")),
+            .project = project,
+        };
+        if (args.contains("instance")) {
+            cmd.instance = args.value("instance");
+        }
+        return cmd;
+    }
+
+    // PackInstall
+    if (command == "pack_install") {
+        const QString notFoundMsg = "missing `%1` for pack_install command";
+        TRY_INTO(auto project, Try::findByMapKey(args, "project", notFoundMsg));
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::PackInstall cmd{
+            .group = packGroupFromArg(args.value("group")),
+            .project = project,
+            .instance = instance,
+            .noMetadata = argToBool(args.value("noMetadata")),
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+        if (args.contains("version")) {
+            cmd.version = args.value("version");
+        }
+        return cmd;
+    }
+
+    // PackRemove
+    if (command == "pack_remove") {
+        const QString notFoundMsg = "missing `%1` for pack_remove command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackRemove{
+            .group = packGroupFromArg(args.value("group")),
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .force = argToBool(args.value("force")),
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+    }
+
+    // PackEnable
+    if (command == "pack_enable") {
+        const QString notFoundMsg = "missing `%1` for pack_enable command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackEnable{
+            .group = packGroupFromArg(args.value("group")),
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+    }
+
+    // PackDisable
+    if (command == "pack_disable") {
+        const QString notFoundMsg = "missing `%1` for pack_disable command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackDisable{
+            .group = packGroupFromArg(args.value("group")),
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -412,6 +519,68 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("noDeps", boolToArg(modUpdate.noDeps));
             message.args.insert("force", boolToArg(modUpdate.force));
             message.args.insert("assumeYes", boolToArg(modUpdate.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackList& packList)
+        {
+            message.command = "pack_list";
+            message.args.insert("group", packGroupToArg(packList.group));
+            message.args.insert("instance", packList.instance);
+            message.args.insert("includeDisabled", boolToArg(packList.includeDisabled));
+        }
+        void operator()(const Cli::Cmd::PackSearch& packSearch)
+        {
+            message.command = "pack_search";
+            message.args.insert("group", packGroupToArg(packSearch.group));
+            message.args.insert("query", packSearch.query);
+            message.args.insert("mcVersions", joinStringList(packSearch.mcVersions));
+            message.args.insert("limit", QString::number(packSearch.limit));
+            message.args.insert("offset", QString::number(packSearch.offset));
+        }
+        void operator()(const Cli::Cmd::PackInfo& packInfo)
+        {
+            message.command = "pack_info";
+            message.args.insert("group", packGroupToArg(packInfo.group));
+            message.args.insert("project", packInfo.project);
+            if (packInfo.instance.has_value()) {
+                message.args.insert("instance", *packInfo.instance);
+            }
+        }
+        void operator()(const Cli::Cmd::PackInstall& packInstall)
+        {
+            message.command = "pack_install";
+            message.args.insert("group", packGroupToArg(packInstall.group));
+            message.args.insert("project", packInstall.project);
+            message.args.insert("instance", packInstall.instance);
+            if (packInstall.version.has_value()) {
+                message.args.insert("version", *packInstall.version);
+            }
+            message.args.insert("noMetadata", boolToArg(packInstall.noMetadata));
+            message.args.insert("assumeYes", boolToArg(packInstall.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackRemove& packRemove)
+        {
+            message.command = "pack_remove";
+            message.args.insert("group", packGroupToArg(packRemove.group));
+            message.args.insert("targets", joinStringList(packRemove.targets));
+            message.args.insert("instance", packRemove.instance);
+            message.args.insert("force", boolToArg(packRemove.force));
+            message.args.insert("assumeYes", boolToArg(packRemove.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackEnable& packEnable)
+        {
+            message.command = "pack_enable";
+            message.args.insert("group", packGroupToArg(packEnable.group));
+            message.args.insert("targets", joinStringList(packEnable.targets));
+            message.args.insert("instance", packEnable.instance);
+            message.args.insert("assumeYes", boolToArg(packEnable.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackDisable& packDisable)
+        {
+            message.command = "pack_disable";
+            message.args.insert("group", packGroupToArg(packDisable.group));
+            message.args.insert("targets", joinStringList(packDisable.targets));
+            message.args.insert("instance", packDisable.instance);
+            message.args.insert("assumeYes", boolToArg(packDisable.assumeYes));
         }
     } serializer{};
 

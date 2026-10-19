@@ -196,6 +196,7 @@
 #include "cli/Commands.h"
 #include "cli/ModCommands.h"
 #include "cli/Output.h"
+#include "cli/PackCommands.h"
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -1290,8 +1291,10 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                       "pure headless runs; continuing with the remaining commands.";
     }
 
-    // Application context for the mod command runners; built once per dispatch.
+    // Application context for the mod and pack command runners; built once per
+    // dispatch.
     Cli::ModContext modContext{ *this };
+    Cli::PackContext packContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1303,6 +1306,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         bool& stop;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::ModContext& modContext;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::PackContext& packContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1407,7 +1412,21 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-    } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing, .modContext = modContext };
+        // headless pack commands - each prints its own JSON envelope and reports
+        // an exit code; the first failure aborts the rest of the batch.
+        void operator()(const Cli::Cmd::PackList& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackSearch& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackInfo& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackInstall& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackRemove& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackEnable& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackDisable& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+    } visitor{ .app = this,
+               .toProcessURIs = toProcessURIs,
+               .exitCode = headlessExitCode,
+               .stop = stopProcessing,
+               .modContext = modContext,
+               .packContext = packContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

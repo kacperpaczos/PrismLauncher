@@ -48,6 +48,15 @@ static QString joinForTest(const std::vector<QString>& values)
     return parts.join(QStringLiteral(", "));
 }
 
+static QString packGroupForTest(Cmd::PackGroup group)
+{
+    switch (group) {
+        case Cmd::PackGroup::Resource:
+            return QStringLiteral("resource");
+    }
+    return QStringLiteral("resource");
+}
+
 // overload of QTest::toString
 static char* toString(const Args& args)
 {
@@ -142,6 +151,45 @@ static char* toString(const Args& args)
                 .arg(joinForTest(modUpdate.targets))
                 .arg(QString::number(modUpdate.all), modUpdate.instance, QString::number(modUpdate.dryRun),
                      QString::number(modUpdate.noDeps), QString::number(modUpdate.force));
+        }
+        QString operator()(const PackList& packList)
+        {
+            return QStringLiteral("PackList{ group: \"%1\", instance: \"%2\", includeDisabled: %3 }")
+                .arg(packGroupForTest(packList.group), packList.instance, QString::number(packList.includeDisabled));
+        }
+        QString operator()(const PackSearch& packSearch)
+        {
+            return QStringLiteral("PackSearch{ group: \"%1\", query: \"%2\", mc: [%3], limit: %4, offset: %5 }")
+                .arg(packGroupForTest(packSearch.group), packSearch.query, joinForTest(packSearch.mcVersions))
+                .arg(packSearch.limit)
+                .arg(packSearch.offset);
+        }
+        QString operator()(const PackInfo& packInfo)
+        {
+            return QStringLiteral("PackInfo{ group: \"%1\", project: \"%2\", instance: \"%3\" }")
+                .arg(packGroupForTest(packInfo.group), packInfo.project, packInfo.instance.value_or(QString()));
+        }
+        QString operator()(const PackInstall& packInstall)
+        {
+            return QStringLiteral("PackInstall{ group: \"%1\", project: \"%2\", instance: \"%3\", version: \"%4\", noMetadata: %5 }")
+                .arg(packGroupForTest(packInstall.group), packInstall.project, packInstall.instance,
+                     packInstall.version.value_or(QString()), QString::number(packInstall.noMetadata));
+        }
+        QString operator()(const PackRemove& packRemove)
+        {
+            return QStringLiteral("PackRemove{ group: \"%1\", targets: [%2], instance: \"%3\", force: %4 }")
+                .arg(packGroupForTest(packRemove.group), joinForTest(packRemove.targets), packRemove.instance,
+                     QString::number(packRemove.force));
+        }
+        QString operator()(const PackEnable& packEnable)
+        {
+            return QStringLiteral("PackEnable{ group: \"%1\", targets: [%2], instance: \"%3\" }")
+                .arg(packGroupForTest(packEnable.group), joinForTest(packEnable.targets), packEnable.instance);
+        }
+        QString operator()(const PackDisable& packDisable)
+        {
+            return QStringLiteral("PackDisable{ group: \"%1\", targets: [%2], instance: \"%3\" }")
+                .arg(packGroupForTest(packDisable.group), joinForTest(packDisable.targets), packDisable.instance);
         }
     } cmdVisitor;
 

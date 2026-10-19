@@ -58,6 +58,37 @@ struct URLValidator : CLI::Validator {
     }
 };
 
+/// The `-i/--instance` option of a command.
+CLI::Option* addInstanceOption(CLI::App* sub, std::string& dest, bool required)
+{
+    auto* opt = sub->add_option("-i,--instance", dest, "Instance ID.")->option_text("instance");
+    if (required) {
+        opt->required();
+    }
+    return opt;
+}
+
+/// The `--json` flag of a command. The output is always JSON.
+void addJsonFlag(CLI::App* sub)
+{
+    sub->add_flag("--json", "Emit machine-readable JSON output (default).");
+}
+
+/// Reject the positional arguments that would end up in the top level `uri`
+/// import option. A pack subcommand must not be mixed with a resource import.
+///
+/// The callback is registered on the group, so it only runs when the group was
+/// actually used.
+void rejectStrayPositionals(CLI::App& group, CLI::App& app, const std::string& name, const std::string& what)
+{
+    group.parse_complete_callback([&app, name, what] {
+        auto* uri = app.get_option_no_throw("uri");
+        if (uri != nullptr && uri->count() > 0) {
+            throw CLI::ValidationError(name, QStringLiteral("unexpected positional argument for a %1 subcommand").arg(what).toStdString());
+        }
+    });
+}
+
 }  // namespace
 
 void LegacyCli::addLegacyArgs(CLI::App& app, Args& args)
@@ -212,16 +243,6 @@ void ModCli::addModArgs(CLI::App& app)
     // Let global options (e.g. `-d/--dir`) appear after the `mod` subcommand
     // (and its subcommands keep their own fallthrough below).
     mod->fallthrough();
-
-    auto addInstanceOption = [](CLI::App* sub, std::string& dest, bool required) {
-        auto* opt = sub->add_option("-i,--instance", dest, "Instance ID.")->option_text("instance");
-        if (required) {
-            opt->required();
-        }
-        return opt;
-    };
-
-    auto addJsonFlag = [](CLI::App* sub) { sub->add_flag("--json", "Emit machine-readable JSON output (default)."); };
 
     {
         // mod list -i <instance> [--include-disabled] [--json]
@@ -443,6 +464,200 @@ void ModCli::flush(Args& args) const
     }
 }
 
+void PackCli::addPackArgs(CLI::App& app)
+{
+    // The three pack groups are managed the same way - only the folder of the
+    // instance they live in and the kind of pack differ.
+    auto addGroup = [&app](PackGroupOptions& options,
+                           Cmd::PackGroup kind,
+                           const std::string& name,
+                           const std::string& description,
+                           const std::string& pack) {
+        auto* group = app.add_subcommand(name, description);
+        options.group = kind;
+        options.app = group;
+        group->require_subcommand();
+        // Let global options (e.g. `-d/--dir`) appear after the group
+        // subcommand (and its subcommands keep their own fallthrough below).
+        group->fallthrough();
+
+        {
+            // <group> list -i <instance> [--include-disabled] [--json]
+            auto* list = group->add_subcommand("list", "List the " + pack + "s installed in an instance.");
+            addInstanceOption(list, options.listInstance, /*required=*/true);
+            list->add_flag("--include-disabled", options.listIncludeDisabled, "Include disabled packs.");
+            addJsonFlag(list);
+            list->fallthrough();
+        }
+
+        {
+            // <group> search [query] [--mc <version>...] [--limit N] [--offset N] [--json]
+            auto* search = group->add_subcommand("search", "Search for " + pack + "s on Modrinth.");
+            search->add_option("query", options.searchQuery, "Search query.")->option_text("query");
+            // Exactly one value per occurrence, so a trailing positional query
+            // is not swallowed: `<group> search --mc 1.20.1 faithful` =>
+            // query=faithful, mc=[1.20.1].
+            search->add_option("--mc", options.searchMcVersions, "Filter by Minecraft version (repeat the flag for multiple versions).")
+                ->option_text("version")
+                ->expected(1, -1)
+                ->allow_extra_args(false);
+            search->add_option("--limit", options.searchLimit, "Maximum number of results (0-100).")
+                ->option_text("N")
+                ->check(CLI::Range(0, 100));
+            search->add_option("--offset", options.searchOffset, "Result offset, for pagination (0-1000).")
+                ->option_text("N")
+                ->check(CLI::Range(0, 1000));
+            addJsonFlag(search);
+            search->fallthrough();
+        }
+
+        {
+            // <group> info <project> [-i <instance>] [--json]
+            auto* info = group->add_subcommand("info", "Show information about a " + pack + " project.");
+            info->add_option("project", options.infoProject, "Pack slug or project ID.")->option_text("project")->required();
+            options.infoInstance = addInstanceOption(info, options.infoInstanceValue, /*required=*/false);
+            addJsonFlag(info);
+            info->fallthrough();
+        }
+
+        {
+            // <group> install <project> -i <instance> [--version <v>] [--no-metadata] [-y] [--json]
+            auto* install = group->add_subcommand("install", "Install a " + pack + " into an instance.");
+            install->add_option("project", options.installProject, "Pack slug or project ID.")->option_text("project")->required();
+            addInstanceOption(install, options.installInstance, /*required=*/true);
+            options.installVersion = install->add_option("--version", options.installVersionValue, "Install a specific version.")->option_text("version");
+            install->add_flag("--no-metadata", options.installNoMetadata, "Do not write packwiz metadata for the pack.");
+            install->add_flag("-y,--yes", options.installAssumeYes, "Do not ask for confirmation.");
+            addJsonFlag(install);
+            install->fallthrough();
+        }
+
+        {
+            // <group> remove <target>... -i <instance> [--force] [-y] [--json]
+            auto* remove = group->add_subcommand("remove", "Remove one or more " + pack + "s from an instance.");
+            remove->add_option("targets", options.removeTargets, "Pack filename, slug, project ID or name.")
+                ->option_text("target")
+                ->expected(1, -1)
+                ->required();
+            addInstanceOption(remove, options.removeInstance, /*required=*/true);
+            remove->add_flag("--force", options.removeForce, "Remove even if the pack is locked or ambiguous.");
+            remove->add_flag("-y,--yes", options.removeAssumeYes, "Do not ask for confirmation.");
+            addJsonFlag(remove);
+            remove->fallthrough();
+        }
+
+        {
+            // <group> enable <target>... -i <instance> [-y] [--json]
+            auto* enable = group->add_subcommand("enable", "Enable one or more " + pack + "s in an instance.");
+            enable->add_option("targets", options.enableTargets, "Pack filename, slug, project ID or name.")
+                ->option_text("target")
+                ->expected(1, -1)
+                ->required();
+            addInstanceOption(enable, options.enableInstance, /*required=*/true);
+            enable->add_flag("-y,--yes", options.enableAssumeYes, "Do not ask for confirmation.");
+            addJsonFlag(enable);
+            enable->fallthrough();
+        }
+
+        {
+            // <group> disable <target>... -i <instance> [-y] [--json]
+            auto* disable = group->add_subcommand("disable", "Disable one or more " + pack + "s in an instance.");
+            disable->add_option("targets", options.disableTargets, "Pack filename, slug, project ID or name.")
+                ->option_text("target")
+                ->expected(1, -1)
+                ->required();
+            addInstanceOption(disable, options.disableInstance, /*required=*/true);
+            disable->add_flag("-y,--yes", options.disableAssumeYes, "Do not ask for confirmation.");
+            addJsonFlag(disable);
+            disable->fallthrough();
+        }
+
+        rejectStrayPositionals(*group, app, name, pack);
+    };
+
+    addGroup(resource, Cmd::PackGroup::Resource, "resource", "Manage the resource packs of an instance.", "resource pack");
+}
+
+void PackCli::flush(Args& args) const
+{
+    auto toQStringList = [](const std::vector<std::string>& in) {
+        std::vector<QString> out;
+        out.reserve(in.size());
+        for (const auto& value : in) {
+            out.emplace_back(QString::fromStdString(value));
+        }
+        return out;
+    };
+
+    for (const auto& options : { resource }) {
+        if (options.app == nullptr || !options.app->parsed()) {
+            continue;
+        }
+
+        auto subParsed = [&options](const char* name) -> bool {
+            auto* sub = options.app->get_subcommand_no_throw(name);
+            return sub != nullptr && sub->parsed();
+        };
+
+        if (subParsed("list")) {
+            Cmd::PackList cmd;
+            cmd.group = options.group;
+            cmd.instance = QString::fromStdString(options.listInstance);
+            cmd.includeDisabled = options.listIncludeDisabled;
+            args.commands.emplace_back(std::move(cmd));
+        } else if (subParsed("search")) {
+            Cmd::PackSearch cmd;
+            cmd.group = options.group;
+            cmd.query = QString::fromStdString(options.searchQuery);
+            cmd.mcVersions = toQStringList(options.searchMcVersions);
+            cmd.limit = options.searchLimit;
+            cmd.offset = options.searchOffset;
+            args.commands.emplace_back(std::move(cmd));
+        } else if (subParsed("info")) {
+            Cmd::PackInfo cmd;
+            cmd.group = options.group;
+            cmd.project = QString::fromStdString(options.infoProject);
+            if (options.infoInstance != nullptr && options.infoInstance->count() > 0) {
+                cmd.instance = QString::fromStdString(options.infoInstanceValue);
+            }
+            args.commands.emplace_back(std::move(cmd));
+        } else if (subParsed("install")) {
+            Cmd::PackInstall cmd;
+            cmd.group = options.group;
+            cmd.project = QString::fromStdString(options.installProject);
+            cmd.instance = QString::fromStdString(options.installInstance);
+            if (options.installVersion != nullptr && options.installVersion->count() > 0) {
+                cmd.version = QString::fromStdString(options.installVersionValue);
+            }
+            cmd.noMetadata = options.installNoMetadata;
+            cmd.assumeYes = options.installAssumeYes;
+            args.commands.emplace_back(std::move(cmd));
+        } else if (subParsed("remove")) {
+            Cmd::PackRemove cmd;
+            cmd.group = options.group;
+            cmd.targets = toQStringList(options.removeTargets);
+            cmd.instance = QString::fromStdString(options.removeInstance);
+            cmd.force = options.removeForce;
+            cmd.assumeYes = options.removeAssumeYes;
+            args.commands.emplace_back(std::move(cmd));
+        } else if (subParsed("enable")) {
+            Cmd::PackEnable cmd;
+            cmd.group = options.group;
+            cmd.targets = toQStringList(options.enableTargets);
+            cmd.instance = QString::fromStdString(options.enableInstance);
+            cmd.assumeYes = options.enableAssumeYes;
+            args.commands.emplace_back(std::move(cmd));
+        } else if (subParsed("disable")) {
+            Cmd::PackDisable cmd;
+            cmd.group = options.group;
+            cmd.targets = toQStringList(options.disableTargets);
+            cmd.instance = QString::fromStdString(options.disableInstance);
+            cmd.assumeYes = options.disableAssumeYes;
+            args.commands.emplace_back(std::move(cmd));
+        }
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -483,6 +698,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) mod management
     modCli.addModArgs(app);
+
+    // subcommand based (headless) pack management
+    packCli.addPackArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -544,6 +762,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // turn the parsed `mod` subcommand (if any) into a `Cmd::Mod*` command
     cli.modCli.flush(args);
+
+    // ...and the same for the `resource`, `shader` and `texture` subcommands
+    cli.packCli.flush(args);
 }
 
 }  // namespace Cli

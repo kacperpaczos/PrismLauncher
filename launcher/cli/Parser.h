@@ -106,9 +106,69 @@ struct ModCli {
     void flush(Args& args) const;
 };
 
+/**
+ * @brief the options of one pack group (`resource`, `shader` or `texture`)
+ *
+ * The values are bound to the CLI11 options of that group and turned into
+ * `Cmd::Pack*` commands by `flush()` after a successful parse - this keeps the
+ * CLI11 declarations free of ordering assumptions.
+ */
+struct PackGroupOptions {
+    Cmd::PackGroup group = Cmd::PackGroup::Resource;
+    CLI::App* app{};
+
+    // list
+    std::string listInstance;
+    bool listIncludeDisabled = false;
+
+    // search
+    std::string searchQuery;
+    std::vector<std::string> searchMcVersions;
+    int searchLimit = 25;
+    int searchOffset = 0;
+
+    // info
+    std::string infoProject;
+    CLI::Option* infoInstance{};
+    std::string infoInstanceValue;
+
+    // install
+    std::string installProject;
+    std::string installInstance;
+    CLI::Option* installVersion{};
+    std::string installVersionValue;
+    bool installNoMetadata = false;
+    bool installAssumeYes = false;
+
+    // remove
+    std::vector<std::string> removeTargets;
+    std::string removeInstance;
+    bool removeForce = false;
+    bool removeAssumeYes = false;
+
+    // enable
+    std::vector<std::string> enableTargets;
+    std::string enableInstance;
+    bool enableAssumeYes = false;
+
+    // disable
+    std::vector<std::string> disableTargets;
+    std::string disableInstance;
+    bool disableAssumeYes = false;
+};
+
+/// The `resource`, `shader` and `texture` subcommand groups.
+struct PackCli {
+    PackGroupOptions resource;
+
+    void addPackArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
+    PackCli packCli{};
 
     void attach(CLI::App& app, Args& args);
 };
