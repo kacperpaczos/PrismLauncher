@@ -75,6 +75,9 @@ ecm_add_test(CliOutput_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJ
 
 ecm_add_test(CliParser_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME CliParser)
+# CliParser exercises the real binary for the parse-error JSON/exit-code contract.
+target_compile_definitions(CliParser PRIVATE PRISM_TEST_LAUNCHER_BINARY="$<TARGET_FILE:${Launcher_Name}>")
+add_dependencies(CliParser ${Launcher_Name})
 
 ecm_add_test(CliTaskRunner_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME CliTaskRunner)

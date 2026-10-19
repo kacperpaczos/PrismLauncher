@@ -2,6 +2,10 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
 #include <QTest>
 
 #include <algorithm>
@@ -12,6 +16,7 @@
 #include <CLI/CLI.hpp>
 
 #include "cli/Parser.h"
+#include "cli/Output.h"
 
 namespace {
 
@@ -46,6 +51,37 @@ template <typename T>
 const T& onlyCommand(const Cli::Args& args)
 {
     return std::get<T>(args.commands.front());
+}
+
+/// Path to the launcher binary under test, so the exit-code/JSON contract can be
+/// exercised end-to-end (parseArgs() exits the process).
+QString launcherBinary()
+{
+#ifdef PRISM_TEST_LAUNCHER_BINARY
+    return QString::fromUtf8(PRISM_TEST_LAUNCHER_BINARY);
+#else
+    return QCoreApplication::applicationDirPath() + QStringLiteral("/prismlauncher");
+#endif
+}
+
+struct ProcessResult {
+    int exitCode = -1;
+    QByteArray out;
+};
+
+ProcessResult runLauncher(const QStringList& args)
+{
+    QProcess proc;
+    proc.start(launcherBinary(), args);
+    if (!proc.waitForStarted(30000)) {
+        return {};
+    }
+    if (!proc.waitForFinished(60000)) {
+        proc.kill();
+        proc.waitForFinished();
+        return {};
+    }
+    return { proc.exitCode(), proc.readAllStandardOutput() };
 }
 
 }  // namespace
@@ -178,6 +214,34 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "mod", "list" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "mod", "update", "--all" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "mod" }), true);
+    }
+
+    void test_parseError_jsonEnvelopeAndExitCode()
+    {
+        const auto result = runLauncher({ "mod", "list" });
+        QCOMPARE(result.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        const QJsonDocument doc = QJsonDocument::fromJson(result.out);
+        QVERIFY2(doc.isObject(), qPrintable(QString::fromUtf8(result.out)));
+
+        const QJsonObject root = doc.object();
+        QCOMPARE(root.value("ok").toBool(), false);
+        const QJsonObject error = root.value("error").toObject();
+        QCOMPARE(error.value("code").toString(), QStringLiteral("parse_error"));
+        QVERIFY(!error.value("message").toString().isEmpty());
+        // newlines are stripped so the envelope is a single line
+        QVERIFY(!error.value("message").toString().contains(QLatin1Char('\n')));
+    }
+
+    void test_helpAndVersion_keepExitZero()
+    {
+        const auto version = runLauncher({ "--version" });
+        QCOMPARE(version.exitCode, 0);
+        QVERIFY(!version.out.trimmed().isEmpty());
+
+        const auto help = runLauncher({ "--help" });
+        QCOMPARE(help.exitCode, 0);
+        QVERIFY(!help.out.trimmed().isEmpty());
     }
 
     void test_allCommandsHeadless()

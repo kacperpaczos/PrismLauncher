@@ -33,6 +33,7 @@
 
 #include "BuildConfig.h"
 #include "cli/Commands.h"
+#include "cli/Output.h"
 #include "startup/Startup.h"
 
 #include <QUrl>
@@ -472,9 +473,23 @@ void parseArgs(int argc, char** argv, Args& args)
     try {
         app.parse(argc, utf8Argv);
     } catch (const CLI::ParseError& e) {
-        // CLI::App::exit prints to stderr with help or parsing errors before
-        // returning an exit code
-        std::exit(app.exit(e));
+        // --help / --version (CLI11 success errors) keep CLI11's own output and
+        // exit code 0.
+        if (e.get_exit_code() == 0) {
+            std::exit(app.exit(e));
+        }
+
+        // Genuine parse errors go through the JSON envelope contract instead of
+        // CLI11's internal codes (104/106/109/...). Keep the message on one line
+        // so the envelope stays easy to consume.
+        QString message = QString::fromStdString(e.what());
+        message.replace(QLatin1Char('\n'), QLatin1Char(' ')).replace(QLatin1Char('\r'), QLatin1Char(' '));
+        message = message.simplified();
+        if (message.isEmpty()) {
+            message = QStringLiteral("invalid command line");
+        }
+        outputError(QStringLiteral("parse_error"), message, ExitCode::Usage);
+        std::exit(static_cast<int>(ExitCode::Usage));
     };
 
     // turn the parsed `mod` subcommand (if any) into a `Cmd::Mod*` command
