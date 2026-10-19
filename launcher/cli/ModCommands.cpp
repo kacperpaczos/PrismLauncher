@@ -267,6 +267,58 @@ Resource* findResourceByFileName(ResourceFolderModel* model, const QString& file
  *   3. metadata project id
  *   4. display name
  */
+QList<Resource*> resolveTarget(ResourceFolderModel* model, const QString& target)
+{
+    const auto all = model->allResources();
+
+    auto matches = [&all](const auto& predicate) {
+        QList<Resource*> found;
+        for (auto* resource : all) {
+            if (predicate(resource)) {
+                found.append(resource);
+            }
+        }
+        return found;
+    };
+
+    auto byFileName = matches([&target](Resource* resource) {
+        return resource->fileinfo().fileName() == target || resource->getOriginalFileName() == target;
+    });
+    if (byFileName.isEmpty()) {
+        byFileName = matches([&target](Resource* resource) {
+            return resource->fileinfo().fileName().compare(target, Qt::CaseInsensitive) == 0 ||
+                   resource->getOriginalFileName().compare(target, Qt::CaseInsensitive) == 0;
+        });
+    }
+    if (!byFileName.isEmpty()) {
+        return byFileName;
+    }
+
+    auto bySlug = matches([&target](Resource* resource) {
+        auto meta = resource->metadata();
+        return meta && normalizedSlug(meta->slug) == target;
+    });
+    if (bySlug.isEmpty()) {
+        bySlug = matches([&target](Resource* resource) {
+            auto meta = resource->metadata();
+            return meta && normalizedSlug(meta->slug).compare(target, Qt::CaseInsensitive) == 0;
+        });
+    }
+    if (!bySlug.isEmpty()) {
+        return bySlug;
+    }
+
+    auto byProjectId = matches([&target](Resource* resource) {
+        auto meta = resource->metadata();
+        return meta && meta->projectId.isValid() && meta->projectId.toString() == target;
+    });
+    if (!byProjectId.isEmpty()) {
+        return byProjectId;
+    }
+
+    return matches([&target](Resource* resource) { return resource->name() == target; });
+}
+
 /**
  * The HTTP status code of the first failed action of a net job, if any.
  */
@@ -365,14 +417,202 @@ bool versionSupportsLoader(const ModPlatform::IndexedVersion& version, const QLi
  * The result of resolving the targets of the remove/enable/disable/update
  * commands.
  */
+struct ResolvedTargets {
+    QList<Resource*> resources;
+    QJsonArray failed;
+    QJsonArray candidates;
+    bool ambiguous = false;
+};
+
+ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QString>& targets)
+{
+    ResolvedTargets resolved;
+    for (const auto& target : targets) {
+        auto matches = resolveTarget(model, target);
+        if (matches.isEmpty()) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), target);
+            entry.insert(QStringLiteral("reason"), QStringLiteral("no mod matched the target"));
+            resolved.failed.append(entry);
+            continue;
+        }
+        if (matches.size() > 1) {
+            resolved.ambiguous = true;
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), target);
+            QJsonArray candidateNames;
+            for (auto* resource : matches) {
+                QJsonObject candidate;
+                candidate.insert(QStringLiteral("name"), resource->name());
+                candidate.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+                auto meta = resource->metadata();
+                candidate.insert(QStringLiteral("slug"), meta ? jsonNullIfEmpty(normalizedSlug(meta->slug)) : QJsonValue(QJsonValue::Null));
+                candidateNames.append(candidate);
+            }
+            entry.insert(QStringLiteral("candidates"), candidateNames);
+            resolved.candidates.append(entry);
+            continue;
+        }
+        auto* resource = matches.first();
+        if (!resolved.resources.contains(resource)) {
+            resolved.resources.append(resource);
+        }
+    }
+    return resolved;
+}
+
 /**
  * Collect the mods that depend on the given ones (or that are required by
  * them). The relation graph of the model is used, the same way the GUI does
  * it for the "disable dependants" prompt.
  */
+QList<Mod*> collectAffectedMods(ModFolderModel* model, const QList<Mod*>& selected, EnableAction action)
+{
+    QList<Mod*> affected;
+    QList<Mod*> queue = selected;
+    QSet<QString> seen;
+
+    for (auto* mod : selected) {
+        seen.insert(mod->internalId());
+    }
+
+    while (!queue.isEmpty()) {
+        auto* mod = queue.takeFirst();
+        QStringList relations;
+        if (action == EnableAction::ENABLE) {
+            relations = model->requiresList(mod->modId());
+        } else {
+            relations = model->requiredByList(mod->modId());
+        }
+        for (const auto& relation : relations) {
+            for (auto* candidate : model->allMods()) {
+                if (candidate->name() != relation || seen.contains(candidate->internalId())) {
+                    continue;
+                }
+                seen.insert(candidate->internalId());
+                affected.append(candidate);
+                queue.append(candidate);
+            }
+        }
+    }
+
+    return affected;
+}
+
 /**
  * Shared implementation of `mod enable` and `mod disable`.
  */
+ExitCode runEnableDisable(ModContext& ctx,
+                          const std::vector<QString>& targets,
+                          const QString& instanceId,
+                          bool recursive,
+                          EnableAction action)
+{
+    auto* instance = resolveInstance(ctx, instanceId);
+    if (!instance) {
+        return outputError(QStringLiteral("instance_not_found"),
+                           QStringLiteral("No instance with the id '%1' was found").arg(instanceId),
+                           ExitCode::NotFound);
+    }
+    if (instance->isRunning()) {
+        return outputError(QStringLiteral("instance_running"),
+                           QStringLiteral("The instance '%1' is running, refusing to change mods").arg(instanceId),
+                           ExitCode::Conflict);
+    }
+
+    auto* model = instance->loaderModList();
+    if (!model) {
+        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
+    }
+    if (!waitForModel(model)) {
+        return outputError(QStringLiteral("model_timeout"),
+                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(instanceId),
+                           ExitCode::Generic);
+    }
+
+    auto resolved = resolveTargets(model, targets);
+    if (resolved.ambiguous) {
+        QJsonObject out;
+        out.insert(QStringLiteral("candidates"), resolved.candidates);
+        out.insert(QStringLiteral("failed"), resolved.failed);
+        return outputError(QStringLiteral("ambiguous_target"),
+                           QStringLiteral("Some targets matched more than one mod"),
+                           ExitCode::Ambiguous,
+                           out);
+    }
+    if (resolved.resources.isEmpty()) {
+        QJsonObject out;
+        out.insert(QStringLiteral("changed"), QJsonArray());
+        out.insert(QStringLiteral("failed"), resolved.failed);
+        return outputError(QStringLiteral("not_found"),
+                           QStringLiteral("None of the targets matched a mod"),
+                           ExitCode::NotFound,
+                           out);
+    }
+
+    // The recursive mode also enables the required mods (or disables the
+    // mods that depend on the selected ones).
+    QList<Mod*> selectedMods;
+    QHash<const Resource*, QStringList> affectedBy;
+    if (recursive) {
+        for (auto* resource : resolved.resources) {
+            if (auto* mod = dynamic_cast<Mod*>(resource)) {
+                selectedMods.append(mod);
+            }
+        }
+        for (auto* mod : collectAffectedMods(model, selectedMods, action)) {
+            auto* resource = static_cast<Resource*>(mod);
+            if (!resolved.resources.contains(resource)) {
+                resolved.resources.append(resource);
+            }
+            QStringList causes;
+            if (action == EnableAction::ENABLE) {
+                causes = model->requiresList(mod->modId());
+            } else {
+                causes = model->requiredByList(mod->modId());
+            }
+            affectedBy.insert(resource, causes);
+        }
+    }
+
+    QJsonArray changed;
+    QJsonArray failed = resolved.failed;
+    for (auto* resource : resolved.resources) {
+        const bool wantEnabled = action == EnableAction::ENABLE;
+        if (resource->enabled() == wantEnabled) {
+            // The mod is already in the wanted state - nothing to do.
+            continue;
+        }
+        if (!resource->enable(action)) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("reason"),
+                         QStringLiteral("the mod could not be %1").arg(wantEnabled ? "enabled" : "disabled"));
+            failed.append(entry);
+            continue;
+        }
+        QJsonObject entry = modToJson(resource);
+        QJsonArray affected;
+        for (const auto& cause : affectedBy.value(resource)) {
+            affected.append(cause);
+        }
+        entry.insert(QStringLiteral("affected_by"), affected);
+        changed.append(entry);
+    }
+
+    QJsonObject out;
+    out.insert(QStringLiteral("changed"), changed);
+    out.insert(QStringLiteral("failed"), failed);
+    if (changed.isEmpty() && !failed.isEmpty()) {
+        return outputError(QStringLiteral("change_failed"),
+                           QStringLiteral("None of the mods could be changed"),
+                           ExitCode::Generic,
+                           out);
+    }
+    outputJson(QJsonDocument(out));
+    return ExitCode::OK;
+}
+
 }  // namespace
 
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
@@ -782,18 +1022,90 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModRemove& /*cmd*/)
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
 {
-    return notImplemented(QStringLiteral("remove"));
+    auto* instance = resolveInstance(ctx, cmd.instance);
+    if (!instance) {
+        return outputError(QStringLiteral("instance_not_found"),
+                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.instance),
+                           ExitCode::NotFound);
+    }
+    if (instance->isRunning() && !cmd.force) {
+        return outputError(QStringLiteral("instance_running"),
+                           QStringLiteral("The instance '%1' is running, refusing to remove mods (use --force)").arg(cmd.instance),
+                           ExitCode::Conflict);
+    }
+
+    auto* model = instance->loaderModList();
+    if (!model) {
+        return outputError(QStringLiteral("no_mod_list"), QStringLiteral("The instance has no mod list"), ExitCode::Generic);
+    }
+    if (!waitForModel(model)) {
+        return outputError(QStringLiteral("model_timeout"),
+                           QStringLiteral("Timed out while reading the mods of the instance '%1'").arg(cmd.instance),
+                           ExitCode::Generic);
+    }
+
+    auto resolved = resolveTargets(model, cmd.targets);
+    if (resolved.ambiguous) {
+        QJsonObject out;
+        out.insert(QStringLiteral("candidates"), resolved.candidates);
+        out.insert(QStringLiteral("failed"), resolved.failed);
+        return outputError(QStringLiteral("ambiguous_target"),
+                           QStringLiteral("Some targets matched more than one mod"),
+                           ExitCode::Ambiguous,
+                           out);
+    }
+
+    QJsonArray removed;
+    QJsonArray failed = resolved.failed;
+    const auto indexDir = model->indexDir();
+    // The model is not updated in between the removals - the resolved list is
+    // iterated instead.
+    for (auto* resource : resolved.resources) {
+        auto fileName = resource->fileinfo().fileName();
+        auto name = resource->name();
+        // The metadata is gone once the mod is destroyed, so it has to be
+        // read before.
+        auto meta = resource->metadata();
+        auto slug = meta ? normalizedSlug(meta->slug) : QString();
+        if (!resource->destroy(indexDir, false, true)) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), fileName);
+            entry.insert(QStringLiteral("reason"), QStringLiteral("the mod could not be removed"));
+            failed.append(entry);
+            continue;
+        }
+        QJsonObject entry;
+        entry.insert(QStringLiteral("name"), name);
+        entry.insert(QStringLiteral("file"), fileName);
+        entry.insert(QStringLiteral("slug"), jsonNullIfEmpty(slug));
+        removed.append(entry);
+    }
+
+    QJsonObject out;
+    out.insert(QStringLiteral("removed"), removed);
+    out.insert(QStringLiteral("failed"), failed);
+    if (removed.isEmpty() && !failed.isEmpty()) {
+        return outputError(QStringLiteral("not_found"),
+                           QStringLiteral("None of the targets matched a mod"),
+                           ExitCode::NotFound,
+                           out);
+    }
+    outputJson(QJsonDocument(out));
+    return ExitCode::OK;
 }
-ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModEnable& /*cmd*/)
+
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModEnable& cmd)
 {
-    return notImplemented(QStringLiteral("enable"));
+    return runEnableDisable(ctx, cmd.targets, cmd.instance, cmd.recursive, EnableAction::ENABLE);
 }
-ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModDisable& /*cmd*/)
+
+ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd)
 {
-    return notImplemented(QStringLiteral("disable"));
+    return runEnableDisable(ctx, cmd.targets, cmd.instance, cmd.recursive, EnableAction::DISABLE);
 }
+
 ExitCode runModCommand(ModContext& /*ctx*/, const Cmd::ModUpdate& /*cmd*/)
 {
     return notImplemented(QStringLiteral("update"));
