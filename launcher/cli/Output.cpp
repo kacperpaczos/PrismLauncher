@@ -43,6 +43,13 @@ void writeDocument(const QJsonDocument& doc)
 
 void outputJson(const QJsonDocument& doc)
 {
+    if (!doc.isObject()) {
+        // A non-object document cannot be merged into the success envelope;
+        // refusing is safer than silently emitting `{"ok":true}`.
+        outputError(QStringLiteral("internal_error"), QStringLiteral("outputJson expects a JSON object document"));
+        return;
+    }
+
     QJsonObject envelope = doc.object();
     envelope.insert(QStringLiteral("ok"), true);
     writeDocument(QJsonDocument(envelope));

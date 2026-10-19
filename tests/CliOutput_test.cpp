@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTest>
@@ -90,6 +91,17 @@ class CliOutputTest : public QObject {
         QVERIFY(ok);
         QCOMPARE(root.value("ok").toBool(), true);
         QCOMPARE(root.value("value").toInt(), 42);
+    }
+
+    void test_outputJson_rejectsNonObject()
+    {
+        const QByteArray raw = captureStdout([] { Cli::outputJson(QJsonDocument(QJsonArray{ 1, 2, 3 })); });
+
+        bool ok = false;
+        const QJsonObject root = parseObject(raw, &ok);
+        QVERIFY(ok);
+        QCOMPARE(root.value("ok").toBool(), false);
+        QCOMPARE(root.value("error").toObject().value("code").toString(), QString("internal_error"));
     }
 
     void test_outputError_defaultExitCode()
