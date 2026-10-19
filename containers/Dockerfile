@@ -6,7 +6,7 @@ RUN dnf install -y --setopt=install_weak_deps=False \
         qt6-qtbase-devel qt6-qtnetworkauth-devel \
         cmark-devel qrencode-devel libarchive-devel \
         tomlplusplus-devel zlib-ng-compat-devel cli11-devel \
-        java-openjdk-devel \
+        java-25-openjdk-devel \
     && dnf clean all
 
 # git w kontenerze: repo zamontowane z hosta
