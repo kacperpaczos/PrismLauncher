@@ -66,3 +66,6 @@ flatbuild
 # flatpak-builder output
 build-flatpak/
 .flatpak-builder/
+
+# Spike working notes (never committed)
+.scratch/
