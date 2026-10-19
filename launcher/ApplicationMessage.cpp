@@ -37,9 +37,48 @@
 
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStringList>
 #include <variant>
 #include "Json.h"
 #include "Result.h"
+
+namespace {
+
+QString boolToArg(bool value)
+{
+    return value ? QStringLiteral("1") : QStringLiteral("0");
+}
+
+bool argToBool(const QString& value)
+{
+    return value == QLatin1String("1") || value == QLatin1String("true");
+}
+
+QString joinStringList(const std::vector<QString>& values)
+{
+    QStringList parts;
+    parts.reserve(static_cast<qsizetype>(values.size()));
+    for (const auto& value : values) {
+        parts << value;
+    }
+    return parts.join(QLatin1Char('\n'));
+}
+
+std::vector<QString> splitStringList(const QString& value)
+{
+    std::vector<QString> out;
+    if (value.isEmpty()) {
+        return out;
+    }
+    const auto parts = value.split(QLatin1Char('\n'));
+    out.reserve(static_cast<std::size_t>(parts.size()));
+    for (const auto& part : parts) {
+        out.emplace_back(part);
+    }
+    return out;
+}
+
+}  // namespace
 
 Result<> ApplicationMessage::parse(const QByteArray& input)
 {
@@ -143,6 +182,102 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return Cli::Cmd::Alive{ .path = path.toStdU16String() };
     }
 
+    // ModList
+    if (command == "mod_list") {
+        const QString notFoundMsg = "missing `%1` for mod_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ModList{
+            .instance = instance,
+            .includeDisabled = argToBool(args.value("includeDisabled")),
+        };
+    }
+
+    // ModSearch
+    if (command == "mod_search") {
+        return Cli::Cmd::ModSearch{
+            .query = args.value("query"),
+            .mcVersions = splitStringList(args.value("mcVersions")),
+            .loaders = splitStringList(args.value("loaders")),
+            .limit = args.value("limit").toInt(),
+            .offset = args.value("offset").toInt(),
+        };
+    }
+
+    // ModInfo
+    if (command == "mod_info") {
+        const QString notFoundMsg = "missing `%1` for mod_info command";
+        TRY_INTO(auto project, Try::findByMapKey(args, "project", notFoundMsg));
+        Cli::Cmd::ModInfo cmd{ .project = project };
+        if (args.contains("instance")) {
+            cmd.instance = args.value("instance");
+        }
+        return cmd;
+    }
+
+    // ModInstall
+    if (command == "mod_install") {
+        const QString notFoundMsg = "missing `%1` for mod_install command";
+        TRY_INTO(auto project, Try::findByMapKey(args, "project", notFoundMsg));
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::ModInstall cmd{
+            .project = project,
+            .instance = instance,
+            .noDeps = argToBool(args.value("noDeps")),
+            .noMetadata = argToBool(args.value("noMetadata")),
+        };
+        if (args.contains("version")) {
+            cmd.version = args.value("version");
+        }
+        return cmd;
+    }
+
+    // ModRemove
+    if (command == "mod_remove") {
+        const QString notFoundMsg = "missing `%1` for mod_remove command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ModRemove{
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .force = argToBool(args.value("force")),
+        };
+    }
+
+    // ModEnable
+    if (command == "mod_enable") {
+        const QString notFoundMsg = "missing `%1` for mod_enable command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ModEnable{
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .recursive = argToBool(args.value("recursive")),
+        };
+    }
+
+    // ModDisable
+    if (command == "mod_disable") {
+        const QString notFoundMsg = "missing `%1` for mod_disable command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ModDisable{
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .recursive = argToBool(args.value("recursive")),
+        };
+    }
+
+    // ModUpdate
+    if (command == "mod_update") {
+        const QString notFoundMsg = "missing `%1` for mod_update command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ModUpdate{
+            .targets = splitStringList(args.value("targets")),
+            .all = argToBool(args.value("all")),
+            .instance = instance,
+            .dryRun = argToBool(args.value("dryRun")),
+            .noDeps = argToBool(args.value("noDeps")),
+            .force = argToBool(args.value("force")),
+        };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -202,6 +337,71 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
         {
             message.command = "alive";
             message.args.insert("path", QString::fromStdU16String(alive.path.u16string()));
+        }
+        void operator()(const Cli::Cmd::ModList& modList)
+        {
+            message.command = "mod_list";
+            message.args.insert("instance", modList.instance);
+            message.args.insert("includeDisabled", boolToArg(modList.includeDisabled));
+        }
+        void operator()(const Cli::Cmd::ModSearch& modSearch)
+        {
+            message.command = "mod_search";
+            message.args.insert("query", modSearch.query);
+            message.args.insert("mcVersions", joinStringList(modSearch.mcVersions));
+            message.args.insert("loaders", joinStringList(modSearch.loaders));
+            message.args.insert("limit", QString::number(modSearch.limit));
+            message.args.insert("offset", QString::number(modSearch.offset));
+        }
+        void operator()(const Cli::Cmd::ModInfo& modInfo)
+        {
+            message.command = "mod_info";
+            message.args.insert("project", modInfo.project);
+            if (modInfo.instance.has_value()) {
+                message.args.insert("instance", *modInfo.instance);
+            }
+        }
+        void operator()(const Cli::Cmd::ModInstall& modInstall)
+        {
+            message.command = "mod_install";
+            message.args.insert("project", modInstall.project);
+            message.args.insert("instance", modInstall.instance);
+            if (modInstall.version.has_value()) {
+                message.args.insert("version", *modInstall.version);
+            }
+            message.args.insert("noDeps", boolToArg(modInstall.noDeps));
+            message.args.insert("noMetadata", boolToArg(modInstall.noMetadata));
+        }
+        void operator()(const Cli::Cmd::ModRemove& modRemove)
+        {
+            message.command = "mod_remove";
+            message.args.insert("targets", joinStringList(modRemove.targets));
+            message.args.insert("instance", modRemove.instance);
+            message.args.insert("force", boolToArg(modRemove.force));
+        }
+        void operator()(const Cli::Cmd::ModEnable& modEnable)
+        {
+            message.command = "mod_enable";
+            message.args.insert("targets", joinStringList(modEnable.targets));
+            message.args.insert("instance", modEnable.instance);
+            message.args.insert("recursive", boolToArg(modEnable.recursive));
+        }
+        void operator()(const Cli::Cmd::ModDisable& modDisable)
+        {
+            message.command = "mod_disable";
+            message.args.insert("targets", joinStringList(modDisable.targets));
+            message.args.insert("instance", modDisable.instance);
+            message.args.insert("recursive", boolToArg(modDisable.recursive));
+        }
+        void operator()(const Cli::Cmd::ModUpdate& modUpdate)
+        {
+            message.command = "mod_update";
+            message.args.insert("targets", joinStringList(modUpdate.targets));
+            message.args.insert("all", boolToArg(modUpdate.all));
+            message.args.insert("instance", modUpdate.instance);
+            message.args.insert("dryRun", boolToArg(modUpdate.dryRun));
+            message.args.insert("noDeps", boolToArg(modUpdate.noDeps));
+            message.args.insert("force", boolToArg(modUpdate.force));
         }
     } serializer{};
 

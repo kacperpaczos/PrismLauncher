@@ -1341,6 +1341,16 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                 qWarning() << "Could not open" << path << "for writing:" << check.errorString();
             }
         }
+        // TODO(T5): mod commands are dispatched headlessly by Cli::runModCommand();
+        // these no-op overloads only keep the visitor exhaustive until that is wired up.
+        void operator()(const Cli::Cmd::ModList& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModSearch& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModInfo& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModInstall& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModRemove& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModEnable& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModDisable& /*unused*/) const {}
+        void operator()(const Cli::Cmd::ModUpdate& /*unused*/) const {}
     } visitor{ .app = this, .toProcessURIs = toProcessURIs };
 
     for (const auto& cmd : cmds) {

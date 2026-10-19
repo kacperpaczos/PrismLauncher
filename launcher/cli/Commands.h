@@ -21,10 +21,15 @@
 
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
+#include <optional>
+#include <ranges>
 #include <string_view>
 #include <variant>
 #include <vector>
+
+#include <QString>
 
 #include "startup/Startup.h"
 
@@ -90,12 +95,102 @@ struct Alive {
     auto operator<=>(const Alive&) const = default;
 };
 
+// ---- mod management (headless) ----
+
+struct ModList {
+    QString instance;
+    bool includeDisabled = false;
+    auto operator<=>(const ModList&) const = default;
+};
+
+struct ModSearch {
+    QString query;
+    std::vector<QString> mcVersions;
+    std::vector<QString> loaders;
+    int limit = 25;
+    int offset = 0;
+    auto operator<=>(const ModSearch&) const = default;
+};
+
+struct ModInfo {
+    QString project;
+    std::optional<QString> instance;
+    auto operator<=>(const ModInfo&) const = default;
+};
+
+struct ModInstall {
+    QString project;
+    QString instance;
+    std::optional<QString> version;
+    bool noDeps = false;
+    bool noMetadata = false;
+    auto operator<=>(const ModInstall&) const = default;
+};
+
+struct ModRemove {
+    std::vector<QString> targets;
+    QString instance;
+    bool force = false;
+    auto operator<=>(const ModRemove&) const = default;
+};
+
+struct ModEnable {
+    std::vector<QString> targets;
+    QString instance;
+    bool recursive = false;
+    auto operator<=>(const ModEnable&) const = default;
+};
+
+struct ModDisable {
+    std::vector<QString> targets;
+    QString instance;
+    bool recursive = false;
+    auto operator<=>(const ModDisable&) const = default;
+};
+
+struct ModUpdate {
+    std::vector<QString> targets;
+    bool all = false;
+    QString instance;
+    bool dryRun = false;
+    bool noDeps = false;
+    bool force = false;
+    auto operator<=>(const ModUpdate&) const = default;
+};
+
 };  // namespace Cmd
 
-using CommandBase = std::variant<Cmd::Launch, Cmd::ProcessURI, Cmd::ShowMainWindow, Cmd::ShowInstanceWindow, Cmd::Alive>;
+using CommandBase = std::variant<Cmd::Launch,
+                                 Cmd::ProcessURI,
+                                 Cmd::ShowMainWindow,
+                                 Cmd::ShowInstanceWindow,
+                                 Cmd::Alive,
+                                 Cmd::ModList,
+                                 Cmd::ModSearch,
+                                 Cmd::ModInfo,
+                                 Cmd::ModInstall,
+                                 Cmd::ModRemove,
+                                 Cmd::ModEnable,
+                                 Cmd::ModDisable,
+                                 Cmd::ModUpdate>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
+
+/// @brief a command that can be executed without a GUI/window (headless)
+inline bool isHeadlessCommand(const Command& cmd)
+{
+    return std::holds_alternative<Cmd::ModList>(cmd) || std::holds_alternative<Cmd::ModSearch>(cmd) ||
+           std::holds_alternative<Cmd::ModInfo>(cmd) || std::holds_alternative<Cmd::ModInstall>(cmd) ||
+           std::holds_alternative<Cmd::ModRemove>(cmd) || std::holds_alternative<Cmd::ModEnable>(cmd) ||
+           std::holds_alternative<Cmd::ModDisable>(cmd) || std::holds_alternative<Cmd::ModUpdate>(cmd);
+}
+
+/// @brief true when there is at least one command and all of them are headless
+inline bool allCommandsHeadless(const std::vector<Command>& commands)
+{
+    return !commands.empty() && std::ranges::all_of(commands, isHeadlessCommand);
+}
 
 struct Args {
     Startup::DataPathResult dataPath;

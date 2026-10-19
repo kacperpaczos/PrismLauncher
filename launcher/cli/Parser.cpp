@@ -204,6 +204,194 @@ void LegacyCli::addLegacyArgs(CLI::App& app, Args& args)
     }
 }
 
+void ModCli::addModArgs(CLI::App& app)
+{
+    mod = app.add_subcommand("mod", "Manage the mods of an instance.");
+    mod->require_subcommand();
+
+    auto addInstanceOption = [](CLI::App* sub, std::string& dest, bool required) {
+        auto* opt = sub->add_option("-i,--instance", dest, "Instance ID.")->option_text("instance");
+        if (required) {
+            opt->required();
+        }
+        return opt;
+    };
+
+    auto addJsonFlag = [](CLI::App* sub) { sub->add_flag("--json", "Emit machine-readable JSON output (default)."); };
+
+    {
+        // mod list -i <instance> [--include-disabled] [--json]
+        auto* list = mod->add_subcommand("list", "List the mods installed in an instance.");
+        addInstanceOption(list, listInstance, /*required=*/true);
+        list->add_flag("--include-disabled", listIncludeDisabled, "Include disabled mods.");
+        addJsonFlag(list);
+    }
+
+    {
+        // mod search [query] [--mc <version>...] [--loader <loader>...] [--limit N] [--offset N] [--json]
+        auto* search = mod->add_subcommand("search", "Search for mods on Modrinth.");
+        search->add_option("query", searchQuery, "Search query.")->option_text("query");
+        search->add_option("--mc", searchMcVersions, "Filter by Minecraft version (can be repeated).")
+            ->option_text("version")
+            ->take_all();
+        search->add_option("--loader", searchLoaders, "Filter by mod loader (can be repeated).")->option_text("loader")->take_all();
+        search->add_option("--limit", searchLimit, "Maximum number of results.")->option_text("N");
+        search->add_option("--offset", searchOffset, "Result offset, for pagination.")->option_text("N");
+        addJsonFlag(search);
+    }
+
+    {
+        // mod info <project> [-i <instance>] [--json]
+        auto* info = mod->add_subcommand("info", "Show information about a mod project.");
+        info->add_option("project", infoProject, "Mod slug or project ID.")->option_text("project")->required();
+        infoInstance = addInstanceOption(info, infoInstanceValue, /*required=*/false);
+        addJsonFlag(info);
+    }
+
+    {
+        // mod install <project> -i <instance> [--version <v>] [--no-deps] [--no-metadata] [-y] [--json]
+        auto* install = mod->add_subcommand("install", "Install a mod into an instance.");
+        install->add_option("project", installProject, "Mod slug or project ID.")->option_text("project")->required();
+        addInstanceOption(install, installInstance, /*required=*/true);
+        installVersion = install->add_option("--version", installVersionValue, "Install a specific version.")->option_text("version");
+        install->add_flag("--no-deps", installNoDeps, "Do not install dependencies.");
+        install->add_flag("--no-metadata", installNoMetadata, "Do not write packwiz metadata for the mod.");
+        install->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        addJsonFlag(install);
+    }
+
+    {
+        // mod remove <target>... -i <instance> [--force] [-y] [--json]
+        auto* remove = mod->add_subcommand("remove", "Remove one or more mods from an instance.");
+        remove->add_option("targets", removeTargets, "Mod filename, slug, project ID or name.")
+            ->option_text("target")
+            ->expected(0, -1);
+        addInstanceOption(remove, removeInstance, /*required=*/true);
+        remove->add_flag("--force", removeForce, "Remove even if the mod is locked or ambiguous.");
+        remove->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        addJsonFlag(remove);
+    }
+
+    {
+        // mod enable <target>... -i <instance> [--recursive] [-y] [--json]
+        auto* enable = mod->add_subcommand("enable", "Enable one or more mods in an instance.");
+        enable->add_option("targets", enableTargets, "Mod filename, slug, project ID or name.")
+            ->option_text("target")
+            ->expected(0, -1);
+        addInstanceOption(enable, enableInstance, /*required=*/true);
+        enable->add_flag("--recursive", enableRecursive, "Also enable dependencies.");
+        enable->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        addJsonFlag(enable);
+    }
+
+    {
+        // mod disable <target>... -i <instance> [--recursive] [-y] [--json]
+        auto* disable = mod->add_subcommand("disable", "Disable one or more mods in an instance.");
+        disable->add_option("targets", disableTargets, "Mod filename, slug, project ID or name.")
+            ->option_text("target")
+            ->expected(0, -1);
+        addInstanceOption(disable, disableInstance, /*required=*/true);
+        disable->add_flag("--recursive", disableRecursive, "Also disable dependants.");
+        disable->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        addJsonFlag(disable);
+    }
+
+    {
+        // mod update [<target>...] --all -i <instance> [--dry-run] [--no-deps] [--force] [-y] [--json]
+        auto* update = mod->add_subcommand("update", "Update one or more mods in an instance.");
+        update->add_option("targets", updateTargets, "Mod filename, slug, project ID or name.")
+            ->option_text("target")
+            ->expected(0, -1);
+        update->add_flag("--all", updateAll, "Update every mod in the instance.");
+        addInstanceOption(update, updateInstance, /*required=*/true);
+        update->add_flag("--dry-run", updateDryRun, "Only report what would be updated.");
+        update->add_flag("--no-deps", updateNoDeps, "Do not update dependencies.");
+        update->add_flag("--force", updateForce, "Update mods that are locked to a version.");
+        update->add_flag("-y,--yes", assumeYes, "Do not ask for confirmation.");
+        addJsonFlag(update);
+    }
+}
+
+void ModCli::flush(Args& args) const
+{
+    if (mod == nullptr) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = mod->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    auto toQStringList = [](const std::vector<std::string>& in) {
+        std::vector<QString> out;
+        out.reserve(in.size());
+        for (const auto& value : in) {
+            out.emplace_back(QString::fromStdString(value));
+        }
+        return out;
+    };
+
+    if (subParsed("list")) {
+        Cmd::ModList cmd;
+        cmd.instance = QString::fromStdString(listInstance);
+        cmd.includeDisabled = listIncludeDisabled;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("search")) {
+        Cmd::ModSearch cmd;
+        cmd.query = QString::fromStdString(searchQuery);
+        cmd.mcVersions = toQStringList(searchMcVersions);
+        cmd.loaders = toQStringList(searchLoaders);
+        cmd.limit = searchLimit;
+        cmd.offset = searchOffset;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("info")) {
+        Cmd::ModInfo cmd;
+        cmd.project = QString::fromStdString(infoProject);
+        if (infoInstance != nullptr && infoInstance->count() > 0) {
+            cmd.instance = QString::fromStdString(infoInstanceValue);
+        }
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("install")) {
+        Cmd::ModInstall cmd;
+        cmd.project = QString::fromStdString(installProject);
+        cmd.instance = QString::fromStdString(installInstance);
+        if (installVersion != nullptr && installVersion->count() > 0) {
+            cmd.version = QString::fromStdString(installVersionValue);
+        }
+        cmd.noDeps = installNoDeps;
+        cmd.noMetadata = installNoMetadata;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("remove")) {
+        Cmd::ModRemove cmd;
+        cmd.targets = toQStringList(removeTargets);
+        cmd.instance = QString::fromStdString(removeInstance);
+        cmd.force = removeForce;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("enable")) {
+        Cmd::ModEnable cmd;
+        cmd.targets = toQStringList(enableTargets);
+        cmd.instance = QString::fromStdString(enableInstance);
+        cmd.recursive = enableRecursive;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("disable")) {
+        Cmd::ModDisable cmd;
+        cmd.targets = toQStringList(disableTargets);
+        cmd.instance = QString::fromStdString(disableInstance);
+        cmd.recursive = disableRecursive;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("update")) {
+        Cmd::ModUpdate cmd;
+        cmd.targets = toQStringList(updateTargets);
+        cmd.all = updateAll;
+        cmd.instance = QString::fromStdString(updateInstance);
+        cmd.dryRun = updateDryRun;
+        cmd.noDeps = updateNoDeps;
+        cmd.force = updateForce;
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -241,6 +429,9 @@ void Cli::attach(CLI::App& app, Args& args)
         ->default_str(args.dataPath.dataPath.string() + dPathSource);
 
     legacyCli.addLegacyArgs(app, args);
+
+    // subcommand based (headless) mod management
+    modCli.addModArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -285,6 +476,9 @@ void parseArgs(int argc, char** argv, Args& args)
         // returning an exit code
         std::exit(app.exit(e));
     };
+
+    // turn the parsed `mod` subcommand (if any) into a `Cmd::Mod*` command
+    cli.modCli.flush(args);
 }
 
 }  // namespace Cli

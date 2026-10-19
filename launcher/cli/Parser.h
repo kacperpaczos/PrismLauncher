@@ -44,8 +44,69 @@ struct LegacyCli {
     void addLegacyArgs(CLI::App& app, Args& args);
 };
 
+/// `mod` subcommand group. Options are bound to plain members here and turned
+/// into `Cmd::Mod*` commands by `flush()` after a successful parse - this keeps
+/// the CLI11 declarations free of ordering assumptions.
+struct ModCli {
+    CLI::App* mod{};
+
+    // mod list
+    std::string listInstance;
+    bool listIncludeDisabled = false;
+
+    // mod search
+    std::string searchQuery;
+    std::vector<std::string> searchMcVersions;
+    std::vector<std::string> searchLoaders;
+    int searchLimit = 25;
+    int searchOffset = 0;
+
+    // mod info
+    std::string infoProject;
+    CLI::Option* infoInstance{};
+    std::string infoInstanceValue;
+
+    // mod install
+    std::string installProject;
+    std::string installInstance;
+    CLI::Option* installVersion{};
+    std::string installVersionValue;
+    bool installNoDeps = false;
+    bool installNoMetadata = false;
+
+    // mod remove
+    std::vector<std::string> removeTargets;
+    std::string removeInstance;
+    bool removeForce = false;
+
+    // mod enable
+    std::vector<std::string> enableTargets;
+    std::string enableInstance;
+    bool enableRecursive = false;
+
+    // mod disable
+    std::vector<std::string> disableTargets;
+    std::string disableInstance;
+    bool disableRecursive = false;
+
+    // mod update
+    std::vector<std::string> updateTargets;
+    bool updateAll = false;
+    std::string updateInstance;
+    bool updateDryRun = false;
+    bool updateNoDeps = false;
+    bool updateForce = false;
+
+    // shared flags
+    bool assumeYes = false;
+
+    void addModArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
+    ModCli modCli{};
 
     void attach(CLI::App& app, Args& args);
 };
