@@ -3,8 +3,12 @@
 > Cel spiKA: **pełne zarządzanie modami z konsoli** — `prism mod list|search|info|install|remove|enable|disable|update`
 > — działające headless (bez GUI, platforma offscreen), z wyjściem JSON i kodami wyjścia.
 > Baza: gałąź `cli_rebirth` (PR #6193, Ryex), pin **`059625c8b89509fe5180384fd9db8432512e93a7`**.
-> To jest SPIKE — poza zakresem: resource/shader/world/server/log/screenshot/notes/version/settings,
+> To jest SPIKE — poza zakresem: world/server/log/screenshot/notes/version/settings,
 > IPC v2, pełny split initCore/initGui, CurseForge. Pełny plan: sesja Plan (Faza 0–6).
+>
+> **Etap 2 (`spike/resources`, branch `kacperpaczos/spike-resources`)**: dołożenie grupy
+> resource/shader/texture packów (`resource|shader|texture list|search|info|install|remove|enable|disable`)
+> — szczegóły w sekcji „Etap 2 — resource / shader / texture packi".
 
 ## Kolejność prac (sekwencyjnie, per podagent)
 
@@ -105,6 +109,92 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - Gdy wszystkie komendy są headless i brak `DISPLAY`/`WAYLAND_DISPLAY` → `QT_QPA_PLATFORM=offscreen`
   + pominięcie kreatora konfiguracji; mod przez IPC do działającego GUI → `ipc_unsupported` + exit 8 (TODO).
 
+## Etap 2 — resource / shader / texture packi (2026-10-19)
+
+Stan: **zrobiony** (build zielony, ctest 28/28, smoke test E2E zielony).
+Branch: `kacperpaczos/spike-resources` (baza: `spike/mod-cli` @ `e6b1adbf8`).
+
+### Commity etapu 2
+
+| commit | treść |
+|---|---|
+| `fix(build): support worktree checkouts in the spike build script` | `containers/spike-build.sh` — montowanie `.git` worktree'a (gitfile wskazuje na ścieżkę bezwzględną poza `/repo`) |
+| `refactor(cli): share the resource helpers between the mod and pack commands` | `launcher/cli/CommandUtils.h/.cpp` — wspólne `sourceName`, `normalizedSlug`, `isoDate`, `resourceToJson`, `loadComponentProfile`, `waitForModel`, `fetchProject`, `fetchProjectVersions`, `matchTarget`, `resolveTargets` |
+| `feat(cli): resource pack commands` | grupa `resource` |
+| `feat(cli): shader pack commands` | grupa `shader` |
+| `feat(cli): texture pack commands` | grupa `texture` |
+| `test(spike): end-to-end smoke test for the pack commands` | `tests/cli/spike-pack-smoke.sh` |
+
+### Zaimplementowana składnia grup packów
+
+Trzy grupy (`resource`, `shader`, `texture`) mają identyczny zestaw podkomend:
+
+```text
+prismlauncher <grupa> list    -i <id> [--include-disabled] [--json]
+prismlauncher <grupa> search  [query] [--mc <v>...] [--limit N] [--offset N] [--json]
+prismlauncher <grupa> info    <project> [-i <id>] [--json]
+prismlauncher <grupa> install <project> -i <id> [--version <v>] [--no-metadata] [-y|--yes] [--json]
+prismlauncher <grupa> remove  <target>... -i <id> [--force] [-y|--yes] [--json]
+prismlauncher <grupa> enable  <target>... -i <id> [-y|--yes] [--json]
+prismlauncher <grupa> disable <target>... -i <id> [-y|--yes] [--json]
+```
+
+- `list` czyta model folderu instancji (`resourcepacks/`, `shaderpacks/`, `texturepacks/`).
+- `search`/`info`/`install` idą do Modrinth (jak w `mod`); `search` ma paginację po 25.
+- `install` zapisuje metadane packwiz (`.index/<slug>.pw.toml`), chyba że podano `--no-metadata`.
+- `remove`/`enable`/`disable` rozwiązują cele w kolejności: nazwa pliku (z lub bez `.disabled`)
+  → slug z metadanych → project id → nazwa wyświetlana; `--force` rozwiązuje niejednoznaczność
+  do wszystkich dopasowań.
+- Raport packa **nie** ma pola `lock_update` (ma je tylko raport moda). Dla resource packów
+  dodatkowo `pack_format` (z `pack.mcmeta`).
+
+### Decyzje zakresowe
+
+- **Brak czasownika `update` dla packów.** `update` wymaga mechaniki `EnsureMetadataTask` +
+  `ModrinthCheckUpdate` + wymiany pliku, a packi nie mają mechanizmu blokowania aktualizacji
+  (`lockUpdate`) ani `affected_by`. Aktualizacja packa = `remove` + `install` nowej wersji,
+  więc w etapie 2 świadomie jej nie ma (dla modów `mod update` istnieje).
+- **Brak rozwiązywania zależności — tylko mody.** `GetModDependenciesTask` dotyczy wyłącznie
+  modów (`mods/`); packi na Modrinth nie deklarują zależności w sposób, który dałoby się
+  rozwiązać (resource/shader packi nie zależą od siebie), więc `install` instaluje dokładnie
+  jeden projekt. Flagi `--no-deps` nie ma w komendach packów.
+- **Texture packi to resource packi w Modrinth.** Modrinth nie ma osobnego typu projektu dla
+  texture packów, więc grupa `texture` szuka i pobiera z typu `resourcepack`, a lokalnie
+  zapisuje do `texturepacks/`.
+- **Tylko Modrinth** — tak jak w etapie 1 (brak CurseForge, Flame, FTB).
+- **Datapacki nadal poza zakresem** (choć są rodzajem `Resource` w launcherze).
+
+### Smoke test
+
+`tests/cli/spike-pack-smoke.sh` — 33 kroki (list → search → info → install → list → disable →
+list → list --include-disabled → enable → info → remove → list + przypadki błędów; potem to samo
+dla shaderów i texture packów). Wymaga sieci (realne API Modrinth), więc **nie jest w ctest**;
+uruchamiany w kontenerze:
+
+```sh
+podman run --rm --security-opt label=disable -v "$PWD":/repo -w /repo -e HOME=/tmp \
+    prism-spike-dev bash tests/cli/spike-pack-smoke.sh
+```
+
+Realne wyniki (przykład z ostatniego przebiegu, 2026-10-19, MC 1.21.1):
+
+| grupa | projekt | wersja | zainstalowany plik |
+|---|---|---|---|
+| resource | `fresh-animations` (Fresh Animations) | 1.11.0 (`KYOqeb1P`) | `FreshAnimations_v1.11_1.20+.zip` |
+| shader | `complementary-reimagined` (Complementary Shaders - Reimagined) | r5.9.3 (`Bqen1mJX`) | `ComplementaryReimagined_r5.9.3.zip` |
+| texture | `cartoon-texture-pack` (Cartoon Texture Pack) | 1.0.11 (`KHKFUGdZ`) | `Cartoon Texture Pack.zip` |
+
+Przebieg: 33/33 kroków zielonych (w tym kody wyjścia 3 dla „nie znaleziono" i „brak instancji").
+
+### Testy jednostkowe
+
+Nowe przypadki są w istniejących binariach testowych (liczba binariów ctest bez zmian — 28/28):
+
+- `tests/CliParser_test.cpp` — parsowanie trzech grup podkomend, walidacja `--limit`/`--offset`,
+  odrzucanie obcego pozycjonalu, `--mc` nie połyka zapytania.
+- `tests/ApplicationMessage_test.cpp` — round-trip `fromCliCommand`/`toCliCommand` dla komend packów.
+- `tests/Regressions_test.cpp` — regresje parsera.
+
 ## Reguły spiKA
 - Rzucalne, ale **nie łamiące legacy flags** ani istniejących testów.
 - Wszystkie zmiany w małych commitach z prefiksem (`feat(cli):`, `chore(build):`).
@@ -120,6 +210,9 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - [x] T4 mod-domain
 - [x] T5 dispatch
 - [x] T6 smoke E2E
+- [x] Etap 2: resource/shader/texture packi — branch `kacperpaczos/spike-resources`
+- [x] Etap 2: build green + ctest 28/28
+- [x] Etap 2: smoke E2E packów (33/33 kroków)
 
 ## Review round 1 (MiniMax): K1-K3 fixed
 - **K1** `fix(cli): headless exit scoped to startup commands` — decyzja „headless i wyjdź" zapada raz,
@@ -277,6 +370,7 @@ Kody wyjścia: 0 ok, 2 użycie (nieznany loader), 3 not-found (instancja/projekt
   ale instalowanie przez CLI nie).
 - Moduły (`coreModList`, `nilModList`) i pozostałe typy zasobów (resource packi, shader packi,
   datapacki, texture packi) nie są obsługiwane — tylko `mods/` instancji.
+  *(To stan etapu 1 — w etapie 2 resource/shader/texture packi są już obsługiwane; datapacki nadal nie.)*
 - `mod search` nie ma sortowania ani filtru po stronie — używa domyślnego sortowania Modrinth.
 - Brak `mod install --version` po `version_number` dla wersji z różnym `fileId` (match po `version_id`,
   `version_number` albo `name`).
