@@ -38,7 +38,6 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
-#include <QTextStream>
 
 #include "Application.h"
 #include "FileSystem.h"
@@ -315,12 +314,9 @@ ExitCode runLogCommand(LogContext& ctx, const Cmd::LogRead& cmd)
     if (!cmd.json) {
         // Without the JSON output the raw lines are written to the standard
         // output, so that they can be piped into another command.
-        QTextStream out(stdout);
-        out.setEncoding(QStringConverter::Utf8);
         for (const auto& entry : lines) {
-            out << entry.toObject().value(QStringLiteral("text")).toString() << Qt::endl;
+            outputLine(entry.toObject().value(QStringLiteral("text")).toString());
         }
-        out.flush();
         return ExitCode::OK;
     }
 

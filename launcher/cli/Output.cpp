@@ -29,6 +29,10 @@
 namespace Cli {
 namespace {
 
+// The sink the output is written to. It is empty by default - the output goes
+// to the standard output then.
+OutputSink g_sink;
+
 // The container/host locale can be plain "C" (ASCII), so the encoding has to be
 // set explicitly - otherwise non-ASCII would be mangled or dropped.
 void writeDocument(const QJsonDocument& doc)
@@ -39,7 +43,25 @@ void writeDocument(const QJsonDocument& doc)
     out.flush();
 }
 
+void writeText(const QString& text)
+{
+    QTextStream out(stdout);
+    out.setEncoding(QStringConverter::Utf8);
+    out << text;
+    out.flush();
+}
+
 }  // namespace
+
+void setOutputSink(OutputSink sink)
+{
+    g_sink = std::move(sink);
+}
+
+bool hasOutputSink()
+{
+    return static_cast<bool>(g_sink.document) || static_cast<bool>(g_sink.text);
+}
 
 void outputJson(const QJsonDocument& doc)
 {
@@ -52,7 +74,34 @@ void outputJson(const QJsonDocument& doc)
 
     QJsonObject envelope = doc.object();
     envelope.insert(QStringLiteral("ok"), true);
-    writeDocument(QJsonDocument(envelope));
+    outputDocument(QJsonDocument(envelope));
+}
+
+void outputDocument(const QJsonDocument& doc)
+{
+    if (g_sink.document) {
+        g_sink.document(doc);
+        return;
+    }
+
+    writeDocument(doc);
+}
+
+void outputText(const QString& text)
+{
+    if (g_sink.text) {
+        g_sink.text(text);
+        return;
+    }
+
+    writeText(text);
+}
+
+void outputLine(const QString& text)
+{
+    // The line break is a part of the text, so that the captured output is
+    // exactly what the standard output would have got.
+    outputText(text + QLatin1Char('\n'));
 }
 
 ExitCode outputError(const QString& code, const QString& message)
@@ -67,13 +116,7 @@ ExitCode outputError(const QString& code, const QString& message, ExitCode exitC
 
 ExitCode outputError(const QString& code, const QString& message, ExitCode exitCode, const QJsonObject& details)
 {
-    QJsonObject error;
-    error.insert(QStringLiteral("code"), code);
-    error.insert(QStringLiteral("message"), message);
-
-    QJsonObject envelope;
-    envelope.insert(QStringLiteral("ok"), false);
-    envelope.insert(QStringLiteral("error"), error);
+    QJsonObject envelope = errorEnvelope(code, message);
     for (auto it = details.constBegin(); it != details.constEnd(); ++it) {
         // The status of the envelope must not be overwritten by the details.
         if (it.key() == QLatin1String("ok") || it.key() == QLatin1String("error")) {
@@ -82,8 +125,46 @@ ExitCode outputError(const QString& code, const QString& message, ExitCode exitC
         envelope.insert(it.key(), it.value());
     }
 
-    writeDocument(QJsonDocument(envelope));
+    outputDocument(QJsonDocument(envelope));
     return exitCode;
+}
+
+QJsonObject errorEnvelope(const QString& code, const QString& message)
+{
+    QJsonObject error;
+    error.insert(QStringLiteral("code"), code);
+    error.insert(QStringLiteral("message"), message);
+
+    QJsonObject envelope;
+    envelope.insert(QStringLiteral("ok"), false);
+    envelope.insert(QStringLiteral("error"), error);
+    return envelope;
+}
+
+OutputCapture::OutputCapture() : m_previous(g_sink)
+{
+    setOutputSink(OutputSink{
+        .document = [this](const QJsonDocument& doc) { m_documents.push_back(doc); },
+        .text = [this](const QString& text) { m_text += text; },
+    });
+}
+
+OutputCapture::~OutputCapture()
+{
+    setOutputSink(m_previous);
+}
+
+QJsonObject OutputCapture::result() const
+{
+    if (!m_documents.empty()) {
+        return m_documents.back().object();
+    }
+
+    QJsonObject result;
+    if (!m_text.isEmpty()) {
+        result.insert(QStringLiteral("text"), m_text);
+    }
+    return result;
 }
 
 }  // namespace Cli

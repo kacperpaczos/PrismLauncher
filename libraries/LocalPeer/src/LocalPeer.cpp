@@ -65,6 +65,79 @@ static PProcessIdToSessionId pProcessIdToSessionId = 0;
 
 static const char* ack = "ack";
 
+namespace {
+
+/// The outcome of a read from the socket.
+enum class ReadResult {
+    Ok,
+    /// The peer closed the connection.
+    Closed,
+    /// The peer did not send anything in time.
+    Timeout,
+};
+
+/// Read exactly `size` bytes from the socket.
+ReadResult readExactly(QLocalSocket& socket, char* buffer, qint64 size, int timeout)
+{
+    qint64 got = 0;
+    while (got < size) {
+        if (socket.bytesAvailable() == 0) {
+            // The data that is already in the buffer does not make
+            // waitForReadyRead return - it waits for *new* data. So the
+            // buffer has to be checked first.
+            if (!socket.waitForReadyRead(timeout)) {
+                if (socket.state() != QLocalSocket::ConnectedState) {
+                    // The peer closed the connection.
+                    return ReadResult::Closed;
+                }
+                return ReadResult::Timeout;
+            }
+        }
+        const qint64 read = socket.read(buffer + got, size - got);
+        if (read <= 0) {
+            // The peer closed the connection.
+            return ReadResult::Closed;
+        }
+        got += read;
+    }
+    return ReadResult::Ok;
+}
+
+/// Read a frame (a length prefixed payload) from the socket.
+ReadResult readFrame(QLocalSocket& socket, QByteArray& payload, int timeout)
+{
+    char lengthBytes[4];
+    const auto lengthResult = readExactly(socket, lengthBytes, 4, timeout);
+    if (lengthResult != ReadResult::Ok) {
+        return lengthResult;
+    }
+
+    // The length is written by QDataStream, which uses the big endian byte
+    // order by default.
+    const quint32 length = (static_cast<quint32>(static_cast<quint8>(lengthBytes[0])) << 24) |
+                           (static_cast<quint32>(static_cast<quint8>(lengthBytes[1])) << 16) |
+                           (static_cast<quint32>(static_cast<quint8>(lengthBytes[2])) << 8) |
+                           static_cast<quint32>(static_cast<quint8>(lengthBytes[3]));
+
+    payload.resize(static_cast<qsizetype>(length));
+    if (length == 0) {
+        return ReadResult::Ok;
+    }
+    return readExactly(socket, payload.data(), length, timeout);
+}
+
+/// The number of milliseconds that are left until the deadline.
+int remainingMs(const std::chrono::steady_clock::time_point& deadline)
+{
+    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
+    if (left <= 0) {
+        return 0;
+    }
+    return static_cast<int>(left);
+}
+
+}  // namespace
+
 ApplicationId ApplicationId::fromTraditionalApp()
 {
     QString protoId = QCoreApplication::applicationFilePath();
@@ -190,6 +263,91 @@ bool LocalPeer::sendMessage(const QByteArray& message, int timeout)
     return true;
 }
 
+LocalPeer::Reply LocalPeer::sendRequest(const QByteArray& message, int timeout, const std::function<bool(const QByteArray&)>& onFrame)
+{
+    if (!isClient()) {
+        return { ReplyStatus::Failed, {} };
+    }
+
+    QLocalSocket socket;
+    bool connOk = false;
+    int tries = 2;
+    for (int i = 0; i < tries; i++) {
+        // Try twice, in case the other instance is just starting up
+        socket.connectToServer(socketName);
+        connOk = socket.waitForConnected(timeout / 2);
+        if (!connOk && i < (tries - 1)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+    }
+    if (!connOk) {
+        return { ReplyStatus::Failed, {} };
+    }
+
+    QDataStream ds(&socket);
+    ds.writeBytes(message.constData(), message.size());
+    socket.flush();
+    if (socket.bytesToWrite() > 0 && !socket.waitForBytesWritten(timeout)) {
+        return { ReplyStatus::Failed, {} };
+    }
+
+    // wait for 'ack'
+    char ackBytes[3];
+    const auto ackResult = readExactly(socket, ackBytes, 3, timeout);
+    if (ackResult != ReadResult::Ok || qstrncmp(ackBytes, ack, 3) != 0) {
+        return { ReplyStatus::Failed, {} };
+    }
+
+    // The peer answers with one or more frames. The first one acknowledges the
+    // request, the last one is the answer itself.
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
+    while (true) {
+        const int left = remainingMs(deadline);
+        if (left <= 0) {
+            return { ReplyStatus::Timeout, {} };
+        }
+
+        QByteArray payload;
+        const auto result = readFrame(socket, payload, left);
+        if (result == ReadResult::Closed) {
+            // The peer closed the connection without answering - it does not
+            // know the request/response protocol.
+            return { ReplyStatus::Unsupported, {} };
+        }
+        if (result == ReadResult::Timeout) {
+            return { ReplyStatus::Timeout, {} };
+        }
+
+        if (!onFrame(payload)) {
+            return { ReplyStatus::Ok, payload };
+        }
+    }
+}
+
+bool LocalPeer::sendReply(quint64 handle, const QByteArray& payload, int timeout)
+{
+    auto socket = m_connections.value(handle, nullptr);
+    if (!socket) {
+        return false;
+    }
+
+    QDataStream ds(socket);
+    ds.writeBytes(payload.constData(), payload.size());
+    socket->flush();
+    if (socket->bytesToWrite() > 0 && !socket->waitForBytesWritten(timeout)) {
+        return false;
+    }
+    return true;
+}
+
+void LocalPeer::removeConnection(quint64 handle)
+{
+    auto socket = m_connections.take(handle);
+    if (socket) {
+        socket->deleteLater();
+    }
+}
+
 void LocalPeer::receiveConnection()
 {
     QLocalSocket* socket = server->nextPendingConnection();
@@ -219,7 +377,12 @@ void LocalPeer::receiveConnection()
     }
     socket->write(ack, qstrlen(ack));
     socket->waitForBytesWritten(1000);
-    socket->waitForDisconnected(1000);  // make sure client reads ack
-    delete socket;
-    emit messageReceived(uMsg);  // ### (might take a long time to return)
+
+    // The connection is kept open, so that the peer can answer a request on
+    // it. It is closed when the peer disconnects.
+    const quint64 handle = ++m_nextHandle;
+    m_connections.insert(handle, socket);
+    connect(socket, &QLocalSocket::disconnected, this, [this, handle]() { removeConnection(handle); });
+
+    emit messageReceived(uMsg, handle);  // ### (might take a long time to return)
 }

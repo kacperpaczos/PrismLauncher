@@ -671,6 +671,9 @@ inline bool allCommandsHeadless(const std::vector<Command>& commands)
 struct Args {
     Startup::DataPathResult dataPath;
     std::vector<Command> commands;
+    /// The number of seconds the client waits for the answer of the already
+    /// running launcher.
+    int ipcTimeout = 300;
     auto operator<=>(const Args&) const = default;
 };
 

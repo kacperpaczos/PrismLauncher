@@ -39,11 +39,14 @@
 ****************************************************************************/
 
 #pragma once
+#include <QHash>
 #include <QObject>
 #include <QString>
+#include <functional>
 #include <memory>
 
 class QLocalServer;
+class QLocalSocket;
 class LockedFile;
 
 class ApplicationId {
@@ -70,14 +73,49 @@ class LocalPeer : public QObject {
     Q_OBJECT
 
    public:
+    /// The outcome of a request that was sent to the peer.
+    enum class ReplyStatus {
+        /// The peer answered.
+        Ok,
+        /// The peer did not answer in time.
+        Timeout,
+        /// The peer closed the connection without answering - it does not
+        /// support the request/response protocol.
+        Unsupported,
+        /// The request could not be delivered at all.
+        Failed,
+    };
+
+    /// The answer of the peer.
+    struct Reply {
+        ReplyStatus status = ReplyStatus::Failed;
+        /// The last frame the peer sent.
+        QByteArray payload;
+    };
+
     LocalPeer(QObject* parent, const ApplicationId& appId);
     ~LocalPeer();
     bool isClient();
     bool sendMessage(const QByteArray& message, int timeout);
+
+    /**
+     * Send a request to the peer and wait for its answer.
+     *
+     * The frames the peer sends are passed to `onFrame` one by one - the
+     * callback returns false when the answer is complete.
+     */
+    Reply sendRequest(const QByteArray& message, int timeout, const std::function<bool(const QByteArray&)>& onFrame);
+
+    /// Send a frame to the peer that sent the request with the given handle.
+    /// The connection is kept open - the peer can send more frames.
+    bool sendReply(quint64 handle, const QByteArray& payload, int timeout);
+
     ApplicationId applicationId() const;
 
    Q_SIGNALS:
-    void messageReceived(const QByteArray& message);
+    /// A message was received. The handle identifies the connection it came
+    /// from - it is the argument of sendReply() when the message is answered.
+    void messageReceived(const QByteArray& message, quint64 handle);
 
    protected Q_SLOTS:
     void receiveConnection();
@@ -87,4 +125,12 @@ class LocalPeer : public QObject {
     QString socketName;
     std::unique_ptr<QLocalServer> server;
     std::unique_ptr<LockedFile> lockFile;
+
+   private:
+    /// Forget the connection of the handle and delete its socket.
+    void removeConnection(quint64 handle);
+
+   private:
+    quint64 m_nextHandle = 0;
+    QHash<quint64, QLocalSocket*> m_connections;
 };

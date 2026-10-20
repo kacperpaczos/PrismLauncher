@@ -44,6 +44,7 @@
 #include <QDebug>
 #include <QFlag>
 #include <QIcon>
+#include <QJsonObject>
 #include <QMutex>
 #include <QUrl>
 
@@ -84,6 +85,7 @@ class MinecraftAccount;
 namespace Cli {
 struct Args;
 struct Command;
+enum class ExitCode;
 }  // namespace Cli
 
 namespace Meta {
@@ -208,7 +210,9 @@ class Application : public QApplication {
 
     static QUrl normalizeImportUrl(const QString& url);
 
-    void processCommands(const std::vector<Cli::Command>& cmds);
+    /// Run the commands and return the exit code of the first one that
+    /// failed.
+    Cli::ExitCode processCommands(const std::vector<Cli::Command>& cmds, bool startup = false);
     void processURIs(QList<QUrl> uris);
 
     void addInstance(const QString& url, const QString& groupName = "", const QMap<QString, QString>& extraInfo = {});
@@ -239,7 +243,9 @@ class Application : public QApplication {
 
    private slots:
     void on_windowClose();
-    void messageReceived(const QByteArray& message);
+    /// A message of the IPC was received. The handle identifies the
+    /// connection it came from - it is used to answer a request.
+    void messageReceived(const QByteArray& message, quint64 handle);
     void controllerFinished();
 
    private:
@@ -254,6 +260,9 @@ class Application : public QApplication {
     void addRunningInstance();
     void subRunningInstance();
     bool shouldExitNow() const;
+
+    /// Answer a request of the IPC that could not be executed.
+    void answerRequest(const QString& requestId, quint64 handle, Cli::ExitCode exitCode, const QJsonObject& envelope);
 
    private:
     QHash<QString, int> m_qsaveResources;

@@ -1652,6 +1652,11 @@ void Cli::attach(CLI::App& app, Args& args)
         ->take_all()
         ->check(CLI::ExistingPath | URLValidator{});
 
+    app.add_option("--ipc-timeout",
+                   args.ipcTimeout,
+                   "Seconds to wait for the answer of the already running launcher (0 for no limit)")
+        ->option_text("seconds");
+
     // app.validate_optional_arguments();
 }
 

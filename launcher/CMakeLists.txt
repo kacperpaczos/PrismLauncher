@@ -803,6 +803,8 @@ SET(LAUNCHER_SOURCES
     cli/Parser.cpp
     cli/Output.h
     cli/Output.cpp
+    cli/Ipc.h
+    cli/Ipc.cpp
     cli/TaskRunner.h
     cli/TaskRunner.cpp
     cli/ModCommands.h

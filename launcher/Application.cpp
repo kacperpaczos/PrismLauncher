@@ -194,6 +194,7 @@
 #include "logging/Debug.h"
 
 #include "cli/Commands.h"
+#include "cli/Ipc.h"
 #include "cli/InstanceCommands.h"
 #include "cli/LogCommands.h"
 #include "cli/ModCommands.h"
@@ -345,12 +346,46 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
             }
             for (const auto& cmd : args.commands) {
                 if (Cli::isHeadlessCommand(cmd)) {
-                    // TODO: forward headless commands to the already running
-                    // instance once the IPC supports it. A GUI instance cannot run
-                    // them through the current fire-and-forget message channel.
-                    auto exitCode = Cli::outputError("ipc_unsupported",
-                                                     "headless commands cannot be forwarded to an already running PrismLauncher instance",
-                                                     Cli::ExitCode::GuiRequired);
+                    // The command is executed by the running launcher - it
+                    // answers with the result of the command. The commands
+                    // that are not headless ones are sent the old way - they
+                    // have no result to report.
+                    const int timeoutMs = args.ipcTimeout > 0 ? args.ipcTimeout * 1000 : std::numeric_limits<int>::max() / 2;
+                    const auto result = Cli::sendCommandToPeer(*m_peerInstance, cmd, timeoutMs);
+
+                    if (result.status == Cli::IpcResult::Status::Ok) {
+                        if (result.rawOutput) {
+                            // The command wrote raw text instead of a JSON
+                            // envelope.
+                            Cli::outputText(result.data.value(QStringLiteral("text")).toString());
+                        } else {
+                            Cli::outputDocument(QJsonDocument(result.data));
+                        }
+                        // C function not Qt function - event loop not started yet
+                        ::std::exit(result.exitCode);
+                    }
+
+                    // The running launcher could not answer the command. An
+                    // old launcher does not know the request/response
+                    // protocol at all - it closes the connection instead of
+                    // answering it.
+                    QString code;
+                    QString message;
+                    switch (result.status) {
+                        case Cli::IpcResult::Status::Timeout:
+                            code = QStringLiteral("ipc_timeout");
+                            message = QStringLiteral("the running PrismLauncher instance did not answer in time");
+                            break;
+                        case Cli::IpcResult::Status::Unsupported:
+                            code = QStringLiteral("ipc_unsupported");
+                            message = QStringLiteral("the running PrismLauncher instance is too old to answer the command");
+                            break;
+                        default:
+                            code = QStringLiteral("ipc_failed");
+                            message = QStringLiteral("the command could not be sent to the running PrismLauncher instance");
+                            break;
+                    }
+                    const auto exitCode = Cli::outputError(code, message, Cli::ExitCode::GuiRequired);
                     // C function not Qt function - event loop not started yet
                     ::std::exit(static_cast<int>(exitCode));
                 }
@@ -1279,10 +1314,10 @@ void Application::performMainStartupAction(const std::vector<Cli::Command>& cmds
     }
 
     // fire as soon as the event loop starts
-    QTimer::singleShot(0, this, [this, cmds] { processCommands(cmds); });
+    QTimer::singleShot(0, this, [this, cmds] { processCommands(cmds, true); });
 }
 
-void Application::processCommands(const std::vector<Cli::Command>& cmds)
+Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds, bool startup)
 {
     QList<QUrl> toProcessURIs{};
 
@@ -1290,7 +1325,7 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
     Cli::ExitCode headlessExitCode = Cli::ExitCode::OK;
     bool stopProcessing = false;
 
-    if (!m_headlessRun && std::ranges::any_of(cmds, Cli::isHeadlessCommand)) {
+    if (startup && !m_headlessRun && std::ranges::any_of(cmds, Cli::isHeadlessCommand)) {
         // Mixed startup run (headless + GUI commands): execute the headless
         // commands in sequence without exiting, so the remaining commands still
         // run. Structured JSON output/exit codes only apply to pure headless
@@ -1519,6 +1554,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         // Runs inside the event loop, so QCoreApplication::exit() is safe.
         QCoreApplication::exit(static_cast<int>(headlessExitCode));
     }
+
+    return headlessExitCode;
 }
 
 void Application::showFatalErrorMessage(const QString& title, const QString& content)
@@ -1534,7 +1571,7 @@ Application::~Application()
     qInstallMessageHandler(nullptr);
 }
 
-void Application::messageReceived(const QByteArray& message)
+void Application::messageReceived(const QByteArray& message, quint64 handle)
 {
     ApplicationMessage received;
     auto res = received.parse(message);
@@ -1543,9 +1580,24 @@ void Application::messageReceived(const QByteArray& message)
         return;
     }
 
+    if (!received.isRequest()) {
+        // The launcher does not expect answers and acknowledgements - they are
+        // the messages of the client.
+        qWarning() << "Received unexpected message of the IPC:" << static_cast<int>(received.type);
+        return;
+    }
+
     auto commandResult = received.toCliCommand();
     if (!commandResult) {
         qWarning() << "Received invalid command:" << commandResult.error();
+        if (received.expectsReply()) {
+            // The client waits for the answer - it has to be told that the
+            // command cannot be executed.
+            answerRequest(received.requestId,
+                          handle,
+                          Cli::ExitCode::Usage,
+                          Cli::errorEnvelope(QStringLiteral("invalid_command"), commandResult.error()));
+        }
         return;
     }
     auto command = commandResult.value();
@@ -1558,11 +1610,48 @@ void Application::messageReceived(const QByteArray& message)
         }
         if (!isLoginAttempt) {
             qDebug() << "Received message" << message << "while still initializing. It will be ignored.";
+            if (received.expectsReply()) {
+                answerRequest(received.requestId,
+                              handle,
+                              Cli::ExitCode::GuiRequired,
+                              Cli::errorEnvelope(QStringLiteral("not_ready"),
+                                                 QStringLiteral("the launcher is still starting up")));
+            }
             return;
         }
     }
 
-    processCommands({ command });
+    if (!received.expectsReply()) {
+        // A message of the first version of the protocol - the client does
+        // not wait for an answer.
+        processCommands({ command });
+        return;
+    }
+
+    // Acknowledge the request first - the client knows then that the running
+    // launcher understands the request and does not treat the silence as an
+    // old launcher.
+    m_peerInstance->sendReply(handle, ApplicationMessage::accepted(received.requestId).serialize(), 1000);
+
+    // The command is executed in the launcher process. Its output is
+    // captured, so that it can be sent back in the response instead of being
+    // printed in the terminal of the launcher.
+    Cli::OutputCapture capture;
+    const auto exitCode = processCommands({ command });
+    const bool rawOutput = capture.isRaw();
+
+    auto response = ApplicationMessage::response(received.requestId,
+                                                 exitCode == Cli::ExitCode::OK,
+                                                 static_cast<int>(exitCode),
+                                                 capture.result());
+    response.rawOutput = rawOutput;
+    m_peerInstance->sendReply(handle, response.serialize(), 5000);
+}
+
+void Application::answerRequest(const QString& requestId, quint64 handle, Cli::ExitCode exitCode, const QJsonObject& envelope)
+{
+    auto response = ApplicationMessage::response(requestId, exitCode == Cli::ExitCode::OK, static_cast<int>(exitCode), envelope);
+    m_peerInstance->sendReply(handle, response.serialize(), 5000);
 }
 
 TranslationsModel* Application::translations()
