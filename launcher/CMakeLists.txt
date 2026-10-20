@@ -811,6 +811,8 @@ SET(LAUNCHER_SOURCES
     cli/PackCommands.cpp
     cli/WorldCommands.h
     cli/WorldCommands.cpp
+    cli/ServerCommands.h
+    cli/ServerCommands.cpp
     cli/CommandUtils.h
     cli/CommandUtils.cpp
 

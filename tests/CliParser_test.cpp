@@ -36,6 +36,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.modCli.flush(args);
     cli.packCli.flush(args);
     cli.worldCli.flush(args);
+    cli.serverCli.flush(args);
     return args;
 }
 
@@ -683,6 +684,68 @@ class CliParserTest : public QObject {
         // a stray positional must not end up in the top level `uri` import
         // option.
         QCOMPARE(parseThrows({ "prismlauncher", "world", "list", "-i", "X", "stray" }), true);
+    }
+
+    void test_serverList()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.ping, false);
+    }
+
+    void test_serverList_ping()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "list", "-i", "X", "--ping" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerList>(args);
+        QCOMPARE(cmd.ping, true);
+    }
+
+    void test_serverAdd()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerAdd>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.name, QString("Hypixel"));
+        QCOMPARE(cmd.address, QString("mc.hypixel.net"));
+        QCOMPARE(cmd.index.has_value(), false);
+        QCOMPARE(cmd.acceptsTextures, Cli::Cmd::AcceptsTextures::Ask);
+    }
+
+    void test_serverAdd_withIndexAndTextures()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net", "-i", "X", "--index", "2",
+                                    "--accepts-textures", "never" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerAdd>(args);
+        QCOMPARE(cmd.index.has_value(), true);
+        QCOMPARE(cmd.index.value(), 2);
+        QCOMPARE(cmd.acceptsTextures, Cli::Cmd::AcceptsTextures::Never);
+    }
+
+    void test_serverAdd_acceptsTexturesIsValidated()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "A", "example.com", "-i", "X", "--accepts-textures", "maybe" }), true);
+    }
+
+    void test_serverRemove()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "remove", "0", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerRemove>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("0"));
+        QCOMPARE(cmd.force, false);
+
+        const auto forced = parseOk({ "prismlauncher", "server", "remove", "Hypixel", "-i", "X", "--force" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ServerRemove>(forced).force, true);
+    }
+
+    void test_serverMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "Hypixel", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "remove", "-i", "X" }), true);
     }
 
     void test_allCommandsHeadless()

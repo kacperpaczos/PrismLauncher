@@ -285,6 +285,39 @@ struct WorldImport {
     auto operator<=>(const WorldImport&) const = default;
 };
 
+// ---- server management (headless) ----
+//
+// The servers of an instance live in its `servers.dat` file. They are
+// addressed by their index in the list or by their name.
+
+/// @brief how a server handles the resource packs of the client
+enum class AcceptsTextures : std::uint8_t { Ask, Always, Never };
+
+struct ServerList {
+    QString instance;
+    bool ping = false;
+    auto operator<=>(const ServerList&) const = default;
+};
+
+struct ServerAdd {
+    QString instance;
+    QString name;
+    QString address;
+    /// The position of the new server in the list - it is appended when it is
+    /// past the end of the list.
+    std::optional<int> index;
+    AcceptsTextures acceptsTextures = AcceptsTextures::Ask;
+    auto operator<=>(const ServerAdd&) const = default;
+};
+
+struct ServerRemove {
+    QString instance;
+    /// The index of the server or its name.
+    QString target;
+    bool force = false;
+    auto operator<=>(const ServerRemove&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -312,7 +345,10 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::WorldCopy,
                                  Cmd::WorldRename,
                                  Cmd::WorldDelete,
-                                 Cmd::WorldImport>;
+                                 Cmd::WorldImport,
+                                 Cmd::ServerList,
+                                 Cmd::ServerAdd,
+                                 Cmd::ServerRemove>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -330,7 +366,8 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::PackDisable>(cmd) || std::holds_alternative<Cmd::WorldList>(cmd) ||
            std::holds_alternative<Cmd::WorldInfo>(cmd) || std::holds_alternative<Cmd::WorldCopy>(cmd) ||
            std::holds_alternative<Cmd::WorldRename>(cmd) || std::holds_alternative<Cmd::WorldDelete>(cmd) ||
-           std::holds_alternative<Cmd::WorldImport>(cmd);
+           std::holds_alternative<Cmd::WorldImport>(cmd) || std::holds_alternative<Cmd::ServerList>(cmd) ||
+           std::holds_alternative<Cmd::ServerAdd>(cmd) || std::holds_alternative<Cmd::ServerRemove>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

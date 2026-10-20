@@ -225,6 +225,22 @@ static char* toString(const Args& args)
             return QStringLiteral("WorldImport{ instance: \"%1\", path: \"%2\", name: \"%3\" }")
                 .arg(worldImport.instance, worldImport.path, worldImport.name.value_or(QString()));
         }
+        QString operator()(const ServerList& serverList)
+        {
+            return QStringLiteral("ServerList{ instance: \"%1\", ping: %2 }")
+                .arg(serverList.instance, QString::number(serverList.ping));
+        }
+        QString operator()(const ServerAdd& serverAdd)
+        {
+            return QStringLiteral("ServerAdd{ instance: \"%1\", name: \"%2\", address: \"%3\", index: %4 }")
+                .arg(serverAdd.instance, serverAdd.name, serverAdd.address)
+                .arg(serverAdd.index.has_value() ? QString::number(*serverAdd.index) : QStringLiteral("none"));
+        }
+        QString operator()(const ServerRemove& serverRemove)
+        {
+            return QStringLiteral("ServerRemove{ instance: \"%1\", target: \"%2\", force: %3 }")
+                .arg(serverRemove.instance, serverRemove.target, QString::number(serverRemove.force));
+        }
     } cmdVisitor;
 
     QStringList cmds{};

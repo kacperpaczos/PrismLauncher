@@ -783,6 +783,95 @@ void WorldCli::flush(Args& args) const
     }
 }
 
+void ServerCli::addServerArgs(CLI::App& app)
+{
+    server = app.add_subcommand("server", "Manage the servers of an instance.");
+    server->require_subcommand();
+    // Let global options (e.g. `-d/--dir`) appear after the `server` subcommand
+    // (and its subcommands keep their own fallthrough below).
+    server->fallthrough();
+
+    {
+        // server list -i <instance> [--ping] [--json]
+        auto* list = server->add_subcommand("list", "List the servers of an instance.");
+        addInstanceOption(list, listInstance, /*required=*/true);
+        list->add_flag("--ping", listPing, "Query the number of the players of every server.");
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // server add <name> <address> -i <instance> [--index N] [--accepts-textures <mode>] [--json]
+        auto* add = server->add_subcommand("add", "Add a server to an instance.");
+        add->add_option("name", addName, "Name of the server.")->option_text("name")->required();
+        add->add_option("address", addAddress, "Address of the server.")->option_text("address")->required();
+        addInstanceOption(add, addInstance, /*required=*/true);
+        addIndex = add->add_option("--index", addIndexValue, "Position of the server in the list (appended when it is past the end).")
+                       ->option_text("N")
+                       ->check(CLI::Range(0, 1000));
+        add->add_option("--accepts-textures", addAcceptsTextures, "How the server handles the resource packs of the client.")
+            ->option_text("mode")
+            ->check(CLI::IsMember({ "ask", "always", "never" }))
+            ->default_str("ask");
+        addJsonFlag(add);
+        add->fallthrough();
+    }
+
+    {
+        // server remove <target> -i <instance> [--force] [--json]
+        auto* remove = server->add_subcommand("remove", "Remove a server from an instance.");
+        remove->add_option("target", removeTarget, "Index or name of the server.")->option_text("target")->required();
+        addInstanceOption(remove, removeInstance, /*required=*/true);
+        remove->add_flag("--force", removeForce, "Remove every server with the name instead of reporting an ambiguity.");
+        addJsonFlag(remove);
+        remove->fallthrough();
+    }
+
+    rejectStrayPositionals(*server, app, "server", "server");
+}
+
+void ServerCli::flush(Args& args) const
+{
+    if (server == nullptr || !server->parsed()) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = server->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("list")) {
+        Cmd::ServerList cmd;
+        cmd.instance = QString::fromStdString(listInstance);
+        cmd.ping = listPing;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("add")) {
+        Cmd::ServerAdd cmd;
+        cmd.instance = QString::fromStdString(addInstance);
+        cmd.name = QString::fromStdString(addName);
+        cmd.address = QString::fromStdString(addAddress);
+        if (addIndex != nullptr && addIndex->count() > 0) {
+            cmd.index = QString::fromStdString(addIndexValue).toInt();
+        }
+        const auto acceptsTextures = QString::fromStdString(addAcceptsTextures);
+        if (acceptsTextures == QLatin1String("always")) {
+            cmd.acceptsTextures = Cmd::AcceptsTextures::Always;
+        } else if (acceptsTextures == QLatin1String("never")) {
+            cmd.acceptsTextures = Cmd::AcceptsTextures::Never;
+        } else {
+            cmd.acceptsTextures = Cmd::AcceptsTextures::Ask;
+        }
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("remove")) {
+        Cmd::ServerRemove cmd;
+        cmd.instance = QString::fromStdString(removeInstance);
+        cmd.target = QString::fromStdString(removeTarget);
+        cmd.force = removeForce;
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -829,6 +918,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) world management
     worldCli.addWorldArgs(app);
+
+    // subcommand based (headless) server management
+    serverCli.addServerArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -896,6 +988,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // ...and for the `world` subcommand
     cli.worldCli.flush(args);
+
+    // ...and for the `server` subcommand
+    cli.serverCli.flush(args);
 }
 
 }  // namespace Cli

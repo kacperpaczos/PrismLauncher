@@ -208,11 +208,39 @@ struct WorldCli {
     void flush(Args& args) const;
 };
 
+/// `server` subcommand group. The options are bound to plain members here and
+/// turned into `Cmd::Server*` commands by `flush()` after a successful parse -
+/// this keeps the CLI11 declarations free of ordering assumptions.
+struct ServerCli {
+    CLI::App* server{};
+
+    // server list
+    std::string listInstance;
+    bool listPing = false;
+
+    // server add
+    std::string addName;
+    std::string addAddress;
+    std::string addInstance;
+    CLI::Option* addIndex{};
+    std::string addIndexValue;
+    std::string addAcceptsTextures;
+
+    // server remove
+    std::string removeTarget;
+    std::string removeInstance;
+    bool removeForce = false;
+
+    void addServerArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
     PackCli packCli{};
     WorldCli worldCli{};
+    ServerCli serverCli{};
 
     void attach(CLI::App& app, Args& args);
 };

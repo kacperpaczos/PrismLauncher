@@ -78,6 +78,33 @@ std::vector<QString> splitStringList(const QString& value)
     return out;
 }
 
+/// The name of the way a server handles the resource packs in the IPC
+/// encoding.
+QString acceptsTexturesToArg(Cli::Cmd::AcceptsTextures value)
+{
+    switch (value) {
+        case Cli::Cmd::AcceptsTextures::Always:
+            return QStringLiteral("always");
+        case Cli::Cmd::AcceptsTextures::Never:
+            return QStringLiteral("never");
+        case Cli::Cmd::AcceptsTextures::Ask:
+            break;
+    }
+    return QStringLiteral("ask");
+}
+
+/// The way a server handles the resource packs. An unknown value asks.
+Cli::Cmd::AcceptsTextures acceptsTexturesFromArg(const QString& value)
+{
+    if (value == QLatin1String("always")) {
+        return Cli::Cmd::AcceptsTextures::Always;
+    }
+    if (value == QLatin1String("never")) {
+        return Cli::Cmd::AcceptsTextures::Never;
+    }
+    return Cli::Cmd::AcceptsTextures::Ask;
+}
+
 /// The name of a pack group in the IPC encoding.
 QString packGroupToArg(Cli::Cmd::PackGroup group)
 {
@@ -477,6 +504,46 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return cmd;
     }
 
+    // ServerList
+    if (command == "server_list") {
+        const QString notFoundMsg = "missing `%1` for server_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ServerList{
+            .instance = instance,
+            .ping = argToBool(args.value("ping")),
+        };
+    }
+
+    // ServerAdd
+    if (command == "server_add") {
+        const QString notFoundMsg = "missing `%1` for server_add command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto name, Try::findByMapKey(args, "name", notFoundMsg));
+        TRY_INTO(auto address, Try::findByMapKey(args, "address", notFoundMsg));
+        Cli::Cmd::ServerAdd cmd{
+            .instance = instance,
+            .name = name,
+            .address = address,
+            .acceptsTextures = acceptsTexturesFromArg(args.value("acceptsTextures")),
+        };
+        if (args.contains("index")) {
+            cmd.index = args.value("index").toInt();
+        }
+        return cmd;
+    }
+
+    // ServerRemove
+    if (command == "server_remove") {
+        const QString notFoundMsg = "missing `%1` for server_remove command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        return Cli::Cmd::ServerRemove{
+            .instance = instance,
+            .target = target,
+            .force = argToBool(args.value("force")),
+        };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -713,6 +780,30 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             if (worldImport.name.has_value()) {
                 message.args.insert("name", *worldImport.name);
             }
+        }
+        void operator()(const Cli::Cmd::ServerList& serverList)
+        {
+            message.command = "server_list";
+            message.args.insert("instance", serverList.instance);
+            message.args.insert("ping", boolToArg(serverList.ping));
+        }
+        void operator()(const Cli::Cmd::ServerAdd& serverAdd)
+        {
+            message.command = "server_add";
+            message.args.insert("instance", serverAdd.instance);
+            message.args.insert("name", serverAdd.name);
+            message.args.insert("address", serverAdd.address);
+            if (serverAdd.index.has_value()) {
+                message.args.insert("index", QString::number(*serverAdd.index));
+            }
+            message.args.insert("acceptsTextures", acceptsTexturesToArg(serverAdd.acceptsTextures));
+        }
+        void operator()(const Cli::Cmd::ServerRemove& serverRemove)
+        {
+            message.command = "server_remove";
+            message.args.insert("instance", serverRemove.instance);
+            message.args.insert("target", serverRemove.target);
+            message.args.insert("force", boolToArg(serverRemove.force));
         }
     } serializer{};
 

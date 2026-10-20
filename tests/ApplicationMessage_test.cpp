@@ -385,6 +385,53 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedNamed == withName);
     }
 
+    void test_serverList()
+    {
+        const Cli::Cmd::ServerList cmd{
+            .instance = QStringLiteral("My Instance"),
+            .ping = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_serverAdd()
+    {
+        const Cli::Cmd::ServerAdd withoutIndex{
+            .instance = QStringLiteral("My Instance"),
+            .name = QStringLiteral("Hypixel"),
+            .address = QStringLiteral("mc.hypixel.net"),
+            .acceptsTextures = Cli::Cmd::AcceptsTextures::Never,
+        };
+        const auto decoded = roundTrip(withoutIndex);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutIndex);
+
+        const Cli::Cmd::ServerAdd withIndex{
+            .instance = QStringLiteral("My Instance"),
+            .name = QStringLiteral("Hypixel"),
+            .address = QStringLiteral("mc.hypixel.net"),
+            .index = 3,
+            .acceptsTextures = Cli::Cmd::AcceptsTextures::Always,
+        };
+        const auto decodedIndexed = roundTrip(withIndex);
+        QVERIFY(decodedIndexed.has_value());
+        QVERIFY(*decodedIndexed == withIndex);
+    }
+
+    void test_serverRemove()
+    {
+        const Cli::Cmd::ServerRemove cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("0"),
+            .force = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with
