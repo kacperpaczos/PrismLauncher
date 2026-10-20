@@ -314,6 +314,8 @@ set(MINECRAFT_SOURCES
     minecraft/WorldList.cpp
     minecraft/WorldTasks.h
     minecraft/WorldTasks.cpp
+    minecraft/ServersDat.h
+    minecraft/ServersDat.cpp
 
     minecraft/mod/MetadataHandler.h
     minecraft/mod/Mod.h

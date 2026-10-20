@@ -87,3 +87,6 @@ ecm_add_test(ApplicationMessage_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VE
 
 ecm_add_test(Regressions_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME RegressionTests)
+
+ecm_add_test(ServersDat_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME ServersDat)
