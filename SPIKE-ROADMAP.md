@@ -3,8 +3,11 @@
 > Cel spiKA: **pełne zarządzanie modami z konsoli** — `prism mod list|search|info|install|remove|enable|disable|update`
 > — działające headless (bez GUI, platforma offscreen), z wyjściem JSON i kodami wyjścia.
 > Baza: gałąź `cli_rebirth` (PR #6193, Ryex), pin **`059625c8b89509fe5180384fd9db8432512e93a7`**.
-> To jest SPIKE — poza zakresem: resource/shader/world/server/log/screenshot/notes/version/settings,
+> To jest SPIKE — poza zakresem: resource/shader/world/server/log/screenshot/notes,
 > IPC v2, pełny split initCore/initGui, CurseForge. Pełny plan: sesja Plan (Faza 0–6).
+>
+> **Etap A (2026-10-20)** rozszerza spiKA o grupy `instance`, `settings` i `version`
+> (zarządzanie instancjami, ustawieniami instancji i komponentami profilu).
 
 ## Kolejność prac (sekwencyjnie, per podagent)
 
@@ -120,6 +123,9 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - [x] T4 mod-domain
 - [x] T5 dispatch
 - [x] T6 smoke E2E
+- [x] Etap A: `instance` (list, info, create, duplicate, rename, delete, icon)
+- [x] Etap A: `settings` (list, get, set, unset)
+- [x] Etap A: `version` (show, list-available, change-mc, install-loader, remove-loader, reinstall)
 
 ## Review round 1 (MiniMax): K1-K3 fixed
 - **K1** `fix(cli): headless exit scoped to startup commands` — decyzja „headless i wyjdź" zapada raz,
@@ -301,3 +307,133 @@ z `--force`), ale w headless zmianie nie zostanie wywołany — przyjęte i zaak
 - `mod search` nie ma sortowania ani filtru po stronie — używa domyślnego sortowania Modrinth.
 - Brak `mod install --version` po `version_number` dla wersji z różnym `fileId` (match po `version_id`,
   `version_number` albo `name`).
+
+## Etap A — instancje, ustawienia, wersje (2026-10-20)
+
+Pełna obsługa instancji z konsoli: `instance`, `settings` i `version`. Wzorzec
+(`Commands.h` → `Parser.cpp` → `*Commands.cpp` → JSON przez `Output`) skopiowany
+z grupy `mod`.
+
+### Commity
+| commit | treść |
+|---|---|
+| `feat(cli): instance list and info` | `list` + `info` (z poprzedniego przebiegu) |
+| `feat(cli): instance create, duplicate, rename, delete and icon` | `create` (vanilla + `--from`), `duplicate`, `rename`, `delete`, `icon set` |
+| `fix(cli): do not start a task that is already running` | `runTaskSync` nie woła `start()` na zadaniu, które launcher już uruchomił |
+| `feat(cli): settings get, set, unset and list` | kurated schema ustawień instancji |
+| `feat(cli): version show, list-available and the loader commands` | komponenty instancji, metadane, zmiana MC, loadery |
+| `fix(cli): look for the jar of Minecraft in the cache of the launcher` | weryfikacja pobranych plików szukała złej ścieżki |
+| `test(spike): end-to-end instance, settings and version smoke test` | `tests/cli/spike-instance-smoke.sh` |
+
+### Zaimplementowana składnia
+
+```
+prismlauncher instance list    [--group <g>]
+prismlauncher instance info    <id>
+prismlauncher instance create  --name <n> --mc <ver> [--loader fabric|forge|neoforge|quilt|none]
+                               [--loader-version <v>|latest] [--group <g>] [--icon <key|file>]
+                               [--download|--no-download]
+prismlauncher instance create  --from <url|file>
+prismlauncher instance duplicate <id> [--name <n>] [--copy|--links|--hardlinks|--clone]
+                               [--no-saves|--no-mods|--no-resource-packs|--no-shader-packs|--no-options|--no-configs]
+prismlauncher instance rename  <id> <new-name> [--keep-folder|--rename-folder]
+prismlauncher instance delete  <id> [--purge]
+prismlauncher instance icon    set <id> <key|file>
+
+prismlauncher settings list    <id> [--all|--modified]
+prismlauncher settings get     <id> <key>...
+prismlauncher settings set     <id> <key>=<value>...
+prismlauncher settings unset   <id> <key>...
+
+prismlauncher version show     <id>
+prismlauncher version list-available [--mc] [--loader fabric|forge|neoforge|quilt]
+                                      [--mc-version <v>] [--type release|snapshot|all]
+prismlauncher version change-mc <id> <version>
+prismlauncher version install-loader <id> <loader> <version|latest>
+                                    [--force-conflict keep|disable|replace]
+prismlauncher version remove-loader <id> <loader>
+prismlauncher version reinstall <id>
+```
+
+### Kształt JSON-a (przykłady realne)
+
+- `instance list` → `{"ok":true,"total":1,"instances":[…]}`
+  - instancja: `{"id":"spike-test","name":"spike-test","path":"…","group":"","mc_version":"1.21.1",
+    "loader":"fabric","loader_uid":"net.fabricmc.fabric-loader","loader_version":"0.20.1",
+    "icon_key":"default","last_played":null,"total_time_played":0,"managed_pack":null,"running":null}`
+- `instance info` → `{"ok":true,"instance":{…,"game_root":"…","instance_root":"…","mods_root":"…",
+  "uuid":"…","instance_type":"OneSix","components":[…]}}`
+- `instance create` → `{"ok":true,"id":"…","name":"…","path":"…","mc_version":"1.21.1",
+  "loader":"fabric","loader_version":"0.20.1","downloaded":true}`
+- `instance rename` → `{"ok":true,"old_id":"…","new_id":"…","old_name":"…","name":"…","folder_renamed":true}`
+- `instance delete` → `{"ok":true,"id":"…","path":"…","method":"trash|delete","purged":false}`
+- `settings list|get|set|unset` → `{"ok":true,"instance":"…","total":N,"settings":[…]}`
+  - ustawienie: `{"key":"memory.max","value":8192,"type":"int","source":"instance|global|default",
+    "overridden":true,"ini_key":"MaxMemAlloc","gate":"OverrideMemory"}`
+- `version show` → `{"ok":true,"instance":"…","mc_version":"1.21.1","loader":"fabric","loader_version":"0.20.1",
+  "total":4,"components":[…]}`
+  - komponent: `{"uid":"net.minecraft","name":"Minecraft","version":"1.21.1","important":true,
+    "enabled":true,"custom":false,"removable":false,"version_changeable":true}`
+- `version list-available` → `{"ok":true,"uid":"net.minecraft","type":"release","total":103,
+  "versions":[{"version":"1.21.1","type":"release","date":"…"}]}`
+- `version install-loader` → `{"ok":true,"loader":"quilt","uid":"org.quiltmc.quilt-loader",
+  "loader_version":"0.31.0-beta.4","mc_version":"1.21.1","conflicts":[{"uid":"…","action":"disabled|kept|removed"}]}`
+- błędy → `{"ok":false,"error":{"code":"…","message":"…"}}` (+ `known_keys` dla `unknown_setting`)
+
+Kody wyjścia: 0 ok, 2 użycie (nieznany klucz ustawienia, nieznany loader, zły typ wartości,
+min>max RAM), 3 not-found (instancja, wersja MC, wersja loadera, ikona, loader w instancji),
+4 konflikt (weryfikacja pobranych plików), 5 niejednoznaczność / `not_removable`, 7 sieć.
+
+### Odstępstwa od briefu
+
+- **`settings unset` resetuje też flagę grupy.** Brief: „`unset` = `settings()->reset(key)` (+ gate reset)".
+  Reset flagi oznacza, że cała grupa (np. `OverrideMemory`) wraca do wartości globalnych — nie
+  tylko resetowany klucz. Resetowanie samej wartości nie dałoby efektu, bo `OverrideSetting::get()`
+  i tak zwraca wartość globalną, gdy flaga jest wyłączona.
+- **Launcher zapisuje tylko wartości, które się zmieniły** (`Setting::set` emituje sygnał tylko
+  przy zmianie). Ustawienie wartości równej globalnej nie zapisuje się więc w `instance.cfg` —
+  dokładnie tak, jak w widoku ustawień GUI. Wartość i tak jest efektywna, ale przy późniejszej
+  zmianie globalnej instancja pójdzie za nią. Testy używają wartości różnych od domyślnych.
+- **`version remove-loader` na loaderze nieusuwalnym → exit 5** (zgodnie z briefem), choć kod 5
+  w ogólnym schemacie oznacza „niejednoznaczność"; komunikat ma jasny kod `not_removable`.
+- **`version install-loader` z `latest`** bierze najnowszą wersję loadera, która obsługuje wersję
+  Minecraft *instancji* (a nie najnowszą w ogóle) — Fabric i Quilt nie mają w metadanych wymagania
+  wersji MC, więc dla nich filtr to „MC >= 1.14".
+- **`instance create --from` używa `InstanceImportTask`** (z `setConfirmUpdate(false)`), a nie
+  `ModrinthInstanceCreationTask` — `InstanceImportTask` obsługuje zarówno pliki, jak i adresy URL
+  (Modrinth, CurseForge, packi spoza społeczności) i nie wymaga połączenia z API.
+- **`settings` ma kurated schema** (34 klucze). `instance.cfg` ma ich więcej; pozostałe są widoczne
+  tylko z `--all` (20 dodatkowych kluczy). Sterowanie kluczami spoza schematu (np. `ExportName`)
+  nie jest obsługiwane.
+- **Zmienne środowiskowe** (`Env`) to jeden JSON-owy obiekt w `instance.cfg`, więc w CLI ma swoją
+  składnię: `env.NAME=value` (get/unset po `env.NAME`).
+- **`version change-mc` resetuje `UseLatestMinecraftVersion`** i (gdy globalne `AutomaticJavaSwitch`
+  i instancyjne `AutomaticJava` są włączone) `OverrideJavaLocation` — dokładnie jak strona wersji
+  w GUI.
+- **Weryfikacja pobranych plików** szuka jar-a Minecraft w cache launchera (`libraries/`), a nie w
+  katalogu bibliotek instancji — tam go nie ma (błąd znaleziony i naprawiony w trakcie implementacji).
+- **`runTaskSync` nie uruchamia zadania drugi raz.** `PackProfile::resolve()` już startuje zadanie,
+  a `Task::start()` na uruchomionym zadaniu kończy proces asercją `ASSERT: (isRunning()) == false`.
+
+### Znane ograniczenia
+
+- **Ochrona uruchomionej instancji jest nieosiągalna** — tak samo jak w komendach `mod`: `isRunning()`
+  żyje w procesie GUI, a CLI to osobny proces. Guard jest zaimplementowany (`instance_running`,
+  exit 4), ale nie zostanie wywołany.
+- **`settings` nie obejmuje ustawień paczki** (packwiz), globalnych ustawień launchera ani
+  ustawień konta — tylko ustawienia instancji.
+- **`version change-mc` i `version install-loader` potrzebują sieci** — bez niej kończą się kodem 7.
+  `version show` i `settings` działają bez sieci (rozwiązywanie komponentów działa offline, ale
+  wersje komponentów wtedy pochodzą z profilu, a nie z metadanych).
+- **Rozwiązywanie komponentów offline kończy się błędem** w logu (`ComponentUpdateTask failed`),
+  bo metadane nie są dostępne — to zachowanie launchera, nie komendy.
+- **`instance delete` używa kosza**, jeśli jest dostępny (na maszynie bez pulpitu pliki są usuwane).
+- **`instance rename` odmawia**, gdy instancja ma powiązane instancje — GUI pyta wtedy użytkownika,
+  a proces headless nie może zadać pytania.
+- **`version show` nie zgłasza problemów komponentów** (`Component::getProblems`) — tylko ich stan.
+
+### Ograniczenia (dalsze)
+- `version list-available` bez `--loader` listuje wersje Minecraft; wersje snapshot są odfiltrowane
+  flagą `--type` (domyślnie `all`).
+- Loadery `liteloader` nie są obsługiwane przez CLI (launcher zna tylko `fabric`, `forge`,
+  `neoforge`, `quilt`).
