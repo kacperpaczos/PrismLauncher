@@ -52,6 +52,7 @@
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/MinecraftLoadAndCheck.h"
 #include "minecraft/PackProfile.h"
+#include "net/HttpMetaCache.h"
 #include "minecraft/VanillaInstanceCreationTask.h"
 #include "net/Mode.h"
 #include "tasks/SequentialTask.h"
@@ -101,7 +102,7 @@ QString resolveIconKey(ModContext& ctx, const QString& icon, QString* installedF
  * here: the components of the instance have to be resolved and the jar of
  * the Minecraft version has to be downloaded.
  */
-ExitCode verifyInstanceFiles(MinecraftInstance* instance)
+ExitCode verifyInstanceFiles(ModContext& ctx, MinecraftInstance* instance)
 {
     auto* profile = instance->getPackProfile();
     if (!profile) {
@@ -125,12 +126,19 @@ ExitCode verifyInstanceFiles(MinecraftInstance* instance)
     }
 
     // The jar of the Minecraft version is downloaded into the shared library
-    // directory of the launcher.
+    // directory of the launcher, so the path of the file is the one of the
+    // cache of the launcher.
     auto mainJar = launch->getMainJar();
     if (mainJar) {
         const auto storage = mainJar->rawName().toPath(mainJar->filename(instance->runtimeContext()));
-        const auto path = FS::PathCombine(instance->getLocalLibraryPath(), storage);
-        if (!QFileInfo::exists(path)) {
+        auto* cache = ctx.app.metacache();
+        if (!cache) {
+            return outputError(QStringLiteral("verification_failed"),
+                               QStringLiteral("The launcher has no cache for the files of the libraries"),
+                               ExitCode::Conflict);
+        }
+        const auto entry = cache->resolveEntry(QStringLiteral("libraries"), storage);
+        if (!entry || !QFileInfo::exists(entry->getFullPath())) {
             return outputError(QStringLiteral("verification_failed"),
                                QStringLiteral("The files of the Minecraft version '%1' were not downloaded").arg(mcVersion),
                                ExitCode::Conflict);
@@ -143,7 +151,7 @@ ExitCode verifyInstanceFiles(MinecraftInstance* instance)
 /**
  * Download the files of an instance and check that the instance loads.
  */
-ExitCode downloadInstanceFiles(MinecraftInstance* instance, ExitCode failureCode)
+ExitCode downloadInstanceFiles(ModContext& ctx, MinecraftInstance* instance, ExitCode failureCode)
 {
     auto task = makeShared<SequentialTask>(QStringLiteral("Download the files of the instance"));
     task->addTask(makeShared<MinecraftLoadAndCheck>(instance, Net::Mode::Online));
@@ -163,7 +171,7 @@ ExitCode downloadInstanceFiles(MinecraftInstance* instance, ExitCode failureCode
     // failures, so the result is verified here: the components of the
     // instance have to be resolved and the files of the instance have to be
     // there.
-    if (auto code = verifyInstanceFiles(instance); code != ExitCode::OK) {
+    if (auto code = verifyInstanceFiles(ctx, instance); code != ExitCode::OK) {
         return code;
     }
     return ExitCode::OK;
@@ -387,7 +395,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
     }
 
     if (cmd.download) {
-        if (auto code = downloadInstanceFiles(instance, ExitCode::Conflict); code != ExitCode::OK) {
+        if (auto code = downloadInstanceFiles(ctx, instance, ExitCode::Conflict); code != ExitCode::OK) {
             return code;
         }
     }
