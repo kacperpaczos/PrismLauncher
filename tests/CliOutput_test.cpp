@@ -146,6 +146,108 @@ class CliOutputTest : public QObject {
         QVERIFY(ok);
         QCOMPARE(root.value("error").toObject().value("message").toString(), message);
     }
+
+    void test_outputSink_captureDocuments()
+    {
+        const QByteArray raw = captureStdout([] {
+            Cli::OutputCapture capture;
+
+            QJsonObject first;
+            first.insert("n", 1);
+            Cli::outputDocument(QJsonDocument(first));
+
+            QJsonObject second;
+            second.insert("n", 2);
+            Cli::outputDocument(QJsonDocument(second));
+
+            Cli::outputError("not_found", "nope", Cli::ExitCode::NotFound);
+
+            // The output of the command is captured, not printed - the
+            // terminal of the launcher stays clean when it serves the IPC.
+            QCOMPARE(Cli::hasOutputSink(), true);
+            QCOMPARE(capture.documents().size(), 3);
+            QCOMPARE(capture.isRaw(), false);
+            // The result is the last document - the envelope of the command.
+            QCOMPARE(capture.result().value("ok").toBool(), false);
+            QCOMPARE(capture.result().value("error").toObject().value("code").toString(), QString("not_found"));
+            QCOMPARE(capture.documents().at(1).object().value("n").toInt(), 2);
+        });
+
+        // Nothing leaked to the standard output while the capture was alive.
+        QVERIFY(raw.isEmpty());
+    }
+
+    void test_outputSink_captureRawText()
+    {
+        const QByteArray raw = captureStdout([] {
+            Cli::OutputCapture capture;
+
+            Cli::outputText("hello ");
+            Cli::outputLine("world");
+
+            QCOMPARE(capture.isRaw(), true);
+            QCOMPARE(capture.result().value("text").toString(), QString("hello world\n"));
+        });
+
+        QVERIFY(raw.isEmpty());
+    }
+
+    void test_outputSink_captureTruncatesHugeText()
+    {
+        const QByteArray raw = captureStdout([] {
+            Cli::OutputCapture capture;
+
+            QString huge(1024 * 1024 + 4096, QLatin1Char('x'));
+            Cli::outputText(huge);
+
+            // The cap keeps a huge `log read` from ballooning the IPC frame.
+            QCOMPARE(capture.result().value("truncated").toBool(), true);
+            QCOMPARE(capture.result().value("text").toString().size(), qsizetype{ 1024 * 1024 });
+        });
+
+        QVERIFY(raw.isEmpty());
+    }
+
+    void test_outputSink_restoredAfterScope()
+    {
+        const QByteArray raw = captureStdout([] {
+            {
+                Cli::OutputCapture capture;
+                Cli::outputText("captured");
+            }
+
+            // The scope is over - the standard output works again.
+            QCOMPARE(Cli::hasOutputSink(), false);
+
+            QJsonObject data;
+            data.insert("value", 42);
+            Cli::outputJson(QJsonDocument(data));
+        });
+
+        bool ok = false;
+        const QJsonObject root = parseObject(raw, &ok);
+        QVERIFY(ok);
+        QCOMPARE(root.value("ok").toBool(), true);
+        QCOMPARE(root.value("value").toInt(), 42);
+    }
+
+    void test_outputSink_nestedCaptureRestoresPrevious()
+    {
+        captureStdout([] {
+            Cli::OutputCapture outer;
+            {
+                Cli::OutputCapture inner;
+                QCOMPARE(Cli::hasOutputSink(), true);
+                Cli::outputText("inner");
+                QCOMPARE(inner.result().value("text").toString(), QString("inner"));
+                QCOMPARE(outer.result().value("text").toString(), QString());
+            }
+            // The inner capture restored the outer one, not the stdout.
+            QCOMPARE(Cli::hasOutputSink(), true);
+            Cli::outputText("outer");
+            QCOMPARE(outer.result().value("text").toString(), QString("outer"));
+        });
+    }
 };
 
 QTEST_GUILESS_MAIN(CliOutputTest)
