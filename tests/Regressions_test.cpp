@@ -200,6 +200,36 @@ static char* toString(const Args& args)
             return QStringLiteral("SettingsUnset{ id: \"%1\", keys: [%2] }")
                 .arg(settingsUnset.id, joinForTest(settingsUnset.keys));
         }
+        QString operator()(const VersionShow& versionShow)
+        {
+            return QStringLiteral("VersionShow{ id: \"%1\" }").arg(versionShow.id);
+        }
+        QString operator()(const VersionListAvailable& versionListAvailable)
+        {
+            return QStringLiteral("VersionListAvailable{ loader: \"%1\", mcVersion: \"%2\", type: \"%3\" }")
+                .arg(versionListAvailable.loader.value_or(QString()), versionListAvailable.mcVersion.value_or(QString()),
+                     versionListAvailable.type);
+        }
+        QString operator()(const VersionChangeMc& versionChangeMc)
+        {
+            return QStringLiteral("VersionChangeMc{ id: \"%1\", version: \"%2\" }")
+                .arg(versionChangeMc.id, versionChangeMc.version);
+        }
+        QString operator()(const VersionInstallLoader& versionInstallLoader)
+        {
+            return QStringLiteral("VersionInstallLoader{ id: \"%1\", loader: \"%2\", version: \"%3\", forceConflict: \"%4\" }")
+                .arg(versionInstallLoader.id, versionInstallLoader.loader, versionInstallLoader.version,
+                     versionInstallLoader.forceConflict);
+        }
+        QString operator()(const VersionRemoveLoader& versionRemoveLoader)
+        {
+            return QStringLiteral("VersionRemoveLoader{ id: \"%1\", loader: \"%2\" }")
+                .arg(versionRemoveLoader.id, versionRemoveLoader.loader);
+        }
+        QString operator()(const VersionReinstall& versionReinstall)
+        {
+            return QStringLiteral("VersionReinstall{ id: \"%1\" }").arg(versionReinstall.id);
+        }
     } cmdVisitor;
 
     QStringList cmds{};

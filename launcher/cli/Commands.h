@@ -281,6 +281,53 @@ struct SettingsUnset {
     auto operator<=>(const SettingsUnset&) const = default;
 };
 
+// ---- component profile / version management (headless) ----
+
+struct VersionShow {
+    QString id;
+    auto operator<=>(const VersionShow&) const = default;
+};
+
+struct VersionListAvailable {
+    // The mod loader whose versions are listed (`fabric`, `forge`,
+    // `neoforge` or `quilt`).
+    std::optional<QString> loader;
+    // The Minecraft version the versions of the loader have to support.
+    std::optional<QString> mcVersion;
+    // The type of the versions (`release`, `snapshot` or `all`).
+    QString type = QStringLiteral("all");
+    auto operator<=>(const VersionListAvailable&) const = default;
+};
+
+struct VersionChangeMc {
+    QString id;
+    QString version;
+    auto operator<=>(const VersionChangeMc&) const = default;
+};
+
+struct VersionInstallLoader {
+    QString id;
+    // The mod loader (`fabric`, `forge`, `neoforge` or `quilt`).
+    QString loader;
+    // The version of the mod loader (`latest` for the newest one).
+    QString version;
+    // What happens to a mod loader that conflicts with the new one (`keep`,
+    // `disable` or `replace`).
+    QString forceConflict = QStringLiteral("disable");
+    auto operator<=>(const VersionInstallLoader&) const = default;
+};
+
+struct VersionRemoveLoader {
+    QString id;
+    QString loader;
+    auto operator<=>(const VersionRemoveLoader&) const = default;
+};
+
+struct VersionReinstall {
+    QString id;
+    auto operator<=>(const VersionReinstall&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -306,7 +353,13 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::SettingsList,
                                  Cmd::SettingsGet,
                                  Cmd::SettingsSet,
-                                 Cmd::SettingsUnset>;
+                                 Cmd::SettingsUnset,
+                                 Cmd::VersionShow,
+                                 Cmd::VersionListAvailable,
+                                 Cmd::VersionChangeMc,
+                                 Cmd::VersionInstallLoader,
+                                 Cmd::VersionRemoveLoader,
+                                 Cmd::VersionReinstall>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -323,7 +376,10 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::InstanceRename>(cmd) || std::holds_alternative<Cmd::InstanceDelete>(cmd) ||
            std::holds_alternative<Cmd::InstanceIconSet>(cmd) || std::holds_alternative<Cmd::SettingsList>(cmd) ||
            std::holds_alternative<Cmd::SettingsGet>(cmd) || std::holds_alternative<Cmd::SettingsSet>(cmd) ||
-           std::holds_alternative<Cmd::SettingsUnset>(cmd);
+           std::holds_alternative<Cmd::SettingsUnset>(cmd) || std::holds_alternative<Cmd::VersionShow>(cmd) ||
+           std::holds_alternative<Cmd::VersionListAvailable>(cmd) || std::holds_alternative<Cmd::VersionChangeMc>(cmd) ||
+           std::holds_alternative<Cmd::VersionInstallLoader>(cmd) ||
+           std::holds_alternative<Cmd::VersionRemoveLoader>(cmd) || std::holds_alternative<Cmd::VersionReinstall>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

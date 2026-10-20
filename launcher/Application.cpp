@@ -197,6 +197,7 @@
 #include "cli/InstanceCommands.h"
 #include "cli/ModCommands.h"
 #include "cli/SettingsCommands.h"
+#include "cli/VersionCommands.h"
 #include "cli/Output.h"
 
 #define STRINGIFY(x) #x
@@ -1420,6 +1421,12 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::SettingsGet& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::SettingsSet& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::SettingsUnset& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionShow& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionListAvailable& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionChangeMc& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionInstallLoader& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionRemoveLoader& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionReinstall& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
     } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing, .modContext = modContext };
 
     for (const auto& cmd : cmds) {

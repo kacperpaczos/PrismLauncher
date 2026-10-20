@@ -40,6 +40,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.modCli.flush(args);
     cli.instanceCli.flush(args);
     cli.settingsCli.flush(args);
+    cli.versionCli.flush(args);
     return args;
 }
 
@@ -502,6 +503,93 @@ class CliParserTest : public QObject {
         QCOMPARE(cmd.keys[0], QString("memory.max"));
 
         QCOMPARE(parseThrows({ "prismlauncher", "settings", "unset", "X" }), true);
+    }
+
+    void test_versionShow()
+    {
+        const auto args = parseOk({ "prismlauncher", "version", "show", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QCOMPARE(onlyCommand<Cli::Cmd::VersionShow>(args).id, QString("X"));
+
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "show" }), true);
+    }
+
+    void test_versionListAvailable()
+    {
+        const auto args = parseOk({ "prismlauncher", "version", "list-available" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::VersionListAvailable>(args);
+        QVERIFY(!cmd.loader.has_value());
+        QVERIFY(!cmd.mcVersion.has_value());
+        QCOMPARE(cmd.type, QString("all"));
+
+        const auto loader = parseOk({ "prismlauncher", "version", "list-available", "--loader", "fabric", "--mc-version", "1.21.1",
+                                      "--type", "release" });
+        const auto& loaderCmd = onlyCommand<Cli::Cmd::VersionListAvailable>(loader);
+        QVERIFY(loaderCmd.loader.has_value());
+        QCOMPARE(*loaderCmd.loader, QString("fabric"));
+        QVERIFY(loaderCmd.mcVersion.has_value());
+        QCOMPARE(*loaderCmd.mcVersion, QString("1.21.1"));
+        QCOMPARE(loaderCmd.type, QString("release"));
+
+        // the loader and the type are validated
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "list-available", "--loader", "bukkit" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "list-available", "--type", "beta" }), true);
+    }
+
+    void test_versionChangeMc()
+    {
+        const auto args = parseOk({ "prismlauncher", "version", "change-mc", "X", "1.21.1" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::VersionChangeMc>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.version, QString("1.21.1"));
+
+        // the version is required
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "change-mc", "X" }), true);
+    }
+
+    void test_versionInstallLoader()
+    {
+        const auto args = parseOk({ "prismlauncher", "version", "install-loader", "X", "fabric", "latest" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::VersionInstallLoader>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.loader, QString("fabric"));
+        QCOMPARE(cmd.version, QString("latest"));
+        // the conflicts are disabled by default
+        QCOMPARE(cmd.forceConflict, QString("disable"));
+
+        const auto keep = parseOk({ "prismlauncher", "version", "install-loader", "X", "quilt", "1.0.0", "--force-conflict",
+                                    "keep" });
+        QCOMPARE(onlyCommand<Cli::Cmd::VersionInstallLoader>(keep).forceConflict, QString("keep"));
+
+        // the loader and the version are required and validated
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "install-loader", "X", "fabric" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "install-loader", "X", "bukkit", "latest" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "install-loader", "X", "fabric", "latest", "--force-conflict", "nope" }),
+                 true);
+    }
+
+    void test_versionRemoveLoader()
+    {
+        const auto args = parseOk({ "prismlauncher", "version", "remove-loader", "X", "fabric" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::VersionRemoveLoader>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.loader, QString("fabric"));
+
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "remove-loader", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "remove-loader", "X", "bukkit" }), true);
+    }
+
+    void test_versionReinstall()
+    {
+        const auto args = parseOk({ "prismlauncher", "version", "reinstall", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QCOMPARE(onlyCommand<Cli::Cmd::VersionReinstall>(args).id, QString("X"));
+
+        QCOMPARE(parseThrows({ "prismlauncher", "version", "reinstall" }), true);
     }
 
     void test_positionalUri_untouched()

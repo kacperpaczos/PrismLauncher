@@ -811,6 +811,8 @@ SET(LAUNCHER_SOURCES
     cli/InstanceCommands.cpp
     cli/SettingsCommands.h
     cli/SettingsCommands.cpp
+    cli/VersionCommands.h
+    cli/VersionCommands.cpp
 
     # GUI - general utilities
     DesktopServices.h

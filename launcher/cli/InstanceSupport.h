@@ -25,11 +25,13 @@
 // command runners.
 
 #include <optional>
+#include <vector>
 
 #include <QJsonObject>
 #include <QObjectPtr.h>
 #include <QString>
 
+#include "Result.h"
 #include "cli/Commands.h"
 #include "cli/Output.h"
 
@@ -37,6 +39,10 @@ class InstanceList;
 class MinecraftInstance;
 class PackProfile;
 struct Component;
+
+namespace Meta {
+class VersionList;
+}  // namespace Meta
 
 namespace Cli {
 
@@ -81,6 +87,37 @@ std::optional<LoaderInfo> findLoader(PackProfile* profile);
  * profile is used as a fallback.
  */
 QString componentVersion(const shared_qobject_ptr<Component>& component);
+
+/**
+ * The component uid of the mod loaders the CLI knows about.
+ */
+const QMap<QString, QString>& loaderUids();
+
+/**
+ * The versions of a component that support the given Minecraft version.
+ *
+ * The launcher marks the versions of a loader with the Minecraft version they
+ * need in their requirements. Fabric and Quilt do not have such a requirement
+ * (the launcher does not know about their dependencies), so every version of
+ * them is usable with Minecraft 1.14 and newer.
+ */
+std::vector<QString> versionsForMinecraft(Meta::VersionList* list, const QString& mcVersion, const QString& loaderUid);
+
+/**
+ * Load the version list of a component. Returns nullptr when the list could
+ * not be loaded.
+ */
+Meta::VersionList* loadVersionList(ModContext& ctx, const QString& uid, bool* networkFailed = nullptr);
+
+/**
+ * The version of a mod loader that is used by a new instance. `latest` picks
+ * the newest version that supports the given Minecraft version.
+ */
+Result<QString, QString> resolveLoaderVersion(ModContext& ctx,
+                                              const QString& loaderUid,
+                                              const QString& wanted,
+                                              const QString& mcVersion,
+                                              bool& networkFailed);
 
 /**
  * The JSON of an instance - the fields that `instance list` and

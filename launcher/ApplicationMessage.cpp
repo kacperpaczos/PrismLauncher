@@ -452,6 +452,59 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         };
     }
 
+    // VersionShow
+    if (command == "version_show") {
+        const QString notFoundMsg = "missing `%1` for version_show command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        return Cli::Cmd::VersionShow{ .id = id };
+    }
+
+    // VersionListAvailable
+    if (command == "version_list_available") {
+        return Cli::Cmd::VersionListAvailable{
+            .loader = optionalArg(args, "loader"),
+            .mcVersion = optionalArg(args, "mcVersion"),
+            .type = args.value("type", "all"),
+        };
+    }
+
+    // VersionChangeMc
+    if (command == "version_change_mc") {
+        const QString notFoundMsg = "missing `%1` for version_change_mc command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto version, Try::findByMapKey(args, "version", notFoundMsg));
+        return Cli::Cmd::VersionChangeMc{ .id = id, .version = version };
+    }
+
+    // VersionInstallLoader
+    if (command == "version_install_loader") {
+        const QString notFoundMsg = "missing `%1` for version_install_loader command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto loader, Try::findByMapKey(args, "loader", notFoundMsg));
+        TRY_INTO(auto version, Try::findByMapKey(args, "version", notFoundMsg));
+        return Cli::Cmd::VersionInstallLoader{
+            .id = id,
+            .loader = loader,
+            .version = version,
+            .forceConflict = args.value("forceConflict", "disable"),
+        };
+    }
+
+    // VersionRemoveLoader
+    if (command == "version_remove_loader") {
+        const QString notFoundMsg = "missing `%1` for version_remove_loader command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto loader, Try::findByMapKey(args, "loader", notFoundMsg));
+        return Cli::Cmd::VersionRemoveLoader{ .id = id, .loader = loader };
+    }
+
+    // VersionReinstall
+    if (command == "version_reinstall") {
+        const QString notFoundMsg = "missing `%1` for version_reinstall command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        return Cli::Cmd::VersionReinstall{ .id = id };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -660,6 +713,43 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.command = "settings_unset";
             message.args.insert("id", settingsUnset.id);
             message.args.insert("keys", joinStringList(settingsUnset.keys));
+        }
+        void operator()(const Cli::Cmd::VersionShow& versionShow)
+        {
+            message.command = "version_show";
+            message.args.insert("id", versionShow.id);
+        }
+        void operator()(const Cli::Cmd::VersionListAvailable& versionListAvailable)
+        {
+            message.command = "version_list_available";
+            insertOptional(message.args, "loader", versionListAvailable.loader);
+            insertOptional(message.args, "mcVersion", versionListAvailable.mcVersion);
+            message.args.insert("type", versionListAvailable.type);
+        }
+        void operator()(const Cli::Cmd::VersionChangeMc& versionChangeMc)
+        {
+            message.command = "version_change_mc";
+            message.args.insert("id", versionChangeMc.id);
+            message.args.insert("version", versionChangeMc.version);
+        }
+        void operator()(const Cli::Cmd::VersionInstallLoader& versionInstallLoader)
+        {
+            message.command = "version_install_loader";
+            message.args.insert("id", versionInstallLoader.id);
+            message.args.insert("loader", versionInstallLoader.loader);
+            message.args.insert("version", versionInstallLoader.version);
+            message.args.insert("forceConflict", versionInstallLoader.forceConflict);
+        }
+        void operator()(const Cli::Cmd::VersionRemoveLoader& versionRemoveLoader)
+        {
+            message.command = "version_remove_loader";
+            message.args.insert("id", versionRemoveLoader.id);
+            message.args.insert("loader", versionRemoveLoader.loader);
+        }
+        void operator()(const Cli::Cmd::VersionReinstall& versionReinstall)
+        {
+            message.command = "version_reinstall";
+            message.args.insert("id", versionReinstall.id);
         }
     } serializer{};
 

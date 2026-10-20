@@ -777,6 +777,138 @@ void SettingsCli::flush(Args& args) const
     }
 }
 
+void VersionCli::addVersionArgs(CLI::App& app)
+{
+    version = app.add_subcommand("version", "Manage the components of an instance.");
+    version->require_subcommand();
+    version->fallthrough();
+
+    auto addJsonFlag = [](CLI::App* sub) { sub->add_flag("--json", "Emit machine-readable JSON output (default)."); };
+
+    {
+        // version show <id>
+        auto* show = version->add_subcommand("show", "Show the components of an instance.");
+        show->add_option("id", showId, "Instance ID.")->option_text("id")->required();
+        addJsonFlag(show);
+        show->fallthrough();
+    }
+
+    {
+        // version list-available [--mc] [--loader <l>] [--mc-version <v>] [--type <t>]
+        auto* list = version->add_subcommand("list-available", "List the versions that are available.");
+        list->add_flag("--mc", listMc, "List the versions of Minecraft.");
+        list->add_option("--loader", listLoader, "List the versions of a mod loader.")
+            ->option_text("loader")
+            ->check(CLI::IsMember(std::vector<std::string>{ "fabric", "forge", "neoforge", "quilt" }));
+        list->add_option("--mc-version", listMcVersion, "Only list the versions that support this Minecraft version.")
+            ->option_text("version");
+        list->add_option("--type", listType, "The type of the versions (`release`, `snapshot` or `all`).")
+            ->option_text("type")
+            ->check(CLI::IsMember(std::vector<std::string>{ "release", "snapshot", "all" }))
+            ->default_str("all");
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // version change-mc <id> <version>
+        auto* change = version->add_subcommand("change-mc", "Change the Minecraft version of an instance.");
+        change->add_option("id", changeMcId, "Instance ID.")->option_text("id")->required();
+        change->add_option("version", changeMcVersion, "The new Minecraft version.")->option_text("version")->required();
+        addJsonFlag(change);
+        change->fallthrough();
+    }
+
+    {
+        // version install-loader <id> <loader> <version> [--force-conflict <mode>]
+        auto* install = version->add_subcommand("install-loader", "Install a mod loader into an instance.");
+        install->add_option("id", installLoaderId, "Instance ID.")->option_text("id")->required();
+        install->add_option("loader", installLoaderLoader, "The mod loader to install.")
+            ->option_text("loader")
+            ->check(CLI::IsMember(std::vector<std::string>{ "fabric", "forge", "neoforge", "quilt" }))
+            ->required();
+        install->add_option("version", installLoaderVersion, "The version of the mod loader (`latest` for the newest one).")
+            ->option_text("version")
+            ->required();
+        install->add_option("--force-conflict", installLoaderForceConflict,
+                            "What happens to a mod loader that conflicts with the new one (`keep`, `disable` or `replace`).")
+            ->option_text("mode")
+            ->check(CLI::IsMember(std::vector<std::string>{ "keep", "disable", "replace" }))
+            ->default_str("disable");
+        addJsonFlag(install);
+        install->fallthrough();
+    }
+
+    {
+        // version remove-loader <id> <loader>
+        auto* remove = version->add_subcommand("remove-loader", "Remove the mod loader of an instance.");
+        remove->add_option("id", removeLoaderId, "Instance ID.")->option_text("id")->required();
+        remove->add_option("loader", removeLoaderLoader, "The mod loader to remove.")
+            ->option_text("loader")
+            ->check(CLI::IsMember(std::vector<std::string>{ "fabric", "forge", "neoforge", "quilt" }))
+            ->required();
+        addJsonFlag(remove);
+        remove->fallthrough();
+    }
+
+    {
+        // version reinstall <id>
+        auto* reinstall = version->add_subcommand("reinstall", "Reinstall the files of an instance.");
+        reinstall->add_option("id", reinstallId, "Instance ID.")->option_text("id")->required();
+        addJsonFlag(reinstall);
+        reinstall->fallthrough();
+    }
+}
+
+void VersionCli::flush(Args& args) const
+{
+    if (version == nullptr) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = version->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("show")) {
+        Cmd::VersionShow cmd;
+        cmd.id = QString::fromStdString(showId);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("list-available")) {
+        Cmd::VersionListAvailable cmd;
+        if (!listLoader.empty()) {
+            cmd.loader = QString::fromStdString(listLoader);
+        }
+        if (!listMcVersion.empty()) {
+            cmd.mcVersion = QString::fromStdString(listMcVersion);
+        }
+        cmd.type = QString::fromStdString(listType);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("change-mc")) {
+        Cmd::VersionChangeMc cmd;
+        cmd.id = QString::fromStdString(changeMcId);
+        cmd.version = QString::fromStdString(changeMcVersion);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("install-loader")) {
+        Cmd::VersionInstallLoader cmd;
+        cmd.id = QString::fromStdString(installLoaderId);
+        cmd.loader = QString::fromStdString(installLoaderLoader);
+        cmd.version = QString::fromStdString(installLoaderVersion);
+        cmd.forceConflict = QString::fromStdString(installLoaderForceConflict);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("remove-loader")) {
+        Cmd::VersionRemoveLoader cmd;
+        cmd.id = QString::fromStdString(removeLoaderId);
+        cmd.loader = QString::fromStdString(removeLoaderLoader);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("reinstall")) {
+        Cmd::VersionReinstall cmd;
+        cmd.id = QString::fromStdString(reinstallId);
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -823,6 +955,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) instance settings
     settingsCli.addSettingsArgs(app);
+
+    // subcommand based (headless) component profile management
+    versionCli.addVersionArgs(app);
 
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
@@ -887,6 +1022,7 @@ void parseArgs(int argc, char** argv, Args& args)
     cli.modCli.flush(args);
     cli.instanceCli.flush(args);
     cli.settingsCli.flush(args);
+    cli.versionCli.flush(args);
 }
 
 }  // namespace Cli

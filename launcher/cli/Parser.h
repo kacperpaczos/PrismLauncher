@@ -193,11 +193,46 @@ struct SettingsCli {
     void flush(Args& args) const;
 };
 
+/// `version` subcommand group.
+struct VersionCli {
+    CLI::App* version{};
+
+    // version show
+    std::string showId;
+
+    // version list-available
+    bool listMc = false;
+    std::string listLoader;
+    std::string listMcVersion;
+    std::string listType = "all";
+
+    // version change-mc
+    std::string changeMcId;
+    std::string changeMcVersion;
+
+    // version install-loader
+    std::string installLoaderId;
+    std::string installLoaderLoader;
+    std::string installLoaderVersion;
+    std::string installLoaderForceConflict = "disable";
+
+    // version remove-loader
+    std::string removeLoaderId;
+    std::string removeLoaderLoader;
+
+    // version reinstall
+    std::string reinstallId;
+
+    void addVersionArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
     InstanceCli instanceCli{};
     SettingsCli settingsCli{};
+    VersionCli versionCli{};
 
     void attach(CLI::App& app, Args& args);
 };

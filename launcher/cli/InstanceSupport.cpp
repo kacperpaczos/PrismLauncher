@@ -21,13 +21,21 @@
 
 #include "cli/InstanceSupport.h"
 
+#include <algorithm>
+#include <vector>
+
 #include <QDateTime>
 #include <QJsonValue>
+#include <QMap>
 
 #include "Application.h"
 #include "BaseInstance.h"
 #include "InstanceList.h"
+#include "Version.h"
 #include "cli/TaskRunner.h"
+#include "meta/Index.h"
+#include "meta/Version.h"
+#include "meta/VersionList.h"
 #include "minecraft/Component.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
@@ -35,6 +43,12 @@
 #include "net/Mode.h"
 
 namespace Cli {
+namespace {
+
+/// Upper bound for the download of the metadata of a component.
+constexpr int g_MetadataTimeoutMs = 300000;
+
+}  // namespace
 
 MinecraftInstance* resolveInstance(ModContext& ctx, const QString& id)
 {
@@ -112,6 +126,101 @@ QString componentVersion(const shared_qobject_ptr<Component>& component)
     }
     const auto cached = component->getVersion();
     return cached.isEmpty() ? component->m_version : cached;
+}
+
+const QMap<QString, QString>& loaderUids()
+{
+    static const QMap<QString, QString> uids = {
+        { "fabric", "net.fabricmc.fabric-loader" },
+        { "forge", "net.minecraftforge" },
+        { "neoforge", "net.neoforged" },
+        { "quilt", "org.quiltmc.quilt-loader" },
+    };
+    return uids;
+}
+
+std::vector<QString> versionsForMinecraft(Meta::VersionList* list, const QString& mcVersion, const QString& loaderUid)
+{
+    std::vector<QString> versions;
+    if (!list) {
+        return versions;
+    }
+
+    const bool anyMinecraft = loaderUid == "net.fabricmc.fabric-loader" || loaderUid == "org.quiltmc.quilt-loader";
+    for (const auto& version : list->versions()) {
+        if (!version) {
+            continue;
+        }
+        if (anyMinecraft) {
+            // Fabric and Quilt are not tied to a Minecraft version by the
+            // launcher, but they do not support the versions before 1.14.
+            if (Version(mcVersion) < Version("1.14")) {
+                continue;
+            }
+        } else {
+            const auto& requirements = version->requiredSet();
+            auto it = std::ranges::find_if(requirements, [](const Meta::Require& requirement) {
+                return requirement.uid == "net.minecraft";
+            });
+            if (it == requirements.end() || it->equalsVersion != mcVersion) {
+                continue;
+            }
+        }
+        versions.emplace_back(version->version());
+    }
+    return versions;
+}
+
+Meta::VersionList* loadVersionList(ModContext& ctx, const QString& uid, bool* networkFailed)
+{
+    auto* index = ctx.app.metadataIndex();
+    auto list = index->get(uid);
+    if (!list) {
+        return nullptr;
+    }
+    if (!list->isLoaded()) {
+        // The load task of the version list also loads the index itself, so
+        // the list knows where its versions come from.
+        if (auto task = list->getLoadTask(); task) {
+            if (auto result = runTaskSync(task, g_MetadataTimeoutMs); !result) {
+                qWarning() << "Could not load the version list of" << uid << ":" << result.error();
+                if (networkFailed) {
+                    *networkFailed = true;
+                }
+                return nullptr;
+            }
+        }
+    }
+    return list.get();
+}
+
+Result<QString, QString> resolveLoaderVersion(ModContext& ctx,
+                                              const QString& loaderUid,
+                                              const QString& wanted,
+                                              const QString& mcVersion,
+                                              bool& networkFailed)
+{
+    auto* list = loadVersionList(ctx, loaderUid, &networkFailed);
+    if (!list) {
+        return std::unexpected(QStringLiteral("the versions of the mod loader could not be loaded"));
+    }
+
+    const auto versions = versionsForMinecraft(list, mcVersion, loaderUid);
+    if (versions.empty()) {
+        return std::unexpected(QStringLiteral("the mod loader has no version for Minecraft %1").arg(mcVersion));
+    }
+
+    if (wanted.compare(QStringLiteral("latest"), Qt::CaseInsensitive) == 0) {
+        // The list is sorted by the release date, the newest one is first.
+        return versions.front();
+    }
+
+    for (const auto& version : versions) {
+        if (version == wanted) {
+            return version;
+        }
+    }
+    return std::unexpected(QStringLiteral("the mod loader has no version '%1' for Minecraft %2").arg(wanted, mcVersion));
 }
 
 std::optional<LoaderInfo> findLoader(PackProfile* profile)

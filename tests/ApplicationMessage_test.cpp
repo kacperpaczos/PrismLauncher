@@ -318,6 +318,57 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedUnset == unset);
     }
 
+    void test_version()
+    {
+        const Cli::Cmd::VersionShow show{ .id = QStringLiteral("X") };
+        const auto decodedShow = roundTrip(show);
+        QVERIFY(decodedShow.has_value());
+        QVERIFY(*decodedShow == show);
+
+        const Cli::Cmd::VersionListAvailable list{
+            .loader = QStringLiteral("fabric"),
+            .mcVersion = QStringLiteral("1.21.1"),
+            .type = QStringLiteral("release"),
+        };
+        const auto decodedList = roundTrip(list);
+        QVERIFY(decodedList.has_value());
+        QVERIFY(*decodedList == list);
+
+        const Cli::Cmd::VersionListAvailable minecraft{
+            .loader = std::nullopt,
+            .mcVersion = std::nullopt,
+            .type = QStringLiteral("all"),
+        };
+        const auto decodedMinecraft = roundTrip(minecraft);
+        QVERIFY(decodedMinecraft.has_value());
+        QVERIFY(*decodedMinecraft == minecraft);
+
+        const Cli::Cmd::VersionChangeMc change{ .id = QStringLiteral("X"), .version = QStringLiteral("1.21.1") };
+        const auto decodedChange = roundTrip(change);
+        QVERIFY(decodedChange.has_value());
+        QVERIFY(*decodedChange == change);
+
+        const Cli::Cmd::VersionInstallLoader install{
+            .id = QStringLiteral("X"),
+            .loader = QStringLiteral("fabric"),
+            .version = QStringLiteral("latest"),
+            .forceConflict = QStringLiteral("replace"),
+        };
+        const auto decodedInstall = roundTrip(install);
+        QVERIFY(decodedInstall.has_value());
+        QVERIFY(*decodedInstall == install);
+
+        const Cli::Cmd::VersionRemoveLoader remove{ .id = QStringLiteral("X"), .loader = QStringLiteral("quilt") };
+        const auto decodedRemove = roundTrip(remove);
+        QVERIFY(decodedRemove.has_value());
+        QVERIFY(*decodedRemove == remove);
+
+        const Cli::Cmd::VersionReinstall reinstall{ .id = QStringLiteral("X") };
+        const auto decodedReinstall = roundTrip(reinstall);
+        QVERIFY(decodedReinstall.has_value());
+        QVERIFY(*decodedReinstall == reinstall);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with
