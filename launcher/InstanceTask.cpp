@@ -56,6 +56,11 @@ ShouldUpdate askIfShouldUpdate(QWidget* parent, const QString& originalVersionNa
     return ShouldUpdate::Cancel;
 }
 
+InstanceTask::InstanceTask()
+{
+    m_downloadDuringCreation = APPLICATION->settings()->get("DownloadGameFilesDuringInstanceCreation").toBool();
+}
+
 QString InstanceTask::name() const
 {
     if (!m_modifiedName.isEmpty()) {
@@ -135,7 +140,7 @@ void InstanceTask::scheduleToDelete(QWidget* parent, const QDir& dir, const QStr
 
 void InstanceTask::downloadFiles(MinecraftInstance* inst)
 {
-    if (!APPLICATION->settings()->get("DownloadGameFilesDuringInstanceCreation").toBool()) {
+    if (!m_downloadDuringCreation) {
         emitSucceeded();
         return;
     }

@@ -18,7 +18,7 @@ enum class ShouldDeleteSaves : std::uint8_t { NotAsked, Yes, No };
 class InstanceTask : public Task {
     Q_OBJECT
    public:
-    InstanceTask() = default;
+    InstanceTask();
     ~InstanceTask() override = default;
 
     void setParentSettings(SettingsObject* settings) { m_globalSettings = settings; }
@@ -35,6 +35,12 @@ class InstanceTask : public Task {
 
     bool shouldConfirmUpdate() const { return m_confirmUpdate; }
     void setConfirmUpdate(bool confirm) { m_confirmUpdate = confirm; }
+
+    /// Whether the creation task downloads the game files itself. Defaults to
+    /// the user's global setting; the CLI turns this off and downloads through
+    /// a path that can report failures without dialogs.
+    bool downloadDuringCreation() const { return m_downloadDuringCreation; }
+    void setDownloadDuringCreation(bool download) { m_downloadDuringCreation = download; }
 
     bool shouldOverride() const { return m_overrideExisting; }
 
@@ -63,6 +69,7 @@ class InstanceTask : public Task {
     QString m_instGroup;
     QString m_targetDir;
     QString m_stagingPath;
+    bool m_downloadDuringCreation = true;
 
     bool m_overrideExisting = false;
     bool m_confirmUpdate = true;

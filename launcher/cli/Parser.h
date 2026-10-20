@@ -338,7 +338,7 @@ struct ServerCli {
     std::string addAddress;
     std::string addInstance;
     CLI::Option* addIndex{};
-    std::string addIndexValue;
+    int addIndexPosition = -1;
     CLI::Option* addAcceptsTextures{};
     std::string addAcceptsTexturesValue;
 
@@ -363,9 +363,9 @@ struct LogCli {
     CLI::Option* readFile{};
     std::string readFileValue;
     CLI::Option* readHead{};
-    std::string readHeadValue;
+    int readHeadPosition = -1;
     CLI::Option* readTail{};
-    std::string readTailValue;
+    int readTailPosition = -1;
     std::string readGrep;
     std::string readLevel;
     bool readJson = false;
@@ -394,7 +394,7 @@ struct ScreenshotCli {
     std::string uploadTarget;
     std::string uploadInstance;
     CLI::Option* uploadLimit{};
-    std::string uploadLimitValue;
+    int uploadLimitCount = -1;
     bool uploadAssumeYes = false;
 
     // screenshot copy

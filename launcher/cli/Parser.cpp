@@ -1245,7 +1245,7 @@ void ServerCli::addServerArgs(CLI::App& app)
         add->add_option("name", addName, "Name of the server.")->option_text("name")->required();
         add->add_option("address", addAddress, "Address of the server.")->option_text("address")->required();
         addInstanceOption(add, addInstance, /*required=*/true);
-        addIndex = add->add_option("--index", addIndexValue, "Position of the server in the list (appended when it is past the end).")
+        addIndex = add->add_option("--index", addIndexPosition, "Position of the server in the list (appended when it is past the end).")
                        ->option_text("N")
                        ->check(CLI::Range(0, 1000));
         addAcceptsTextures = add->add_option("--accepts-textures", addAcceptsTexturesValue, "How the server handles the resource packs of the client.")
@@ -1289,8 +1289,8 @@ void ServerCli::flush(Args& args) const
         cmd.instance = QString::fromStdString(addInstance);
         cmd.name = QString::fromStdString(addName);
         cmd.address = QString::fromStdString(addAddress);
-        if (addIndex != nullptr && addIndex->count() > 0) {
-            cmd.index = QString::fromStdString(addIndexValue).toInt();
+        if (addIndexPosition >= 0) {
+            cmd.index = addIndexPosition;
         }
         const auto acceptsTextures = QString::fromStdString(addAcceptsTexturesValue);
         if (acceptsTextures == QLatin1String("always")) {
@@ -1333,10 +1333,10 @@ void LogCli::addLogArgs(CLI::App& app)
         addInstanceOption(read, readInstance, /*required=*/true);
         readFile = read->add_option("--file", readFileValue, "Path of the log, relative to the game root of the instance.")
                        ->option_text("path");
-        readHead = read->add_option("--head", readHeadValue, "Read the first N lines of the log.")
+        readHead = read->add_option("--head", readHeadPosition, "Read the first N lines of the log.")
                        ->option_text("N")
                        ->check(CLI::Range(1, 1000000));
-        readTail = read->add_option("--tail", readTailValue, "Read the last N lines of the log.")
+        readTail = read->add_option("--tail", readTailPosition, "Read the last N lines of the log.")
                        ->option_text("N")
                        ->check(CLI::Range(1, 1000000));
         // The head and the tail of a log are exclusive.
@@ -1387,11 +1387,11 @@ void LogCli::flush(Args& args) const
         if (readFile != nullptr && readFile->count() > 0) {
             cmd.file = QString::fromStdString(readFileValue);
         }
-        if (readHead != nullptr && readHead->count() > 0) {
-            cmd.head = QString::fromStdString(readHeadValue).toInt();
+        if (readHeadPosition > 0) {
+            cmd.head = readHeadPosition;
         }
-        if (readTail != nullptr && readTail->count() > 0) {
-            cmd.tail = QString::fromStdString(readTailValue).toInt();
+        if (readTailPosition > 0) {
+            cmd.tail = readTailPosition;
         }
         if (!readGrep.empty()) {
             cmd.grep = QString::fromStdString(readGrep);
@@ -1436,7 +1436,7 @@ void ScreenshotCli::addScreenshotArgs(CLI::App& app)
         auto* upload = screenshot->add_subcommand("upload", "Upload the screenshots of an instance to imgur.");
         upload->add_option("target", uploadTarget, "Id of the screenshot or 'all' for every screenshot.")->option_text("target")->required();
         addInstanceOption(upload, uploadInstance, /*required=*/true);
-        uploadLimit = upload->add_option("--limit", uploadLimitValue, "The number of the screenshots that are uploaded.")
+        uploadLimit = upload->add_option("--limit", uploadLimitCount, "The number of the screenshots that are uploaded.")
                          ->option_text("N")
                          ->check(CLI::Range(1, 1000));
         upload->add_flag("-y,--yes", uploadAssumeYes, "Do not ask for confirmation.");
@@ -1479,8 +1479,8 @@ void ScreenshotCli::flush(Args& args) const
         Cmd::ScreenshotUpload cmd;
         cmd.instance = QString::fromStdString(uploadInstance);
         cmd.target = QString::fromStdString(uploadTarget);
-        if (uploadLimit != nullptr && uploadLimit->count() > 0) {
-            cmd.limit = QString::fromStdString(uploadLimitValue).toInt();
+        if (uploadLimitCount > 0) {
+            cmd.limit = uploadLimitCount;
         }
         cmd.assumeYes = uploadAssumeYes;
         args.commands.emplace_back(std::move(cmd));

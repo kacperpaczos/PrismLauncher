@@ -364,11 +364,8 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
     // The files of the instance are downloaded by the command itself - the
     // download of the creation task cannot report its failures (it shows a
     // dialog, which a headless run cannot answer).
-    auto* settings = ctx.app.settings();
-    const auto downloadDuringCreation = settings->get("DownloadGameFilesDuringInstanceCreation");
-    settings->set("DownloadGameFilesDuringInstanceCreation", false);
-
     auto* task = loaderUid.isEmpty() ? new VanillaCreationTask(mcVersion) : new VanillaCreationTask(mcVersion, loaderUid, loaderVersion);
+    task->setDownloadDuringCreation(false);
     task->setName(cmd.name);
     task->setGroup(cmd.group.value_or(QString()));
     task->setIcon(iconKey.isEmpty() ? QStringLiteral("default") : iconKey);
@@ -377,8 +374,6 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
     const auto expectedId = expectedInstanceId(ctx, cmd.name);
     shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
     auto result = runTaskSync(wrapped, g_DownloadTimeoutMs);
-
-    settings->set("DownloadGameFilesDuringInstanceCreation", downloadDuringCreation);
 
     if (!result) {
         return outputError(QStringLiteral("create_failed"),
