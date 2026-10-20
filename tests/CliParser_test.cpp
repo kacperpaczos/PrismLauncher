@@ -37,6 +37,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.packCli.flush(args);
     cli.worldCli.flush(args);
     cli.serverCli.flush(args);
+    cli.logCli.flush(args);
     return args;
 }
 
@@ -746,6 +747,75 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "Hypixel", "-i", "X" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "server", "remove", "-i", "X" }), true);
+    }
+
+    void test_logList()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+    }
+
+    void test_logRead()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "read", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogRead>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.file.has_value(), false);
+        QCOMPARE(cmd.head.has_value(), false);
+        QCOMPARE(cmd.tail.has_value(), false);
+        QCOMPARE(cmd.json, false);
+    }
+
+    void test_logRead_options()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "read", "-i", "X", "--file", "logs/latest.log", "--tail", "10",
+                                    "--grep", "ERROR", "--level", "warning", "--json" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogRead>(args);
+        QCOMPARE(cmd.file.value(), QString("logs/latest.log"));
+        QCOMPARE(cmd.tail.value(), 10);
+        QCOMPARE(cmd.grep.value(), QString("ERROR"));
+        QCOMPARE(cmd.level.value(), QString("warning"));
+        QCOMPARE(cmd.json, true);
+    }
+
+    void test_logRead_headAndTailAreExclusive()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "read", "-i", "X", "--head", "5", "--tail", "5" }), true);
+    }
+
+    void test_logUpload()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "upload", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogUpload>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.service, QString("mclogs"));
+        QCOMPARE(cmd.anonymize, false);
+        QCOMPARE(cmd.assumeYes, false);
+    }
+
+    void test_logUpload_options()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "upload", "-i", "X", "--file", "logs/latest.log", "--service", "paste.gg",
+                                    "--anonymize", "--yes" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogUpload>(args);
+        QCOMPARE(cmd.file.value(), QString("logs/latest.log"));
+        QCOMPARE(cmd.service, QString("paste.gg"));
+        QCOMPARE(cmd.anonymize, true);
+        QCOMPARE(cmd.assumeYes, true);
+    }
+
+    void test_logUpload_serviceIsValidated()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "upload", "-i", "X", "--service", "not-a-service" }), true);
+    }
+
+    void test_logMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "read" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "upload" }), true);
     }
 
     void test_allCommandsHeadless()

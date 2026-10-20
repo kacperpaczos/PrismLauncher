@@ -194,6 +194,7 @@
 #include "logging/Debug.h"
 
 #include "cli/Commands.h"
+#include "cli/LogCommands.h"
 #include "cli/ModCommands.h"
 #include "cli/Output.h"
 #include "cli/PackCommands.h"
@@ -339,11 +340,11 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
             }
             for (const auto& cmd : args.commands) {
                 if (Cli::isHeadlessCommand(cmd)) {
-                    // TODO: forward headless (mod) commands to the already running
+                    // TODO: forward headless commands to the already running
                     // instance once the IPC supports it. A GUI instance cannot run
                     // them through the current fire-and-forget message channel.
                     auto exitCode = Cli::outputError("ipc_unsupported",
-                                                     "mod commands cannot be forwarded to an already running PrismLauncher instance",
+                                                     "headless commands cannot be forwarded to an already running PrismLauncher instance",
                                                      Cli::ExitCode::GuiRequired);
                     // C function not Qt function - event loop not started yet
                     ::std::exit(static_cast<int>(exitCode));
@@ -1299,6 +1300,7 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
     Cli::PackContext packContext{ *this };
     Cli::WorldContext worldContext{ *this };
     Cli::ServerContext serverContext{ *this };
+    Cli::LogContext logContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1316,6 +1318,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         Cli::WorldContext& worldContext;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::ServerContext& serverContext;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::LogContext& logContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1442,6 +1446,11 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::ServerList& cmd) { recordResult(Cli::runServerCommand(serverContext, cmd)); }
         void operator()(const Cli::Cmd::ServerAdd& cmd) { recordResult(Cli::runServerCommand(serverContext, cmd)); }
         void operator()(const Cli::Cmd::ServerRemove& cmd) { recordResult(Cli::runServerCommand(serverContext, cmd)); }
+        // headless log commands - each prints its own JSON envelope and reports
+        // an exit code; the first failure aborts the rest of the batch.
+        void operator()(const Cli::Cmd::LogList& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
+        void operator()(const Cli::Cmd::LogRead& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
+        void operator()(const Cli::Cmd::LogUpload& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
     } visitor{ .app = this,
                .toProcessURIs = toProcessURIs,
                .exitCode = headlessExitCode,
@@ -1449,7 +1458,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                .modContext = modContext,
                .packContext = packContext,
                .worldContext = worldContext,
-               .serverContext = serverContext };
+               .serverContext = serverContext,
+               .logContext = logContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

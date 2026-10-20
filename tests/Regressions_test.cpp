@@ -241,6 +241,25 @@ static char* toString(const Args& args)
             return QStringLiteral("ServerRemove{ instance: \"%1\", target: \"%2\", force: %3 }")
                 .arg(serverRemove.instance, serverRemove.target, QString::number(serverRemove.force));
         }
+        QString operator()(const LogList& logList)
+        {
+            return QStringLiteral("LogList{ instance: \"%1\" }").arg(logList.instance);
+        }
+        QString operator()(const LogRead& logRead)
+        {
+            return QStringLiteral("LogRead{ instance: \"%1\", file: \"%2\", head: %3, tail: %4, grep: \"%5\", level: \"%6\", json: %7 }")
+                .arg(logRead.instance, logRead.file.value_or(QString()))
+                .arg(logRead.head.has_value() ? QString::number(*logRead.head) : QStringLiteral("none"))
+                .arg(logRead.tail.has_value() ? QString::number(*logRead.tail) : QStringLiteral("none"))
+                .arg(logRead.grep.value_or(QString()), logRead.level.value_or(QString()))
+                .arg(QString::number(logRead.json));
+        }
+        QString operator()(const LogUpload& logUpload)
+        {
+            return QStringLiteral("LogUpload{ instance: \"%1\", file: \"%2\", service: \"%3\", anonymize: %4, assumeYes: %5 }")
+                .arg(logUpload.instance, logUpload.file.value_or(QString()), logUpload.service)
+                .arg(QString::number(logUpload.anonymize), QString::number(logUpload.assumeYes));
+        }
     } cmdVisitor;
 
     QStringList cmds{};

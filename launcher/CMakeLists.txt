@@ -813,6 +813,8 @@ SET(LAUNCHER_SOURCES
     cli/WorldCommands.cpp
     cli/ServerCommands.h
     cli/ServerCommands.cpp
+    cli/LogCommands.h
+    cli/LogCommands.cpp
     cli/CommandUtils.h
     cli/CommandUtils.cpp
 
@@ -837,6 +839,8 @@ SET(LAUNCHER_SOURCES
     # log utils
     logs/AnonymizeLog.cpp
     logs/AnonymizeLog.h
+    logs/LogTruncation.cpp
+    logs/LogTruncation.h
 
     # GUI - windows
     ui/MainWindow.h

@@ -318,6 +318,45 @@ struct ServerRemove {
     auto operator<=>(const ServerRemove&) const = default;
 };
 
+// ---- log management (headless) ----
+//
+// The logs of an instance live in the folders that the launcher searches for
+// logs (`crash-reports`, `logs` and the game root itself). They are addressed
+// by their path, relative to the game root.
+
+struct LogList {
+    QString instance;
+    auto operator<=>(const LogList&) const = default;
+};
+
+struct LogRead {
+    QString instance;
+    /// The path of the log, relative to the game root of the instance.
+    std::optional<QString> file;
+    /// The number of the lines to read from the beginning of the log.
+    std::optional<int> head;
+    /// The number of the lines to read from the end of the log.
+    std::optional<int> tail;
+    /// The lines that do not match the expression are skipped.
+    std::optional<QString> grep;
+    /// The lines that are less severe than the level are skipped.
+    std::optional<QString> level;
+    /// Report the lines as JSON instead of writing them to the output.
+    bool json = false;
+    auto operator<=>(const LogRead&) const = default;
+};
+
+struct LogUpload {
+    QString instance;
+    /// The path of the log, relative to the game root of the instance.
+    std::optional<QString> file;
+    /// The paste service the log is uploaded to.
+    QString service = QStringLiteral("mclogs");
+    bool anonymize = false;
+    bool assumeYes = false;
+    auto operator<=>(const LogUpload&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -348,7 +387,10 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::WorldImport,
                                  Cmd::ServerList,
                                  Cmd::ServerAdd,
-                                 Cmd::ServerRemove>;
+                                 Cmd::ServerRemove,
+                                 Cmd::LogList,
+                                 Cmd::LogRead,
+                                 Cmd::LogUpload>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -367,7 +409,9 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::WorldInfo>(cmd) || std::holds_alternative<Cmd::WorldCopy>(cmd) ||
            std::holds_alternative<Cmd::WorldRename>(cmd) || std::holds_alternative<Cmd::WorldDelete>(cmd) ||
            std::holds_alternative<Cmd::WorldImport>(cmd) || std::holds_alternative<Cmd::ServerList>(cmd) ||
-           std::holds_alternative<Cmd::ServerAdd>(cmd) || std::holds_alternative<Cmd::ServerRemove>(cmd);
+           std::holds_alternative<Cmd::ServerAdd>(cmd) || std::holds_alternative<Cmd::ServerRemove>(cmd) ||
+           std::holds_alternative<Cmd::LogList>(cmd) || std::holds_alternative<Cmd::LogRead>(cmd) ||
+           std::holds_alternative<Cmd::LogUpload>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

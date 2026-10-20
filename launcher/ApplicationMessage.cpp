@@ -504,6 +504,57 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return cmd;
     }
 
+    // LogList
+    if (command == "log_list") {
+        const QString notFoundMsg = "missing `%1` for log_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::LogList{
+            .instance = instance,
+        };
+    }
+
+    // LogRead
+    if (command == "log_read") {
+        const QString notFoundMsg = "missing `%1` for log_read command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::LogRead cmd{
+            .instance = instance,
+            .json = argToBool(args.value("json")),
+        };
+        if (args.contains("file")) {
+            cmd.file = args.value("file");
+        }
+        if (args.contains("head")) {
+            cmd.head = args.value("head").toInt();
+        }
+        if (args.contains("tail")) {
+            cmd.tail = args.value("tail").toInt();
+        }
+        if (args.contains("grep")) {
+            cmd.grep = args.value("grep");
+        }
+        if (args.contains("level")) {
+            cmd.level = args.value("level");
+        }
+        return cmd;
+    }
+
+    // LogUpload
+    if (command == "log_upload") {
+        const QString notFoundMsg = "missing `%1` for log_upload command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::LogUpload cmd{
+            .instance = instance,
+            .service = args.value("service"),
+            .anonymize = argToBool(args.value("anonymize")),
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+        if (args.contains("file")) {
+            cmd.file = args.value("file");
+        }
+        return cmd;
+    }
+
     // ServerList
     if (command == "server_list") {
         const QString notFoundMsg = "missing `%1` for server_list command";
@@ -804,6 +855,43 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("instance", serverRemove.instance);
             message.args.insert("target", serverRemove.target);
             message.args.insert("force", boolToArg(serverRemove.force));
+        }
+        void operator()(const Cli::Cmd::LogList& logList)
+        {
+            message.command = "log_list";
+            message.args.insert("instance", logList.instance);
+        }
+        void operator()(const Cli::Cmd::LogRead& logRead)
+        {
+            message.command = "log_read";
+            message.args.insert("instance", logRead.instance);
+            if (logRead.file.has_value()) {
+                message.args.insert("file", *logRead.file);
+            }
+            if (logRead.head.has_value()) {
+                message.args.insert("head", QString::number(*logRead.head));
+            }
+            if (logRead.tail.has_value()) {
+                message.args.insert("tail", QString::number(*logRead.tail));
+            }
+            if (logRead.grep.has_value()) {
+                message.args.insert("grep", *logRead.grep);
+            }
+            if (logRead.level.has_value()) {
+                message.args.insert("level", *logRead.level);
+            }
+            message.args.insert("json", boolToArg(logRead.json));
+        }
+        void operator()(const Cli::Cmd::LogUpload& logUpload)
+        {
+            message.command = "log_upload";
+            message.args.insert("instance", logUpload.instance);
+            if (logUpload.file.has_value()) {
+                message.args.insert("file", *logUpload.file);
+            }
+            message.args.insert("service", logUpload.service);
+            message.args.insert("anonymize", boolToArg(logUpload.anonymize));
+            message.args.insert("assumeYes", boolToArg(logUpload.assumeYes));
         }
     } serializer{};
 

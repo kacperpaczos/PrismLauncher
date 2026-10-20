@@ -809,10 +809,9 @@ void ServerCli::addServerArgs(CLI::App& app)
         addIndex = add->add_option("--index", addIndexValue, "Position of the server in the list (appended when it is past the end).")
                        ->option_text("N")
                        ->check(CLI::Range(0, 1000));
-        add->add_option("--accepts-textures", addAcceptsTextures, "How the server handles the resource packs of the client.")
-            ->option_text("mode")
-            ->check(CLI::IsMember({ "ask", "always", "never" }))
-            ->default_str("ask");
+        addAcceptsTextures = add->add_option("--accepts-textures", addAcceptsTexturesValue, "How the server handles the resource packs of the client.")
+                             ->option_text("mode")
+                             ->check(CLI::IsMember({ "ask", "always", "never" }));
         addJsonFlag(add);
         add->fallthrough();
     }
@@ -854,7 +853,7 @@ void ServerCli::flush(Args& args) const
         if (addIndex != nullptr && addIndex->count() > 0) {
             cmd.index = QString::fromStdString(addIndexValue).toInt();
         }
-        const auto acceptsTextures = QString::fromStdString(addAcceptsTextures);
+        const auto acceptsTextures = QString::fromStdString(addAcceptsTexturesValue);
         if (acceptsTextures == QLatin1String("always")) {
             cmd.acceptsTextures = Cmd::AcceptsTextures::Always;
         } else if (acceptsTextures == QLatin1String("never")) {
@@ -868,6 +867,111 @@ void ServerCli::flush(Args& args) const
         cmd.instance = QString::fromStdString(removeInstance);
         cmd.target = QString::fromStdString(removeTarget);
         cmd.force = removeForce;
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
+void LogCli::addLogArgs(CLI::App& app)
+{
+    log = app.add_subcommand("log", "Read and upload the logs of an instance.");
+    log->require_subcommand();
+    // Let global options (e.g. `-d/--dir`) appear after the `log` subcommand
+    // (and its subcommands keep their own fallthrough below).
+    log->fallthrough();
+
+    {
+        // log list -i <instance> [--json]
+        auto* list = log->add_subcommand("list", "List the log files of an instance.");
+        addInstanceOption(list, listInstance, /*required=*/true);
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // log read -i <instance> [--file <path>] [--tail N] [--head N] [--grep <regex>]
+        //           [--level <level>] [--json]
+        auto* read = log->add_subcommand("read", "Read a log file of an instance.");
+        addInstanceOption(read, readInstance, /*required=*/true);
+        readFile = read->add_option("--file", readFileValue, "Path of the log, relative to the game root of the instance.")
+                       ->option_text("path");
+        readHead = read->add_option("--head", readHeadValue, "Read the first N lines of the log.")
+                       ->option_text("N")
+                       ->check(CLI::Range(1, 1000000));
+        readTail = read->add_option("--tail", readTailValue, "Read the last N lines of the log.")
+                       ->option_text("N")
+                       ->check(CLI::Range(1, 1000000));
+        // The head and the tail of a log are exclusive.
+        readHead->excludes(readTail);
+        readTail->excludes(readHead);
+        read->add_option("--grep", readGrep, "Only show the lines that match the expression.")->option_text("regex");
+        read->add_option("--level", readLevel, "Only show the lines of this level and of the more severe ones.")->option_text("level");
+        read->add_flag("--json", readJson, "Report the lines as JSON instead of writing them to the output.");
+        read->fallthrough();
+    }
+
+    {
+        // log upload -i <instance> [--file <path>] [--service <service>] [--anonymize] [-y|--yes] [--json]
+        auto* upload = log->add_subcommand("upload", "Upload a log file of an instance.");
+        addInstanceOption(upload, uploadInstance, /*required=*/true);
+        uploadFile = upload->add_option("--file", uploadFileValue, "Path of the log, relative to the game root of the instance.")
+                          ->option_text("path");
+        uploadService = upload->add_option("--service", uploadServiceValue, "The paste service the log is uploaded to.")
+                            ->option_text("service")
+                            ->check(CLI::IsMember({ "mclogs", "paste.gg", "0x0.st", "hastebin" }));
+        upload->add_flag("--anonymize", uploadAnonymize, "Replace the names of the user in the log.");
+        upload->add_flag("-y,--yes", uploadAssumeYes, "Do not ask for confirmation.");
+        addJsonFlag(upload);
+        upload->fallthrough();
+    }
+
+    rejectStrayPositionals(*log, app, "log", "log");
+}
+
+void LogCli::flush(Args& args) const
+{
+    if (log == nullptr || !log->parsed()) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = log->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("list")) {
+        Cmd::LogList cmd;
+        cmd.instance = QString::fromStdString(listInstance);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("read")) {
+        Cmd::LogRead cmd;
+        cmd.instance = QString::fromStdString(readInstance);
+        if (readFile != nullptr && readFile->count() > 0) {
+            cmd.file = QString::fromStdString(readFileValue);
+        }
+        if (readHead != nullptr && readHead->count() > 0) {
+            cmd.head = QString::fromStdString(readHeadValue).toInt();
+        }
+        if (readTail != nullptr && readTail->count() > 0) {
+            cmd.tail = QString::fromStdString(readTailValue).toInt();
+        }
+        if (!readGrep.empty()) {
+            cmd.grep = QString::fromStdString(readGrep);
+        }
+        if (!readLevel.empty()) {
+            cmd.level = QString::fromStdString(readLevel);
+        }
+        cmd.json = readJson;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("upload")) {
+        Cmd::LogUpload cmd;
+        cmd.instance = QString::fromStdString(uploadInstance);
+        if (uploadFile != nullptr && uploadFile->count() > 0) {
+            cmd.file = QString::fromStdString(uploadFileValue);
+        }
+        cmd.service = uploadService != nullptr && uploadService->count() > 0 ? QString::fromStdString(uploadServiceValue)
+                                                                          : QStringLiteral("mclogs");
+        cmd.anonymize = uploadAnonymize;
+        cmd.assumeYes = uploadAssumeYes;
         args.commands.emplace_back(std::move(cmd));
     }
 }
@@ -921,6 +1025,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) server management
     serverCli.addServerArgs(app);
+
+    // subcommand based (headless) log management
+    logCli.addLogArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -991,6 +1098,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // ...and for the `server` subcommand
     cli.serverCli.flush(args);
+
+    // ...and for the `log` subcommand
+    cli.logCli.flush(args);
 }
 
 }  // namespace Cli

@@ -224,7 +224,8 @@ struct ServerCli {
     std::string addInstance;
     CLI::Option* addIndex{};
     std::string addIndexValue;
-    std::string addAcceptsTextures;
+    CLI::Option* addAcceptsTextures{};
+    std::string addAcceptsTexturesValue;
 
     // server remove
     std::string removeTarget;
@@ -235,12 +236,47 @@ struct ServerCli {
     void flush(Args& args) const;
 };
 
+/// `log` subcommand group. The options are bound to plain members here and
+/// turned into `Cmd::Log*` commands by `flush()` after a successful parse -
+/// this keeps the CLI11 declarations free of ordering assumptions.
+struct LogCli {
+    CLI::App* log{};
+
+    // log list
+    std::string listInstance;
+
+    // log read
+    std::string readInstance;
+    CLI::Option* readFile{};
+    std::string readFileValue;
+    CLI::Option* readHead{};
+    std::string readHeadValue;
+    CLI::Option* readTail{};
+    std::string readTailValue;
+    std::string readGrep;
+    std::string readLevel;
+    bool readJson = false;
+
+    // log upload
+    std::string uploadInstance;
+    CLI::Option* uploadFile{};
+    std::string uploadFileValue;
+    CLI::Option* uploadService{};
+    std::string uploadServiceValue;
+    bool uploadAnonymize = false;
+    bool uploadAssumeYes = false;
+
+    void addLogArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
     PackCli packCli{};
     WorldCli worldCli{};
     ServerCli serverCli{};
+    LogCli logCli{};
 
     void attach(CLI::App& app, Args& args);
 };

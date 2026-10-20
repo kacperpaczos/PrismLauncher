@@ -432,6 +432,45 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decoded == cmd);
     }
 
+    void test_logList()
+    {
+        const Cli::Cmd::LogList cmd{
+            .instance = QStringLiteral("My Instance"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_logRead()
+    {
+        const Cli::Cmd::LogRead cmd{
+            .instance = QStringLiteral("My Instance"),
+            .file = QStringLiteral("logs/latest.log"),
+            .head = 10,
+            .grep = QStringLiteral("ERROR"),
+            .level = QStringLiteral("warning"),
+            .json = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_logUpload()
+    {
+        const Cli::Cmd::LogUpload cmd{
+            .instance = QStringLiteral("My Instance"),
+            .file = QStringLiteral("logs/latest.log"),
+            .service = QStringLiteral("mclogs"),
+            .anonymize = true,
+            .assumeYes = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with
