@@ -49,6 +49,12 @@ class INISettingsObject : public SettingsObject {
     void suspendSave() override;
     void resumeSave() override;
 
+    /*! \brief Whether a value for the key is stored in the file.
+     *
+     * A setting that has no value in the file uses its default value.
+     */
+    bool hasValue(const QString& key) const { return m_ini.contains(key); }
+
    protected slots:
     virtual void changeSetting(const Setting& setting, QVariant value) override;
     virtual void resetSetting(const Setting& setting) override;

@@ -143,6 +143,14 @@ static char* toString(const Args& args)
                 .arg(QString::number(modUpdate.all), modUpdate.instance, QString::number(modUpdate.dryRun),
                      QString::number(modUpdate.noDeps), QString::number(modUpdate.force));
         }
+        QString operator()(const InstanceList& instanceList)
+        {
+            return QStringLiteral("InstanceList{ group: \"%1\" }").arg(instanceList.group.value_or(QString()));
+        }
+        QString operator()(const InstanceInfo& instanceInfo)
+        {
+            return QStringLiteral("InstanceInfo{ id: \"%1\" }").arg(instanceInfo.id);
+        }
     } cmdVisitor;
 
     QStringList cmds{};

@@ -194,6 +194,7 @@
 #include "logging/Debug.h"
 
 #include "cli/Commands.h"
+#include "cli/InstanceCommands.h"
 #include "cli/ModCommands.h"
 #include "cli/Output.h"
 
@@ -1407,6 +1408,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceList& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceInfo& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
     } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing, .modContext = modContext };
 
     for (const auto& cmd : cmds) {

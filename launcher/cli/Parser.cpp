@@ -41,6 +41,17 @@
 namespace Cli {
 namespace {
 
+/// The values of a repeated option as a list of strings.
+std::vector<QString> toQStringList(const std::vector<std::string>& in)
+{
+    std::vector<QString> out;
+    out.reserve(in.size());
+    for (const auto& value : in) {
+        out.emplace_back(QString::fromStdString(value));
+    }
+    return out;
+}
+
 struct URLValidator : CLI::Validator {
     URLValidator()
     {
@@ -369,15 +380,6 @@ void ModCli::flush(Args& args) const
         return sub != nullptr && sub->parsed();
     };
 
-    auto toQStringList = [](const std::vector<std::string>& in) {
-        std::vector<QString> out;
-        out.reserve(in.size());
-        for (const auto& value : in) {
-            out.emplace_back(QString::fromStdString(value));
-        }
-        return out;
-    };
-
     if (subParsed("list")) {
         Cmd::ModList cmd;
         cmd.instance = QString::fromStdString(listInstance);
@@ -443,6 +445,58 @@ void ModCli::flush(Args& args) const
     }
 }
 
+
+
+void InstanceCli::addInstanceArgs(CLI::App& app)
+{
+    instance = app.add_subcommand("instance", "Manage the instances of the launcher.");
+    instance->require_subcommand();
+    instance->fallthrough();
+
+    auto addJsonFlag = [](CLI::App* sub) { sub->add_flag("--json", "Emit machine-readable JSON output (default)."); };
+
+    {
+        // instance list [--group <g>]
+        auto* list = instance->add_subcommand("list", "List the instances of the launcher.");
+        listGroup = list->add_option("--group", listGroupValue, "Only list the instances of this group.")->option_text("group");
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // instance info <id>
+        auto* info = instance->add_subcommand("info", "Show the details of an instance.");
+        info->add_option("id", infoId, "Instance ID.")->option_text("id")->required();
+        addJsonFlag(info);
+        info->fallthrough();
+    }
+
+}
+
+void InstanceCli::flush(Args& args) const
+{
+    if (instance == nullptr) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = instance->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("list")) {
+        Cmd::InstanceList cmd;
+        if (listGroup != nullptr && listGroup->count() > 0) {
+            cmd.group = QString::fromStdString(listGroupValue);
+        }
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("info")) {
+        Cmd::InstanceInfo cmd;
+        cmd.id = QString::fromStdString(infoId);
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -483,6 +537,10 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) mod management
     modCli.addModArgs(app);
+
+    // subcommand based (headless) instance management
+    instanceCli.addInstanceArgs(app);
+
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -542,8 +600,9 @@ void parseArgs(int argc, char** argv, Args& args)
         std::exit(static_cast<int>(ExitCode::Usage));
     };
 
-    // turn the parsed `mod` subcommand (if any) into a `Cmd::Mod*` command
+    // turn the parsed subcommands (if any) into `Cmd::*` commands
     cli.modCli.flush(args);
+    cli.instanceCli.flush(args);
 }
 
 }  // namespace Cli

@@ -44,6 +44,7 @@
 #include "InstanceList.h"
 #include "ResourceDownloadTask.h"
 #include "Version.h"
+#include "cli/InstanceSupport.h"
 #include "cli/TaskRunner.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
@@ -165,42 +166,6 @@ QJsonObject modToJson(const Resource* resource)
 }
 
 /**
- * Look up an instance by id. Returns nullptr when it does not exist.
- */
-MinecraftInstance* resolveInstance(ModContext& ctx, const QString& id)
-{
-    if (id.isEmpty()) {
-        return nullptr;
-    }
-    auto* instances = ctx.app.instances();
-    if (!instances) {
-        return nullptr;
-    }
-    return instances->getInstanceById(id);
-}
-
-/**
- * Make sure the component profile of the instance is loaded. The GUI does
- * that when the instance is opened, a headless run has to do it itself.
- */
-bool loadComponentProfile(MinecraftInstance* instance)
-{
-    auto* profile = instance->getPackProfile();
-    if (!profile) {
-        return false;
-    }
-    if (!profile->getComponentVersion("net.minecraft").isEmpty()) {
-        // The profile was already loaded.
-        return true;
-    }
-    if (auto result = profile->reload(Net::Mode::Offline); !result) {
-        qWarning() << "Could not load the component profile of the instance:" << result.error();
-        return false;
-    }
-    return true;
-}
-
-/**
  * Wait for the resource model to finish its (re)scan and all pending parse
  * tasks. The model update runs on a thread pool, so a plain event loop with a
  * polling timer is used here - the same approach the GUI takes with its
@@ -271,22 +236,6 @@ ExitCode openModModel(MinecraftInstance* instance, const QString& instanceId, Mo
                            ExitCode::Generic);
     }
     return ExitCode::OK;
-}
-
-/**
- * A mutating command refuses to work on a running instance. The hint tells
- * the user how the command can be forced.
- */
-ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint = {})
-{
-    if (!instance->isRunning()) {
-        return ExitCode::OK;
-    }
-    auto message = QStringLiteral("The instance '%1' is running, refusing to %2").arg(instanceId, action);
-    if (!hint.isEmpty()) {
-        message += QStringLiteral(" (%1)").arg(hint);
-    }
-    return outputError(QStringLiteral("instance_running"), message, ExitCode::Conflict);
 }
 
 /**

@@ -78,6 +78,24 @@ std::vector<QString> splitStringList(const QString& value)
     return out;
 }
 
+/// An optional value is stored as an empty string when it is not set.
+std::optional<QString> optionalArg(const QHash<QString, QString>& args, const QString& key)
+{
+    if (!args.contains(key)) {
+        return std::nullopt;
+    }
+    const auto value = args.value(key);
+    if (value.isEmpty()) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+void insertOptional(QHash<QString, QString>& args, const QString& key, const std::optional<QString>& value)
+{
+    args.insert(key, value.has_value() ? *value : QString());
+}
+
 }  // namespace
 
 Result<> ApplicationMessage::parse(const QByteArray& input)
@@ -283,6 +301,20 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         };
     }
 
+    // InstanceList
+    if (command == "instance_list") {
+        Cli::Cmd::InstanceList cmd;
+        cmd.group = optionalArg(args, "group");
+        return cmd;
+    }
+
+    // InstanceInfo
+    if (command == "instance_info") {
+        const QString notFoundMsg = "missing `%1` for instance_info command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        return Cli::Cmd::InstanceInfo{ .id = id };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -412,6 +444,16 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("noDeps", boolToArg(modUpdate.noDeps));
             message.args.insert("force", boolToArg(modUpdate.force));
             message.args.insert("assumeYes", boolToArg(modUpdate.assumeYes));
+        }
+        void operator()(const Cli::Cmd::InstanceList& instanceList)
+        {
+            message.command = "instance_list";
+            insertOptional(message.args, "group", instanceList.group);
+        }
+        void operator()(const Cli::Cmd::InstanceInfo& instanceInfo)
+        {
+            message.command = "instance_info";
+            message.args.insert("id", instanceInfo.id);
         }
     } serializer{};
 

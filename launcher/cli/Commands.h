@@ -33,9 +33,18 @@
 
 #include "startup/Startup.h"
 
+class Application;
+
 namespace Cli {
 
 static constexpr std::string_view g_liveCheckFile = "live.check";
+
+/// Context handed to every command runner. It carries the application
+/// (instances, settings, network, ...) without pulling Application.h into the
+/// headers of the commands.
+struct ModContext {
+    Application& app;
+};
 
 namespace Cmd {
 
@@ -165,6 +174,18 @@ struct ModUpdate {
     auto operator<=>(const ModUpdate&) const = default;
 };
 
+// ---- instance management (headless) ----
+
+struct InstanceList {
+    std::optional<QString> group;
+    auto operator<=>(const InstanceList&) const = default;
+};
+
+struct InstanceInfo {
+    QString id;
+    auto operator<=>(const InstanceInfo&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -179,7 +200,9 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::ModRemove,
                                  Cmd::ModEnable,
                                  Cmd::ModDisable,
-                                 Cmd::ModUpdate>;
+                                 Cmd::ModUpdate,
+                                 Cmd::InstanceList,
+                                 Cmd::InstanceInfo>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -190,7 +213,8 @@ inline bool isHeadlessCommand(const Command& cmd)
     return std::holds_alternative<Cmd::ModList>(cmd) || std::holds_alternative<Cmd::ModSearch>(cmd) ||
            std::holds_alternative<Cmd::ModInfo>(cmd) || std::holds_alternative<Cmd::ModInstall>(cmd) ||
            std::holds_alternative<Cmd::ModRemove>(cmd) || std::holds_alternative<Cmd::ModEnable>(cmd) ||
-           std::holds_alternative<Cmd::ModDisable>(cmd) || std::holds_alternative<Cmd::ModUpdate>(cmd);
+           std::holds_alternative<Cmd::ModDisable>(cmd) || std::holds_alternative<Cmd::ModUpdate>(cmd) ||
+           std::holds_alternative<Cmd::InstanceList>(cmd) || std::holds_alternative<Cmd::InstanceInfo>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

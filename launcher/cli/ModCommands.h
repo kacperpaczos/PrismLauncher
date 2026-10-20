@@ -27,16 +27,7 @@
 #include "cli/Commands.h"
 #include "cli/Output.h"
 
-class Application;
-
 namespace Cli {
-
-/// Context handed to every mod command runner. It carries the application
-/// (instances, settings, network, ...) without pulling Application.h into this
-/// header. Construct it once per process/dispatch.
-struct ModContext {
-    Application& app;
-};
 
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd);
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd);

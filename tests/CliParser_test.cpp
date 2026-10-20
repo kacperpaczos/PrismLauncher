@@ -34,6 +34,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
 
     app.parse(argv);
     cli.modCli.flush(args);
+    cli.instanceCli.flush(args);
     return args;
 }
 
@@ -295,6 +296,29 @@ class CliParserTest : public QObject {
         QCOMPARE(args.commands.size(), std::size_t{ 1 });
         const auto& cmd = onlyCommand<Cli::Cmd::Launch>(args);
         QCOMPARE(cmd.id, std::string("foo"));
+    }
+
+    void test_instanceList()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "list" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceList>(args);
+        QVERIFY(!cmd.group.has_value());
+
+        const auto grouped = parseOk({ "prismlauncher", "instance", "list", "--group", "modded" });
+        const auto& groupedCmd = onlyCommand<Cli::Cmd::InstanceList>(grouped);
+        QVERIFY(groupedCmd.group.has_value());
+        QCOMPARE(*groupedCmd.group, QString("modded"));
+    }
+
+    void test_instanceInfo()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "info", "My Instance" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QCOMPARE(onlyCommand<Cli::Cmd::InstanceInfo>(args).id, QString("My Instance"));
+
+        // the id is required
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "info" }), true);
     }
 
     void test_positionalUri_untouched()

@@ -805,6 +805,10 @@ SET(LAUNCHER_SOURCES
     cli/TaskRunner.cpp
     cli/ModCommands.h
     cli/ModCommands.cpp
+    cli/InstanceSupport.h
+    cli/InstanceSupport.cpp
+    cli/InstanceCommands.h
+    cli/InstanceCommands.cpp
 
     # GUI - general utilities
     DesktopServices.h

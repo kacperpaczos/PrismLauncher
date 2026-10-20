@@ -186,6 +186,24 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedTargets == targets);
     }
 
+    void test_instanceListAndInfo()
+    {
+        const Cli::Cmd::InstanceList list{ .group = QStringLiteral("modded") };
+        const auto decodedList = roundTrip(list);
+        QVERIFY(decodedList.has_value());
+        QVERIFY(*decodedList == list);
+
+        const Cli::Cmd::InstanceList noGroup{};
+        const auto decodedNoGroup = roundTrip(noGroup);
+        QVERIFY(decodedNoGroup.has_value());
+        QVERIFY(*decodedNoGroup == noGroup);
+
+        const Cli::Cmd::InstanceInfo info{ .id = QStringLiteral("My Instance") };
+        const auto decodedInfo = roundTrip(info);
+        QVERIFY(decodedInfo.has_value());
+        QVERIFY(*decodedInfo == info);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

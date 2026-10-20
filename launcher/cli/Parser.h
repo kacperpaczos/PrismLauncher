@@ -106,9 +106,25 @@ struct ModCli {
     void flush(Args& args) const;
 };
 
+/// `instance` subcommand group.
+struct InstanceCli {
+    CLI::App* instance{};
+
+    // instance list
+    CLI::Option* listGroup{};
+    std::string listGroupValue;
+
+    // instance info
+    std::string infoId;
+
+    void addInstanceArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
+    InstanceCli instanceCli{};
 
     void attach(CLI::App& app, Args& args);
 };
