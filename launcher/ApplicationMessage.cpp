@@ -555,6 +555,45 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return cmd;
     }
 
+    // ScreenshotList
+    if (command == "screenshot_list") {
+        const QString notFoundMsg = "missing `%1` for screenshot_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ScreenshotList{
+            .instance = instance,
+        };
+    }
+
+    // ScreenshotUpload
+    if (command == "screenshot_upload") {
+        const QString notFoundMsg = "missing `%1` for screenshot_upload command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        Cli::Cmd::ScreenshotUpload cmd{
+            .instance = instance,
+            .target = target,
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+        if (args.contains("limit")) {
+            cmd.limit = args.value("limit").toInt();
+        }
+        return cmd;
+    }
+
+    // ScreenshotCopy
+    if (command == "screenshot_copy") {
+        const QString notFoundMsg = "missing `%1` for screenshot_copy command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto destination, Try::findByMapKey(args, "destination", notFoundMsg));
+        return Cli::Cmd::ScreenshotCopy{
+            .instance = instance,
+            .id = id,
+            .destination = destination,
+            .force = argToBool(args.value("force")),
+        };
+    }
+
     // ServerList
     if (command == "server_list") {
         const QString notFoundMsg = "missing `%1` for server_list command";
@@ -892,6 +931,29 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("service", logUpload.service);
             message.args.insert("anonymize", boolToArg(logUpload.anonymize));
             message.args.insert("assumeYes", boolToArg(logUpload.assumeYes));
+        }
+        void operator()(const Cli::Cmd::ScreenshotList& screenshotList)
+        {
+            message.command = "screenshot_list";
+            message.args.insert("instance", screenshotList.instance);
+        }
+        void operator()(const Cli::Cmd::ScreenshotUpload& screenshotUpload)
+        {
+            message.command = "screenshot_upload";
+            message.args.insert("instance", screenshotUpload.instance);
+            message.args.insert("target", screenshotUpload.target);
+            if (screenshotUpload.limit.has_value()) {
+                message.args.insert("limit", QString::number(*screenshotUpload.limit));
+            }
+            message.args.insert("assumeYes", boolToArg(screenshotUpload.assumeYes));
+        }
+        void operator()(const Cli::Cmd::ScreenshotCopy& screenshotCopy)
+        {
+            message.command = "screenshot_copy";
+            message.args.insert("instance", screenshotCopy.instance);
+            message.args.insert("id", screenshotCopy.id);
+            message.args.insert("destination", screenshotCopy.destination);
+            message.args.insert("force", boolToArg(screenshotCopy.force));
         }
     } serializer{};
 

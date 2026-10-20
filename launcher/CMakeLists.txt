@@ -815,6 +815,8 @@ SET(LAUNCHER_SOURCES
     cli/ServerCommands.cpp
     cli/LogCommands.h
     cli/LogCommands.cpp
+    cli/ScreenshotCommands.h
+    cli/ScreenshotCommands.cpp
     cli/CommandUtils.h
     cli/CommandUtils.cpp
 

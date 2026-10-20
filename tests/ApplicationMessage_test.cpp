@@ -471,6 +471,51 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decoded == cmd);
     }
 
+    void test_screenshotList()
+    {
+        const Cli::Cmd::ScreenshotList cmd{
+            .instance = QStringLiteral("My Instance"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_screenshotUpload()
+    {
+        const Cli::Cmd::ScreenshotUpload withoutLimit{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("all"),
+            .assumeYes = true,
+        };
+        const auto decoded = roundTrip(withoutLimit);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutLimit);
+
+        const Cli::Cmd::ScreenshotUpload withLimit{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("shot.png"),
+            .limit = 5,
+            .assumeYes = true,
+        };
+        const auto decodedLimited = roundTrip(withLimit);
+        QVERIFY(decodedLimited.has_value());
+        QVERIFY(*decodedLimited == withLimit);
+    }
+
+    void test_screenshotCopy()
+    {
+        const Cli::Cmd::ScreenshotCopy cmd{
+            .instance = QStringLiteral("My Instance"),
+            .id = QStringLiteral("shot.png"),
+            .destination = QStringLiteral("/tmp/shot.png"),
+            .force = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

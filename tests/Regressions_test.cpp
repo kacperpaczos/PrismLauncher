@@ -260,6 +260,22 @@ static char* toString(const Args& args)
                 .arg(logUpload.instance, logUpload.file.value_or(QString()), logUpload.service)
                 .arg(QString::number(logUpload.anonymize), QString::number(logUpload.assumeYes));
         }
+        QString operator()(const ScreenshotList& screenshotList)
+        {
+            return QStringLiteral("ScreenshotList{ instance: \"%1\" }").arg(screenshotList.instance);
+        }
+        QString operator()(const ScreenshotUpload& screenshotUpload)
+        {
+            return QStringLiteral("ScreenshotUpload{ instance: \"%1\", target: \"%2\", limit: %3, assumeYes: %4 }")
+                .arg(screenshotUpload.instance, screenshotUpload.target)
+                .arg(screenshotUpload.limit.has_value() ? QString::number(*screenshotUpload.limit) : QStringLiteral("none"))
+                .arg(QString::number(screenshotUpload.assumeYes));
+        }
+        QString operator()(const ScreenshotCopy& screenshotCopy)
+        {
+            return QStringLiteral("ScreenshotCopy{ instance: \"%1\", id: \"%2\", destination: \"%3\", force: %4 }")
+                .arg(screenshotCopy.instance, screenshotCopy.id, screenshotCopy.destination, QString::number(screenshotCopy.force));
+        }
     } cmdVisitor;
 
     QStringList cmds{};

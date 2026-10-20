@@ -195,6 +195,7 @@
 
 #include "cli/Commands.h"
 #include "cli/LogCommands.h"
+#include "cli/ScreenshotCommands.h"
 #include "cli/ModCommands.h"
 #include "cli/Output.h"
 #include "cli/PackCommands.h"
@@ -1301,6 +1302,7 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
     Cli::WorldContext worldContext{ *this };
     Cli::ServerContext serverContext{ *this };
     Cli::LogContext logContext{ *this };
+    Cli::ScreenshotContext screenshotContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1320,6 +1322,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         Cli::ServerContext& serverContext;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::LogContext& logContext;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::ScreenshotContext& screenshotContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1451,6 +1455,11 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::LogList& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
         void operator()(const Cli::Cmd::LogRead& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
         void operator()(const Cli::Cmd::LogUpload& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
+        // headless screenshot commands - each prints its own JSON envelope and
+        // reports an exit code; the first failure aborts the rest of the batch.
+        void operator()(const Cli::Cmd::ScreenshotList& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
+        void operator()(const Cli::Cmd::ScreenshotUpload& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
+        void operator()(const Cli::Cmd::ScreenshotCopy& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
     } visitor{ .app = this,
                .toProcessURIs = toProcessURIs,
                .exitCode = headlessExitCode,
@@ -1459,7 +1468,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                .packContext = packContext,
                .worldContext = worldContext,
                .serverContext = serverContext,
-               .logContext = logContext };
+               .logContext = logContext,
+               .screenshotContext = screenshotContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

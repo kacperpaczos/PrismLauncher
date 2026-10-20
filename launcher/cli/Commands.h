@@ -357,6 +357,37 @@ struct LogUpload {
     auto operator<=>(const LogUpload&) const = default;
 };
 
+// ---- screenshot management (headless) ----
+//
+// The screenshots of an instance live in the `screenshots` folder of its game
+// root. They are addressed by their file name.
+
+struct ScreenshotList {
+    QString instance;
+    auto operator<=>(const ScreenshotList&) const = default;
+};
+
+struct ScreenshotUpload {
+    QString instance;
+    /// The id of a screenshot or `all` for every screenshot of the instance.
+    QString target;
+    /// The number of the screenshots that are uploaded when the target is
+    /// `all`.
+    std::optional<int> limit;
+    bool assumeYes = false;
+    auto operator<=>(const ScreenshotUpload&) const = default;
+};
+
+struct ScreenshotCopy {
+    QString instance;
+    /// The id of the screenshot.
+    QString id;
+    /// The file or the folder the screenshot is copied to.
+    QString destination;
+    bool force = false;
+    auto operator<=>(const ScreenshotCopy&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -390,7 +421,10 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::ServerRemove,
                                  Cmd::LogList,
                                  Cmd::LogRead,
-                                 Cmd::LogUpload>;
+                                 Cmd::LogUpload,
+                                 Cmd::ScreenshotList,
+                                 Cmd::ScreenshotUpload,
+                                 Cmd::ScreenshotCopy>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -411,7 +445,8 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::WorldImport>(cmd) || std::holds_alternative<Cmd::ServerList>(cmd) ||
            std::holds_alternative<Cmd::ServerAdd>(cmd) || std::holds_alternative<Cmd::ServerRemove>(cmd) ||
            std::holds_alternative<Cmd::LogList>(cmd) || std::holds_alternative<Cmd::LogRead>(cmd) ||
-           std::holds_alternative<Cmd::LogUpload>(cmd);
+           std::holds_alternative<Cmd::LogUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotList>(cmd) ||
+           std::holds_alternative<Cmd::ScreenshotUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotCopy>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

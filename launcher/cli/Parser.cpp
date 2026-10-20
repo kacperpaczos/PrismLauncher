@@ -976,6 +976,85 @@ void LogCli::flush(Args& args) const
     }
 }
 
+void ScreenshotCli::addScreenshotArgs(CLI::App& app)
+{
+    screenshot = app.add_subcommand("screenshot", "Manage the screenshots of an instance.");
+    screenshot->require_subcommand();
+    // Let global options (e.g. `-d/--dir`) appear after the `screenshot`
+    // subcommand (and its subcommands keep their own fallthrough below).
+    screenshot->fallthrough();
+
+    {
+        // screenshot list -i <instance> [--json]
+        auto* list = screenshot->add_subcommand("list", "List the screenshots of an instance.");
+        addInstanceOption(list, listInstance, /*required=*/true);
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // screenshot upload <target> -i <instance> [--limit N] [-y|--yes] [--json]
+        auto* upload = screenshot->add_subcommand("upload", "Upload the screenshots of an instance to imgur.");
+        upload->add_option("target", uploadTarget, "Id of the screenshot or 'all' for every screenshot.")->option_text("target")->required();
+        addInstanceOption(upload, uploadInstance, /*required=*/true);
+        uploadLimit = upload->add_option("--limit", uploadLimitValue, "The number of the screenshots that are uploaded.")
+                         ->option_text("N")
+                         ->check(CLI::Range(1, 1000));
+        upload->add_flag("-y,--yes", uploadAssumeYes, "Do not ask for confirmation.");
+        addJsonFlag(upload);
+        upload->fallthrough();
+    }
+
+    {
+        // screenshot copy <id> <destination> -i <instance> [--force] [--json]
+        auto* copy = screenshot->add_subcommand("copy", "Copy a screenshot of an instance to a file.");
+        copy->add_option("id", copyId, "Id of the screenshot.")->option_text("id")->required();
+        copy->add_option("destination", copyDestination, "The file or the folder the screenshot is copied to.")
+            ->option_text("destination")
+            ->required();
+        addInstanceOption(copy, copyInstance, /*required=*/true);
+        copy->add_flag("--force", copyForce, "Overwrite the file when it already exists.");
+        addJsonFlag(copy);
+        copy->fallthrough();
+    }
+
+    rejectStrayPositionals(*screenshot, app, "screenshot", "screenshot");
+}
+
+void ScreenshotCli::flush(Args& args) const
+{
+    if (screenshot == nullptr || !screenshot->parsed()) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = screenshot->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("list")) {
+        Cmd::ScreenshotList cmd;
+        cmd.instance = QString::fromStdString(listInstance);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("upload")) {
+        Cmd::ScreenshotUpload cmd;
+        cmd.instance = QString::fromStdString(uploadInstance);
+        cmd.target = QString::fromStdString(uploadTarget);
+        if (uploadLimit != nullptr && uploadLimit->count() > 0) {
+            cmd.limit = QString::fromStdString(uploadLimitValue).toInt();
+        }
+        cmd.assumeYes = uploadAssumeYes;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("copy")) {
+        Cmd::ScreenshotCopy cmd;
+        cmd.instance = QString::fromStdString(copyInstance);
+        cmd.id = QString::fromStdString(copyId);
+        cmd.destination = QString::fromStdString(copyDestination);
+        cmd.force = copyForce;
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -1028,6 +1107,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) log management
     logCli.addLogArgs(app);
+
+    // subcommand based (headless) screenshot management
+    screenshotCli.addScreenshotArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -1101,6 +1183,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // ...and for the `log` subcommand
     cli.logCli.flush(args);
+
+    // ...and for the `screenshot` subcommand
+    cli.screenshotCli.flush(args);
 }
 
 }  // namespace Cli

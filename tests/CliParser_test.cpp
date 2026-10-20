@@ -38,6 +38,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.worldCli.flush(args);
     cli.serverCli.flush(args);
     cli.logCli.flush(args);
+    cli.screenshotCli.flush(args);
     return args;
 }
 
@@ -816,6 +817,55 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "log", "list" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "log", "read" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "log", "upload" }), true);
+    }
+
+    void test_screenshotList()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+    }
+
+    void test_screenshotUpload()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "upload", "all", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotUpload>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("all"));
+        QCOMPARE(cmd.limit.has_value(), false);
+        QCOMPARE(cmd.assumeYes, false);
+    }
+
+    void test_screenshotUpload_options()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "upload", "shot.png", "-i", "X", "--limit", "3", "--yes" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotUpload>(args);
+        QCOMPARE(cmd.target, QString("shot.png"));
+        QCOMPARE(cmd.limit.value(), 3);
+        QCOMPARE(cmd.assumeYes, true);
+    }
+
+    void test_screenshotCopy()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "copy", "shot.png", "/tmp/shot.png", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotCopy>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.id, QString("shot.png"));
+        QCOMPARE(cmd.destination, QString("/tmp/shot.png"));
+        QCOMPARE(cmd.force, false);
+
+        const auto forced = parseOk({ "prismlauncher", "screenshot", "copy", "shot.png", "/tmp/shot.png", "-i", "X", "--force" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ScreenshotCopy>(forced).force, true);
+    }
+
+    void test_screenshotMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "upload", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "upload", "all" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "copy", "shot.png", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "copy", "-i", "X" }), true);
     }
 
     void test_allCommandsHeadless()

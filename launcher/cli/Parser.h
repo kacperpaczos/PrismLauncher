@@ -270,6 +270,32 @@ struct LogCli {
     void flush(Args& args) const;
 };
 
+/// `screenshot` subcommand group. The options are bound to plain members here
+/// and turned into `Cmd::Screenshot*` commands by `flush()` after a successful
+/// parse - this keeps the CLI11 declarations free of ordering assumptions.
+struct ScreenshotCli {
+    CLI::App* screenshot{};
+
+    // screenshot list
+    std::string listInstance;
+
+    // screenshot upload
+    std::string uploadTarget;
+    std::string uploadInstance;
+    CLI::Option* uploadLimit{};
+    std::string uploadLimitValue;
+    bool uploadAssumeYes = false;
+
+    // screenshot copy
+    std::string copyId;
+    std::string copyDestination;
+    std::string copyInstance;
+    bool copyForce = false;
+
+    void addScreenshotArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
@@ -277,6 +303,7 @@ struct Cli {
     WorldCli worldCli{};
     ServerCli serverCli{};
     LogCli logCli{};
+    ScreenshotCli screenshotCli{};
 
     void attach(CLI::App& app, Args& args);
 };
