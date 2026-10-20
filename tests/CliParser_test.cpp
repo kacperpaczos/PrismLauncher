@@ -47,6 +47,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.logCli.flush(args);
     cli.screenshotCli.flush(args);
     cli.notesCli.flush(args);
+    cli.statusCli.flush(args);
     return args;
 }
 
@@ -126,6 +127,43 @@ class CliParserTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_status()
+    {
+        const auto args = parseOk({ "prismlauncher", "status" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QVERIFY(std::holds_alternative<Cli::Cmd::Status>(args.commands.front()));
+    }
+
+    void test_status_jsonFlag()
+    {
+        // The output of the command is always JSON - the flag only says it.
+        const auto args = parseOk({ "prismlauncher", "status", "--json" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QVERIFY(std::holds_alternative<Cli::Cmd::Status>(args.commands.front()));
+    }
+
+    void test_status_isNotMixedWithTheOtherCommands()
+    {
+        // The other groups are not affected by the new subcommand.
+        const auto args = parseOk({ "prismlauncher", "instance", "list" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QVERIFY(std::holds_alternative<Cli::Cmd::InstanceList>(args.commands.front()));
+    }
+
+    void test_ipcTimeout()
+    {
+        const auto args = parseOk({ "prismlauncher", "--ipc-timeout", "42", "status" });
+        QCOMPARE(args.ipcTimeout, 42);
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        QVERIFY(std::holds_alternative<Cli::Cmd::Status>(args.commands.front()));
+    }
+
+    void test_ipcTimeout_default()
+    {
+        const auto args = parseOk({ "prismlauncher", "status" });
+        QCOMPARE(args.ipcTimeout, 300);
+    }
+
     void test_modList()
     {
         const auto args = parseOk({ "prismlauncher", "mod", "list", "-i", "X" });

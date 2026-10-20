@@ -9,6 +9,7 @@
 
 #include "ApplicationMessage.h"
 #include "cli/Commands.h"
+#include "cli/Output.h"
 
 namespace {
 
@@ -744,6 +745,116 @@ class ApplicationMessageTest : public QObject {
         QCOMPARE(decoded->targets.size(), std::size_t{ 2 });
         QCOMPARE(decoded->targets.at(0), QStringLiteral("a"));
         QCOMPARE(decoded->targets.at(1), QStringLiteral("b"));
+    }
+
+    void test_status()
+    {
+        const Cli::Cmd::Status cmd{};
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_request_carriesTheRequestId()
+    {
+        const Cli::Cmd::ModList cmd{
+            .instance = QStringLiteral("My Instance"),
+            .includeDisabled = true,
+        };
+        const auto message = ApplicationMessage::request(cmd, QStringLiteral("the-request-id"));
+        QVERIFY(message.isRequest());
+        QVERIFY(message.expectsReply());
+        QCOMPARE(message.requestId, QStringLiteral("the-request-id"));
+
+        ApplicationMessage decoded;
+        QVERIFY(decoded.parse(message.serialize()));
+        QVERIFY(decoded.isRequest());
+        QVERIFY(decoded.expectsReply());
+        QCOMPARE(decoded.requestId, QStringLiteral("the-request-id"));
+        QCOMPARE(decoded.command, QStringLiteral("mod_list"));
+
+        const auto command = decoded.toCliCommand();
+        QVERIFY(command);
+        QVERIFY(std::holds_alternative<Cli::Cmd::ModList>(*command));
+        QVERIFY(std::get<Cli::Cmd::ModList>(*command) == cmd);
+    }
+
+    void test_legacyMessageIsNotAnswered()
+    {
+        // A message without a request id is a message of the first version of
+        // the protocol - it is not answered. Its format has to stay the same,
+        // so that an old launcher can handle it.
+        const Cli::Cmd::ModList cmd{
+            .instance = QStringLiteral("My Instance"),
+            .includeDisabled = true,
+        };
+        const auto message = ApplicationMessage::fromCliCommand(cmd);
+        QVERIFY(!message.expectsReply());
+
+        const auto document = QJsonDocument::fromJson(message.serialize());
+        QVERIFY(document.isObject());
+        QVERIFY(!document.object().contains("type"));
+        QVERIFY(!document.object().contains("requestId"));
+        QVERIFY(document.object().contains("command"));
+        QVERIFY(document.object().contains("args"));
+    }
+
+    void test_acceptedRoundTrip()
+    {
+        const auto message = ApplicationMessage::accepted(QStringLiteral("the-request-id"));
+
+        ApplicationMessage decoded;
+        QVERIFY(decoded.parse(message.serialize()));
+        QCOMPARE(decoded.type, ApplicationMessageType::Accepted);
+        QCOMPARE(decoded.requestId, QStringLiteral("the-request-id"));
+        QVERIFY(!decoded.expectsReply());
+    }
+
+    void test_responseRoundTrip()
+    {
+        QJsonObject data;
+        data.insert("ok", true);
+        data.insert("total", 3);
+
+        const auto message = ApplicationMessage::response(QStringLiteral("the-request-id"), true, 0, data);
+        QVERIFY(message.isResponse());
+
+        ApplicationMessage decoded;
+        QVERIFY(decoded.parse(message.serialize()));
+        QVERIFY(decoded.isResponse());
+        QCOMPARE(decoded.requestId, QStringLiteral("the-request-id"));
+        QCOMPARE(decoded.ok, true);
+        QCOMPARE(decoded.exitCode, 0);
+        QCOMPARE(decoded.data, data);
+        QVERIFY(decoded.errorCode.isEmpty());
+    }
+
+    void test_responseCarriesTheError()
+    {
+        const auto envelope = Cli::errorEnvelope(QStringLiteral("instance_not_found"), QStringLiteral("no such instance"));
+        const auto message = ApplicationMessage::response(QStringLiteral("the-request-id"), false, 3, envelope);
+        QCOMPARE(message.ok, false);
+        QCOMPARE(message.exitCode, 3);
+        QCOMPARE(message.errorCode, QStringLiteral("instance_not_found"));
+        QCOMPARE(message.errorMessage, QStringLiteral("no such instance"));
+
+        ApplicationMessage decoded;
+        QVERIFY(decoded.parse(message.serialize()));
+        QCOMPARE(decoded.ok, false);
+        QCOMPARE(decoded.exitCode, 3);
+        QCOMPARE(decoded.errorCode, QStringLiteral("instance_not_found"));
+        QCOMPARE(decoded.errorMessage, QStringLiteral("no such instance"));
+        QCOMPARE(decoded.data, envelope);
+    }
+
+    void test_responseOfARawOutput()
+    {
+        auto message = ApplicationMessage::response(QStringLiteral("the-request-id"), true, 0, QJsonObject{});
+        message.rawOutput = true;
+
+        ApplicationMessage decoded;
+        QVERIFY(decoded.parse(message.serialize()));
+        QVERIFY(decoded.rawOutput);
     }
 };
 
