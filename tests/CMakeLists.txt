@@ -105,5 +105,8 @@ if(UNIX)
         add_test(NAME CliDomainSmoke
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli/spike-domain-smoke.sh $<TARGET_FILE:${Launcher_Name}>)
         set_tests_properties(CliDomainSmoke PROPERTIES TIMEOUT 300)
+        add_test(NAME CliIpcSmoke
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli/spike-ipc-smoke.sh $<TARGET_FILE:${Launcher_Name}>)
+        set_tests_properties(CliIpcSmoke PROPERTIES TIMEOUT 300)
     endif()
 endif()
