@@ -35,6 +35,22 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs)
         return std::unexpected(QStringLiteral("cannot run a null task"));
     }
 
+    // A task that was started by the launcher itself (the resolution of the
+    // components of an instance for example) is only waited for - starting it
+    // again would abort the process.
+    const auto state = task->getState();
+    if (state != Task::State::Inactive && state != Task::State::Running) {
+        // The task is already finished, so there is nothing to wait for.
+        if (task->wasSuccessful()) {
+            return {};
+        }
+        auto reason = task->failReason();
+        if (reason.isEmpty()) {
+            reason = QStringLiteral("task failed");
+        }
+        return std::unexpected(reason);
+    }
+
     QEventLoop loop;
     bool done = false;
 
@@ -77,7 +93,9 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs)
     });
 
     timeoutTimer.start(timeoutMs);
-    task->start();
+    if (state == Task::State::Inactive) {
+        task->start();
+    }
     if (!done) {
         loop.exec();
     }
