@@ -41,6 +41,23 @@ namespace Cli {
 namespace {
 
 /**
+ * Remove the line break at the end of a text.
+ *
+ * The line break at the end of a file is a terminator, not a part of the text
+ * - keeping it would leave a blank line at the end of the notes.
+ */
+QString trimTrailingBreak(const QString& text)
+{
+    if (text.endsWith(QLatin1String("\r\n"))) {
+        return text.left(text.size() - 2);
+    }
+    if (text.endsWith(QLatin1Char('\n')) || text.endsWith(QLatin1Char('\r'))) {
+        return text.left(text.size() - 1);
+    }
+    return text;
+}
+
+/**
  * The text of a `notes set` command.
  *
  * The text is given as an argument, read from a file or read from the
@@ -57,7 +74,7 @@ Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd)
         if (!file.open(QIODevice::ReadOnly)) {
             return std::unexpected(QStringLiteral("The file '%1' could not be read").arg(*cmd.file));
         }
-        return QString::fromUtf8(file.readAll());
+        return trimTrailingBreak(QString::fromUtf8(file.readAll()));
     }
     if (cmd.text.has_value()) {
         return *cmd.text;
@@ -67,7 +84,7 @@ Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd)
     if (!input.open(stdin, QIODevice::ReadOnly)) {
         return std::unexpected(QStringLiteral("The standard input could not be read"));
     }
-    return QString::fromUtf8(input.readAll());
+    return trimTrailingBreak(QString::fromUtf8(input.readAll()));
 }
 
 }  // namespace
@@ -101,13 +118,19 @@ ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesSet& cmd)
     }
 
     const auto current = instance->notes();
-    QString notes = current;
-    if (cmd.append && !current.isEmpty() && !current.endsWith(QLatin1Char('\n'))) {
+    QString notes;
+    if (cmd.append) {
         // The text of the notes is appended to the old one - a line break is
         // added between them, so that the notes stay readable.
-        notes += QLatin1Char('\n');
+        notes = current;
+        if (!current.isEmpty() && !current.endsWith(QLatin1Char('\n'))) {
+            notes += QLatin1Char('\n');
+        }
+        notes += text.value();
+    } else {
+        // The old notes are replaced by the new ones.
+        notes = text.value();
     }
-    notes += text.value();
 
     if (notes != current) {
         // The notes are written through the settings of the instance - the
