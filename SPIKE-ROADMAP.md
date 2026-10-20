@@ -741,6 +741,9 @@ W trakcie etapu wpadły też porządki poprzednich przebiegów (refaktor `resolv
 
 ### Testy
 
+- `CliOutput` (5 nowych): kontrakt `OutputCapture` — dokumenty i surowy tekst trafiają do
+  przechwytywania (nic nie wychodzi na stdout), wynikiem jest ostatni dokument, ogromny tekst jest
+  ucinany limitem rozmiaru, a po wyjściu z zakresu przywracany jest poprzedni sink/stdout.
 - `ApplicationMessage` (7 nowych): `requestId` w żądaniu, round-trip `Accepted`/`Response`,
   błędy w kopercie, `rawOutput`, `status` przez IPC, stare wiadomości bez odpowiedzi.
 - `CliParser` (5 nowych): `status`, `status --json`, `status` nie miesza się z innymi komendami,
