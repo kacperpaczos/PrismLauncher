@@ -845,6 +845,8 @@ SET(LAUNCHER_SOURCES
     logs/AnonymizeLog.h
     logs/LogTruncation.cpp
     logs/LogTruncation.h
+    logs/LogReader.cpp
+    logs/LogReader.h
 
     # GUI - windows
     ui/MainWindow.h
