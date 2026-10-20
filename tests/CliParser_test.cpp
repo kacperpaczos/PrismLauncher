@@ -39,6 +39,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.serverCli.flush(args);
     cli.logCli.flush(args);
     cli.screenshotCli.flush(args);
+    cli.notesCli.flush(args);
     return args;
 }
 
@@ -866,6 +867,46 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "upload", "all" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "copy", "shot.png", "-i", "X" }), true);
         QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "copy", "-i", "X" }), true);
+    }
+
+    void test_notesShow()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "show", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesShow>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+    }
+
+    void test_notesSet()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "set", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesSet>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.text.has_value(), false);
+        QCOMPARE(cmd.file.has_value(), false);
+        QCOMPARE(cmd.append, false);
+    }
+
+    void test_notesSet_withText()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "set", "some notes", "-i", "X", "--append" });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesSet>(args);
+        QCOMPARE(cmd.text.value(), QString("some notes"));
+        QCOMPARE(cmd.append, true);
+    }
+
+    void test_notesSet_withFile()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "set", "-i", "X", "--file", "/tmp/notes.txt" });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesSet>(args);
+        QCOMPARE(cmd.file.value(), QString("/tmp/notes.txt"));
+        QCOMPARE(cmd.text.has_value(), false);
+    }
+
+    void test_notesMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "notes", "show" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "notes", "set" }), true);
     }
 
     void test_allCommandsHeadless()

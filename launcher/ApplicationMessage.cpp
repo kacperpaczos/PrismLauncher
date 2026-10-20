@@ -555,6 +555,32 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return cmd;
     }
 
+    // NotesShow
+    if (command == "notes_show") {
+        const QString notFoundMsg = "missing `%1` for notes_show command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::NotesShow{
+            .instance = instance,
+        };
+    }
+
+    // NotesSet
+    if (command == "notes_set") {
+        const QString notFoundMsg = "missing `%1` for notes_set command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::NotesSet cmd{
+            .instance = instance,
+            .append = argToBool(args.value("append")),
+        };
+        if (args.contains("text")) {
+            cmd.text = args.value("text");
+        }
+        if (args.contains("file")) {
+            cmd.file = args.value("file");
+        }
+        return cmd;
+    }
+
     // ScreenshotList
     if (command == "screenshot_list") {
         const QString notFoundMsg = "missing `%1` for screenshot_list command";
@@ -954,6 +980,23 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("id", screenshotCopy.id);
             message.args.insert("destination", screenshotCopy.destination);
             message.args.insert("force", boolToArg(screenshotCopy.force));
+        }
+        void operator()(const Cli::Cmd::NotesShow& notesShow)
+        {
+            message.command = "notes_show";
+            message.args.insert("instance", notesShow.instance);
+        }
+        void operator()(const Cli::Cmd::NotesSet& notesSet)
+        {
+            message.command = "notes_set";
+            message.args.insert("instance", notesSet.instance);
+            if (notesSet.text.has_value()) {
+                message.args.insert("text", *notesSet.text);
+            }
+            if (notesSet.file.has_value()) {
+                message.args.insert("file", *notesSet.file);
+            }
+            message.args.insert("append", boolToArg(notesSet.append));
         }
     } serializer{};
 

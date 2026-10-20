@@ -516,6 +516,37 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decoded == cmd);
     }
 
+    void test_notesShow()
+    {
+        const Cli::Cmd::NotesShow cmd{
+            .instance = QStringLiteral("My Instance"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_notesSet()
+    {
+        const Cli::Cmd::NotesSet withoutText{
+            .instance = QStringLiteral("My Instance"),
+            .append = true,
+        };
+        const auto decoded = roundTrip(withoutText);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutText);
+
+        const Cli::Cmd::NotesSet withText{
+            .instance = QStringLiteral("My Instance"),
+            .text = QStringLiteral("some notes"),
+            .file = QStringLiteral("/tmp/notes.txt"),
+            .append = false,
+        };
+        const auto decodedText = roundTrip(withText);
+        QVERIFY(decodedText.has_value());
+        QVERIFY(*decodedText == withText);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

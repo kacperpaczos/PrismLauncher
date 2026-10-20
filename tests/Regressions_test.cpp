@@ -276,6 +276,16 @@ static char* toString(const Args& args)
             return QStringLiteral("ScreenshotCopy{ instance: \"%1\", id: \"%2\", destination: \"%3\", force: %4 }")
                 .arg(screenshotCopy.instance, screenshotCopy.id, screenshotCopy.destination, QString::number(screenshotCopy.force));
         }
+        QString operator()(const NotesShow& notesShow)
+        {
+            return QStringLiteral("NotesShow{ instance: \"%1\" }").arg(notesShow.instance);
+        }
+        QString operator()(const NotesSet& notesSet)
+        {
+            return QStringLiteral("NotesSet{ instance: \"%1\", text: \"%2\", file: \"%3\", append: %4 }")
+                .arg(notesSet.instance, notesSet.text.value_or(QString()), notesSet.file.value_or(QString()))
+                .arg(QString::number(notesSet.append));
+        }
     } cmdVisitor;
 
     QStringList cmds{};

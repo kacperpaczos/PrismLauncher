@@ -388,6 +388,27 @@ struct ScreenshotCopy {
     auto operator<=>(const ScreenshotCopy&) const = default;
 };
 
+// ---- notes of an instance (headless) ----
+//
+// The notes of an instance are a setting of the instance - they live in the
+// `notes` key of its `instance.cfg`.
+
+struct NotesShow {
+    QString instance;
+    auto operator<=>(const NotesShow&) const = default;
+};
+
+struct NotesSet {
+    QString instance;
+    /// The text of the notes.
+    std::optional<QString> text;
+    /// The file the text of the notes is read from.
+    std::optional<QString> file;
+    /// Add the text to the notes instead of replacing them.
+    bool append = false;
+    auto operator<=>(const NotesSet&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -424,7 +445,9 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::LogUpload,
                                  Cmd::ScreenshotList,
                                  Cmd::ScreenshotUpload,
-                                 Cmd::ScreenshotCopy>;
+                                 Cmd::ScreenshotCopy,
+                                 Cmd::NotesShow,
+                                 Cmd::NotesSet>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -446,7 +469,8 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::ServerAdd>(cmd) || std::holds_alternative<Cmd::ServerRemove>(cmd) ||
            std::holds_alternative<Cmd::LogList>(cmd) || std::holds_alternative<Cmd::LogRead>(cmd) ||
            std::holds_alternative<Cmd::LogUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotList>(cmd) ||
-           std::holds_alternative<Cmd::ScreenshotUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotCopy>(cmd);
+           std::holds_alternative<Cmd::ScreenshotUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotCopy>(cmd) ||
+           std::holds_alternative<Cmd::NotesShow>(cmd) || std::holds_alternative<Cmd::NotesSet>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

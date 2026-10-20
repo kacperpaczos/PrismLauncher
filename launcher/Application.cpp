@@ -197,6 +197,7 @@
 #include "cli/LogCommands.h"
 #include "cli/ScreenshotCommands.h"
 #include "cli/ModCommands.h"
+#include "cli/NotesCommands.h"
 #include "cli/Output.h"
 #include "cli/PackCommands.h"
 #include "cli/ServerCommands.h"
@@ -1303,6 +1304,7 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
     Cli::ServerContext serverContext{ *this };
     Cli::LogContext logContext{ *this };
     Cli::ScreenshotContext screenshotContext{ *this };
+    Cli::NotesContext notesContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1324,6 +1326,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         Cli::LogContext& logContext;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::ScreenshotContext& screenshotContext;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::NotesContext& notesContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1460,6 +1464,10 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::ScreenshotList& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
         void operator()(const Cli::Cmd::ScreenshotUpload& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
         void operator()(const Cli::Cmd::ScreenshotCopy& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
+        // headless notes commands - each prints its own JSON envelope and
+        // reports an exit code; the first failure aborts the rest of the batch.
+        void operator()(const Cli::Cmd::NotesShow& cmd) { recordResult(Cli::runNotesCommand(notesContext, cmd)); }
+        void operator()(const Cli::Cmd::NotesSet& cmd) { recordResult(Cli::runNotesCommand(notesContext, cmd)); }
     } visitor{ .app = this,
                .toProcessURIs = toProcessURIs,
                .exitCode = headlessExitCode,
@@ -1469,7 +1477,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
                .worldContext = worldContext,
                .serverContext = serverContext,
                .logContext = logContext,
-               .screenshotContext = screenshotContext };
+               .screenshotContext = screenshotContext,
+               .notesContext = notesContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

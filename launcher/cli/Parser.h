@@ -296,6 +296,27 @@ struct ScreenshotCli {
     void flush(Args& args) const;
 };
 
+/// `notes` subcommand group. The options are bound to plain members here and
+/// turned into `Cmd::Notes*` commands by `flush()` after a successful parse -
+/// this keeps the CLI11 declarations free of ordering assumptions.
+struct NotesCli {
+    CLI::App* notes{};
+
+    // notes show
+    std::string showInstance;
+
+    // notes set
+    std::string setInstance;
+    CLI::Option* setText{};
+    std::string setTextValue;
+    CLI::Option* setFile{};
+    std::string setFileValue;
+    bool setAppend = false;
+
+    void addNotesArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
@@ -304,6 +325,7 @@ struct Cli {
     ServerCli serverCli{};
     LogCli logCli{};
     ScreenshotCli screenshotCli{};
+    NotesCli notesCli{};
 
     void attach(CLI::App& app, Args& args);
 };

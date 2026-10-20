@@ -1055,6 +1055,65 @@ void ScreenshotCli::flush(Args& args) const
     }
 }
 
+void NotesCli::addNotesArgs(CLI::App& app)
+{
+    notes = app.add_subcommand("notes", "Manage the notes of an instance.");
+    notes->require_subcommand();
+    // Let global options (e.g. `-d/--dir`) appear after the `notes`
+    // subcommand (and its subcommands keep their own fallthrough below).
+    notes->fallthrough();
+
+    {
+        // notes show -i <instance> [--json]
+        auto* show = notes->add_subcommand("show", "Show the notes of an instance.");
+        addInstanceOption(show, showInstance, /*required=*/true);
+        addJsonFlag(show);
+        show->fallthrough();
+    }
+
+    {
+        // notes set -i <instance> [<text>] [--file <path>] [--append] [--json]
+        auto* set = notes->add_subcommand("set", "Set the notes of an instance.");
+        addInstanceOption(set, setInstance, /*required=*/true);
+        setText = set->add_option("text", setTextValue, "The text of the notes.")->option_text("text");
+        setFile = set->add_option("--file", setFileValue, "The file the text of the notes is read from.")->option_text("path");
+        set->add_flag("--append", setAppend, "Add the text to the notes instead of replacing them.");
+        addJsonFlag(set);
+        set->fallthrough();
+    }
+
+    rejectStrayPositionals(*notes, app, "notes", "notes");
+}
+
+void NotesCli::flush(Args& args) const
+{
+    if (notes == nullptr || !notes->parsed()) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = notes->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("show")) {
+        Cmd::NotesShow cmd;
+        cmd.instance = QString::fromStdString(showInstance);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("set")) {
+        Cmd::NotesSet cmd;
+        cmd.instance = QString::fromStdString(setInstance);
+        if (setText != nullptr && setText->count() > 0) {
+            cmd.text = QString::fromStdString(setTextValue);
+        }
+        if (setFile != nullptr && setFile->count() > 0) {
+            cmd.file = QString::fromStdString(setFileValue);
+        }
+        cmd.append = setAppend;
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -1110,6 +1169,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) screenshot management
     screenshotCli.addScreenshotArgs(app);
+
+    // subcommand based (headless) notes management
+    notesCli.addNotesArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -1186,6 +1248,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // ...and for the `screenshot` subcommand
     cli.screenshotCli.flush(args);
+
+    // ...and for the `notes` subcommand
+    cli.notesCli.flush(args);
 }
 
 }  // namespace Cli

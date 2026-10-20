@@ -817,6 +817,8 @@ SET(LAUNCHER_SOURCES
     cli/LogCommands.cpp
     cli/ScreenshotCommands.h
     cli/ScreenshotCommands.cpp
+    cli/NotesCommands.h
+    cli/NotesCommands.cpp
     cli/CommandUtils.h
     cli/CommandUtils.cpp
 
