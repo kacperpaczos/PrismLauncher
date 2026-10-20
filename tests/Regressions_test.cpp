@@ -176,6 +176,30 @@ static char* toString(const Args& args)
             return QStringLiteral("InstanceIconSet{ id: \"%1\", icon: \"%2\" }")
                 .arg(instanceIconSet.id, instanceIconSet.icon);
         }
+        QString operator()(const SettingsList& settingsList)
+        {
+            return QStringLiteral("SettingsList{ id: \"%1\", all: %2, modified: %3 }")
+                .arg(settingsList.id, QString::number(settingsList.all), QString::number(settingsList.modified));
+        }
+        QString operator()(const SettingsGet& settingsGet)
+        {
+            return QStringLiteral("SettingsGet{ id: \"%1\", keys: [%2] }")
+                .arg(settingsGet.id, joinForTest(settingsGet.keys));
+        }
+        QString operator()(const SettingsSet& settingsSet)
+        {
+            QStringList parts;
+            for (const auto& [key, value] : settingsSet.values) {
+                parts << (key + "=" + value);
+            }
+            return QStringLiteral("SettingsSet{ id: \"%1\", values: [%2] }")
+                .arg(settingsSet.id, parts.join(", "));
+        }
+        QString operator()(const SettingsUnset& settingsUnset)
+        {
+            return QStringLiteral("SettingsUnset{ id: \"%1\", keys: [%2] }")
+                .arg(settingsUnset.id, joinForTest(settingsUnset.keys));
+        }
     } cmdVisitor;
 
     QStringList cmds{};

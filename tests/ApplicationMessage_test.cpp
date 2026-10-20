@@ -281,6 +281,43 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedIcon == icon);
     }
 
+    void test_settings()
+    {
+        const Cli::Cmd::SettingsList list{
+            .id = QStringLiteral("X"),
+            .all = true,
+            .modified = true,
+        };
+        const auto decodedList = roundTrip(list);
+        QVERIFY(decodedList.has_value());
+        QVERIFY(*decodedList == list);
+
+        const Cli::Cmd::SettingsGet get{
+            .id = QStringLiteral("X"),
+            .keys = { QStringLiteral("memory.max"), QStringLiteral("memory.min") },
+        };
+        const auto decodedGet = roundTrip(get);
+        QVERIFY(decodedGet.has_value());
+        QVERIFY(*decodedGet == get);
+
+        const Cli::Cmd::SettingsSet set{
+            .id = QStringLiteral("X"),
+            .values = { { QStringLiteral("memory.max"), QStringLiteral("4096") },
+                        { QStringLiteral("env.FOO"), QStringLiteral("bar=baz") } },
+        };
+        const auto decodedSet = roundTrip(set);
+        QVERIFY(decodedSet.has_value());
+        QVERIFY(*decodedSet == set);
+
+        const Cli::Cmd::SettingsUnset unset{
+            .id = QStringLiteral("X"),
+            .keys = { QStringLiteral("memory.max") },
+        };
+        const auto decodedUnset = roundTrip(unset);
+        QVERIFY(decodedUnset.has_value());
+        QVERIFY(*decodedUnset == unset);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

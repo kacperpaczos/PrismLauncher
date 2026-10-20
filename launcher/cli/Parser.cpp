@@ -69,6 +69,19 @@ struct URLValidator : CLI::Validator {
     }
 };
 
+struct KeyValueValidator : CLI::Validator {
+    KeyValueValidator()
+    {
+        name_ = "key=value";
+        func_ = [](const std::string& value) -> std::string {
+            if (value.find('=') == std::string::npos) {
+                return "the value has to be in the `key=value` form";
+            }
+            return {};
+        };
+    }
+};
+
 }  // namespace
 
 void LegacyCli::addLegacyArgs(CLI::App& app, Args& args)
@@ -666,6 +679,104 @@ void InstanceCli::flush(Args& args) const
     }
 }
 
+void SettingsCli::addSettingsArgs(CLI::App& app)
+{
+    settings = app.add_subcommand("settings", "Manage the settings of an instance.");
+    settings->require_subcommand();
+    settings->fallthrough();
+
+    auto addJsonFlag = [](CLI::App* sub) { sub->add_flag("--json", "Emit machine-readable JSON output (default)."); };
+
+    {
+        // settings list <id> [--all|--modified]
+        auto* list = settings->add_subcommand("list", "List the settings of an instance.");
+        list->add_option("id", listId, "Instance ID.")->option_text("id")->required();
+        list->add_flag("--all", listAll, "List the settings that are not part of the curated schema too.");
+        list->add_flag("--modified", listModified, "List only the settings the instance overrides.");
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // settings get <id> <key>...
+        auto* get = settings->add_subcommand("get", "Show the effective value of the settings of an instance.");
+        get->add_option("id", getId, "Instance ID.")->option_text("id")->required();
+        get->add_option("keys", getKeys, "The setting keys to show.")
+            ->option_text("key")
+            ->expected(1, -1)
+            ->required();
+        addJsonFlag(get);
+        get->fallthrough();
+    }
+
+    {
+        // settings set <id> <key>=<value>...
+        auto* set = settings->add_subcommand("set", "Change the settings of an instance.");
+        set->add_option("id", setId, "Instance ID.")->option_text("id")->required();
+        set->add_option("values", setValues, "The settings to change, as `key=value` pairs.")
+            ->option_text("key=value")
+            ->expected(1, -1)
+            ->check(KeyValueValidator{})
+            ->required();
+        addJsonFlag(set);
+        set->fallthrough();
+    }
+
+    {
+        // settings unset <id> <key>...
+        auto* unset = settings->add_subcommand("unset", "Reset the settings of an instance to the global ones.");
+        unset->add_option("id", unsetId, "Instance ID.")->option_text("id")->required();
+        unset->add_option("keys", unsetKeys, "The setting keys to reset.")
+            ->option_text("key")
+            ->expected(1, -1)
+            ->required();
+        addJsonFlag(unset);
+        unset->fallthrough();
+    }
+}
+
+void SettingsCli::flush(Args& args) const
+{
+    if (settings == nullptr) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = settings->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("list")) {
+        Cmd::SettingsList cmd;
+        cmd.id = QString::fromStdString(listId);
+        cmd.all = listAll;
+        cmd.modified = listModified;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("get")) {
+        Cmd::SettingsGet cmd;
+        cmd.id = QString::fromStdString(getId);
+        cmd.keys = toQStringList(getKeys);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("set")) {
+        Cmd::SettingsSet cmd;
+        cmd.id = QString::fromStdString(setId);
+        for (const auto& value : setValues) {
+            const auto separator = value.find('=');
+            if (separator == std::string::npos) {
+                // The parser validates the format, this is only a safety net.
+                continue;
+            }
+            cmd.values.emplace_back(QString::fromStdString(value.substr(0, separator)), QString::fromStdString(value.substr(separator + 1)));
+        }
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("unset")) {
+        Cmd::SettingsUnset cmd;
+        cmd.id = QString::fromStdString(unsetId);
+        cmd.keys = toQStringList(unsetKeys);
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -709,6 +820,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) instance management
     instanceCli.addInstanceArgs(app);
+
+    // subcommand based (headless) instance settings
+    settingsCli.addSettingsArgs(app);
 
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
@@ -772,6 +886,7 @@ void parseArgs(int argc, char** argv, Args& args)
     // turn the parsed subcommands (if any) into `Cmd::*` commands
     cli.modCli.flush(args);
     cli.instanceCli.flush(args);
+    cli.settingsCli.flush(args);
 }
 
 }  // namespace Cli

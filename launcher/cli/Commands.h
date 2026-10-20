@@ -250,6 +250,37 @@ struct InstanceIconSet {
     auto operator<=>(const InstanceIconSet&) const = default;
 };
 
+// ---- instance settings (headless) ----
+
+struct SettingsList {
+    QString id;
+    // Whether the settings that are not part of the curated schema are
+    // listed too.
+    bool all = false;
+    // Whether only the settings the instance overrides are listed.
+    bool modified = false;
+    auto operator<=>(const SettingsList&) const = default;
+};
+
+struct SettingsGet {
+    QString id;
+    std::vector<QString> keys;
+    auto operator<=>(const SettingsGet&) const = default;
+};
+
+struct SettingsSet {
+    QString id;
+    // The `key=value` pairs that are written.
+    std::vector<std::pair<QString, QString>> values;
+    auto operator<=>(const SettingsSet&) const = default;
+};
+
+struct SettingsUnset {
+    QString id;
+    std::vector<QString> keys;
+    auto operator<=>(const SettingsUnset&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -271,7 +302,11 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::InstanceDuplicate,
                                  Cmd::InstanceRename,
                                  Cmd::InstanceDelete,
-                                 Cmd::InstanceIconSet>;
+                                 Cmd::InstanceIconSet,
+                                 Cmd::SettingsList,
+                                 Cmd::SettingsGet,
+                                 Cmd::SettingsSet,
+                                 Cmd::SettingsUnset>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -286,7 +321,9 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::InstanceList>(cmd) || std::holds_alternative<Cmd::InstanceInfo>(cmd) ||
            std::holds_alternative<Cmd::InstanceCreate>(cmd) || std::holds_alternative<Cmd::InstanceDuplicate>(cmd) ||
            std::holds_alternative<Cmd::InstanceRename>(cmd) || std::holds_alternative<Cmd::InstanceDelete>(cmd) ||
-           std::holds_alternative<Cmd::InstanceIconSet>(cmd);
+           std::holds_alternative<Cmd::InstanceIconSet>(cmd) || std::holds_alternative<Cmd::SettingsList>(cmd) ||
+           std::holds_alternative<Cmd::SettingsGet>(cmd) || std::holds_alternative<Cmd::SettingsSet>(cmd) ||
+           std::holds_alternative<Cmd::SettingsUnset>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

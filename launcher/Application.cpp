@@ -196,6 +196,7 @@
 #include "cli/Commands.h"
 #include "cli/InstanceCommands.h"
 #include "cli/ModCommands.h"
+#include "cli/SettingsCommands.h"
 #include "cli/Output.h"
 
 #define STRINGIFY(x) #x
@@ -1415,6 +1416,10 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::InstanceRename& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::InstanceDelete& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::InstanceIconSet& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsList& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsGet& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsSet& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsUnset& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
     } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing, .modContext = modContext };
 
     for (const auto& cmd : cmds) {

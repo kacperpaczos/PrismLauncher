@@ -96,6 +96,36 @@ void insertOptional(QHash<QString, QString>& args, const QString& key, const std
     args.insert(key, value.has_value() ? *value : QString());
 }
 
+/// The `key=value` pairs of a settings change, joined with newlines.
+QString joinKeyValues(const std::vector<std::pair<QString, QString>>& values)
+{
+    QStringList parts;
+    parts.reserve(static_cast<qsizetype>(values.size()));
+    for (const auto& [key, value] : values) {
+        parts << (key + QLatin1Char('=') + value);
+    }
+    return parts.join(QLatin1Char('\n'));
+}
+
+/// The `key=value` pairs of a settings change, read from a joined list.
+std::vector<std::pair<QString, QString>> splitKeyValues(const QString& value)
+{
+    std::vector<std::pair<QString, QString>> out;
+    if (value.isEmpty()) {
+        return out;
+    }
+    const auto parts = value.split(QLatin1Char('\n'));
+    out.reserve(static_cast<std::size_t>(parts.size()));
+    for (const auto& part : parts) {
+        const auto separator = part.indexOf(QLatin1Char('='));
+        if (separator < 0) {
+            continue;
+        }
+        out.emplace_back(part.left(separator), part.mid(separator + 1));
+    }
+    return out;
+}
+
 }  // namespace
 
 Result<> ApplicationMessage::parse(const QByteArray& input)
@@ -378,6 +408,50 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return Cli::Cmd::InstanceIconSet{ .id = id, .icon = icon };
     }
 
+    // SettingsList
+    if (command == "settings_list") {
+        const QString notFoundMsg = "missing `%1` for settings_list command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        return Cli::Cmd::SettingsList{
+            .id = id,
+            .all = argToBool(args.value("all")),
+            .modified = argToBool(args.value("modified")),
+        };
+    }
+
+    // SettingsGet
+    if (command == "settings_get") {
+        const QString notFoundMsg = "missing `%1` for settings_get command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto keys, Try::findByMapKey(args, "keys", notFoundMsg));
+        return Cli::Cmd::SettingsGet{
+            .id = id,
+            .keys = splitStringList(keys),
+        };
+    }
+
+    // SettingsSet
+    if (command == "settings_set") {
+        const QString notFoundMsg = "missing `%1` for settings_set command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto values, Try::findByMapKey(args, "values", notFoundMsg));
+        return Cli::Cmd::SettingsSet{
+            .id = id,
+            .values = splitKeyValues(values),
+        };
+    }
+
+    // SettingsUnset
+    if (command == "settings_unset") {
+        const QString notFoundMsg = "missing `%1` for settings_unset command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto keys, Try::findByMapKey(args, "keys", notFoundMsg));
+        return Cli::Cmd::SettingsUnset{
+            .id = id,
+            .keys = splitStringList(keys),
+        };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -561,6 +635,31 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.command = "instance_icon_set";
             message.args.insert("id", instanceIconSet.id);
             message.args.insert("icon", instanceIconSet.icon);
+        }
+        void operator()(const Cli::Cmd::SettingsList& settingsList)
+        {
+            message.command = "settings_list";
+            message.args.insert("id", settingsList.id);
+            message.args.insert("all", boolToArg(settingsList.all));
+            message.args.insert("modified", boolToArg(settingsList.modified));
+        }
+        void operator()(const Cli::Cmd::SettingsGet& settingsGet)
+        {
+            message.command = "settings_get";
+            message.args.insert("id", settingsGet.id);
+            message.args.insert("keys", joinStringList(settingsGet.keys));
+        }
+        void operator()(const Cli::Cmd::SettingsSet& settingsSet)
+        {
+            message.command = "settings_set";
+            message.args.insert("id", settingsSet.id);
+            message.args.insert("values", joinKeyValues(settingsSet.values));
+        }
+        void operator()(const Cli::Cmd::SettingsUnset& settingsUnset)
+        {
+            message.command = "settings_unset";
+            message.args.insert("id", settingsUnset.id);
+            message.args.insert("keys", joinStringList(settingsUnset.keys));
         }
     } serializer{};
 

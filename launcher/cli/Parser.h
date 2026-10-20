@@ -168,10 +168,36 @@ struct InstanceCli {
     void flush(Args& args) const;
 };
 
+/// `settings` subcommand group.
+struct SettingsCli {
+    CLI::App* settings{};
+
+    // settings list
+    std::string listId;
+    bool listAll = false;
+    bool listModified = false;
+
+    // settings get
+    std::string getId;
+    std::vector<std::string> getKeys;
+
+    // settings set
+    std::string setId;
+    std::vector<std::string> setValues;
+
+    // settings unset
+    std::string unsetId;
+    std::vector<std::string> unsetKeys;
+
+    void addSettingsArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
     InstanceCli instanceCli{};
+    SettingsCli settingsCli{};
 
     void attach(CLI::App& app, Args& args);
 };

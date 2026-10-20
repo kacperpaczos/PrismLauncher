@@ -3,9 +3,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
@@ -35,6 +39,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     app.parse(argv);
     cli.modCli.flush(args);
     cli.instanceCli.flush(args);
+    cli.settingsCli.flush(args);
     return args;
 }
 
@@ -436,6 +441,69 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "instance", "icon", "set", "X" }), true);
     }
 
+    void test_settingsList()
+    {
+        const auto args = parseOk({ "prismlauncher", "settings", "list", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::SettingsList>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.all, false);
+        QCOMPARE(cmd.modified, false);
+
+        const auto all = parseOk({ "prismlauncher", "settings", "list", "X", "--all" });
+        QCOMPARE(onlyCommand<Cli::Cmd::SettingsList>(all).all, true);
+
+        const auto modified = parseOk({ "prismlauncher", "settings", "list", "X", "--modified" });
+        QCOMPARE(onlyCommand<Cli::Cmd::SettingsList>(modified).modified, true);
+
+        // the instance is required
+        QCOMPARE(parseThrows({ "prismlauncher", "settings", "list" }), true);
+    }
+
+    void test_settingsGet()
+    {
+        const auto args = parseOk({ "prismlauncher", "settings", "get", "X", "memory.max", "memory.min" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::SettingsGet>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.keys.size(), std::size_t{ 2 });
+        QCOMPARE(cmd.keys[0], QString("memory.max"));
+        QCOMPARE(cmd.keys[1], QString("memory.min"));
+
+        // at least one key is required
+        QCOMPARE(parseThrows({ "prismlauncher", "settings", "get", "X" }), true);
+    }
+
+    void test_settingsSet()
+    {
+        const auto args = parseOk({ "prismlauncher", "settings", "set", "X", "memory.max=4096", "env.FOO=bar=baz" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::SettingsSet>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.values.size(), std::size_t{ 2 });
+        QCOMPARE(cmd.values[0].first, QString("memory.max"));
+        QCOMPARE(cmd.values[0].second, QString("4096"));
+        QCOMPARE(cmd.values[1].first, QString("env.FOO"));
+        // only the first `=` separates the key from the value
+        QCOMPARE(cmd.values[1].second, QString("bar=baz"));
+
+        // the values have to be in the `key=value` form
+        QCOMPARE(parseThrows({ "prismlauncher", "settings", "set", "X", "memory.max" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "settings", "set", "X" }), true);
+    }
+
+    void test_settingsUnset()
+    {
+        const auto args = parseOk({ "prismlauncher", "settings", "unset", "X", "memory.max", "memory.min" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::SettingsUnset>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.keys.size(), std::size_t{ 2 });
+        QCOMPARE(cmd.keys[0], QString("memory.max"));
+
+        QCOMPARE(parseThrows({ "prismlauncher", "settings", "unset", "X" }), true);
+    }
+
     void test_positionalUri_untouched()
     {
         const auto args = parseOk({ "prismlauncher", "https://example.com/foo.mrpack" });
@@ -477,6 +545,75 @@ class CliParserTest : public QObject {
         const auto help = runLauncher({ "--help" });
         QCOMPARE(help.exitCode, 0);
         QVERIFY(!help.out.trimmed().isEmpty());
+    }
+
+    void test_settingsSetGet_fixtureInstance()
+    {
+        // The settings of an instance are stored in `instance.cfg`, so a
+        // fixture instance is enough to check the schema of the commands.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const auto instanceDir = dir.filePath(QStringLiteral("instances/spike-test"));
+        QVERIFY(QDir().mkpath(instanceDir + QStringLiteral("/minecraft")));
+
+        QFile config(instanceDir + QStringLiteral("/instance.cfg"));
+        QVERIFY(config.open(QIODevice::WriteOnly));
+        config.write("[General]\nConfigVersion=1.3\nInstanceType=OneSix\nname=spike-test\niconKey=default\n"
+                     "uuid=11111111-2222-3333-4444-555555555555\n");
+        config.close();
+
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+
+        const auto set = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "memory.min=1024", "memory.max=8192" });
+        QCOMPARE(set.exitCode, static_cast<int>(Cli::ExitCode::OK));
+
+        const auto get = runLauncher({ "-d", dir.path(), "settings", "get", "spike-test", "memory.max", "memory.min" });
+        QCOMPARE(get.exitCode, static_cast<int>(Cli::ExitCode::OK));
+
+        const QJsonDocument doc = QJsonDocument::fromJson(get.out);
+        QVERIFY2(doc.isObject(), qPrintable(QString::fromUtf8(get.out)));
+        const QJsonObject root = doc.object();
+        QCOMPARE(root.value("ok").toBool(), true);
+        const QJsonArray settings = root.value("settings").toArray();
+        QCOMPARE(settings.size(), 2);
+
+        // the value of the instance is used, and the group is overridden
+        QCOMPARE(settings.at(0).toObject().value("key").toString(), QStringLiteral("memory.max"));
+        QCOMPARE(settings.at(0).toObject().value("value").toInt(), 8192);
+        QCOMPARE(settings.at(0).toObject().value("type").toString(), QStringLiteral("int"));
+        QCOMPARE(settings.at(0).toObject().value("source").toString(), QStringLiteral("instance"));
+        QCOMPARE(settings.at(0).toObject().value("overridden").toBool(), true);
+        QCOMPARE(settings.at(0).toObject().value("ini_key").toString(), QStringLiteral("MaxMemAlloc"));
+        QCOMPARE(settings.at(0).toObject().value("gate").toString(), QStringLiteral("OverrideMemory"));
+        QCOMPARE(settings.at(1).toObject().value("key").toString(), QStringLiteral("memory.min"));
+        QCOMPARE(settings.at(1).toObject().value("value").toInt(), 1024);
+
+        // the value is written to the file of the instance, together with the
+        // flag of the group
+        QFile written(instanceDir + QStringLiteral("/instance.cfg"));
+        QVERIFY(written.open(QIODevice::ReadOnly));
+        const auto content = QString::fromUtf8(written.readAll());
+        QVERIFY2(content.contains(QStringLiteral("MaxMemAlloc=8192")), qPrintable(content));
+        QVERIFY2(content.contains(QStringLiteral("MinMemAlloc=1024")), qPrintable(content));
+        QVERIFY2(content.contains(QStringLiteral("OverrideMemory=true")), qPrintable(content));
+
+        // an unknown key is a usage error
+        const auto unknown = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "nosuchkey=1" });
+        QCOMPARE(unknown.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        // the minimum memory cannot be bigger than the maximum memory
+        const auto invalid = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "memory.min=99999" });
+        QCOMPARE(invalid.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        // unsetting the setting brings back the global value
+        const auto unset = runLauncher({ "-d", dir.path(), "settings", "unset", "spike-test", "memory.max" });
+        QCOMPARE(unset.exitCode, static_cast<int>(Cli::ExitCode::OK));
+        const auto afterUnset = runLauncher({ "-d", dir.path(), "settings", "get", "spike-test", "memory.max" });
+        QCOMPARE(afterUnset.exitCode, static_cast<int>(Cli::ExitCode::OK));
+        const QJsonDocument unsetDoc = QJsonDocument::fromJson(afterUnset.out);
+        const QJsonObject unsetSettings = unsetDoc.object().value("settings").toArray().at(0).toObject();
+        QCOMPARE(unsetSettings.value("overridden").toBool(), false);
+        QCOMPARE(unsetSettings.value("source").toString(), QStringLiteral("default"));
     }
 
     void test_allCommandsHeadless()
