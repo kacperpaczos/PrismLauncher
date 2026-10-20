@@ -794,8 +794,8 @@ SET(LAUNCHER_SOURCES
     # application start utilities
     startup/Startup.h
     startup/Startup.cpp
-    logging/Debug.cpp
-    logging/Debug.h
+    logging/Qt.cpp
+    logging/Qt.h
 
     # CLI commands and parsing
     cli/Commands.h

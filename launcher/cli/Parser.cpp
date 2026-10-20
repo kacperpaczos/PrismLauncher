@@ -132,7 +132,7 @@ void LegacyCli::addLegacyArgs(CLI::App& app, Args& args)
                               if (processingLaunch) {
                                   // push the launch command
                                   args.commands.emplace_back(std::move(processingLaunch.value()));
-                                  processingLaunch = {};
+                                  processingLaunch.reset();
                               }
                           })
                           ->silent();
@@ -227,7 +227,7 @@ void LegacyCli::addLegacyArgs(CLI::App& app, Args& args)
                            }
                        },
                        std::string{ "Write a small '" } + std::string{ g_liveCheckFile } +
-                           "' file after the launcher starts.\n"
+                           "' file after the launcher starts in the directory provided.\n"
                            "The file is written in the directory specified.\n"
                            "(Defaults to the current directory)")
                     ->check(CLI::ExistingDirectory)
@@ -1663,7 +1663,7 @@ void Cli::attach(CLI::App& app, Args& args)
                    args.commands.emplace_back(Cmd::ProcessURI{ .uri = uri });
                }
            },
-           "a resource to import")
+           "Resource to import")
         ->option_text("uri")
         ->expected(0, -1)
         ->take_all()
