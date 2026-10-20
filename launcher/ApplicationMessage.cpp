@@ -185,6 +185,18 @@ Result<> ApplicationMessage::parse(const QByteArray& input)
 {
     TRY_INTO(const auto& root, Json::requireObject(input, "ApplicationMessage"))
 
+    // The messages of the first version of the protocol have no type - they
+    // are requests.
+    const QString messageType = root.value("type").toString();
+    if (messageType == QLatin1String("accepted")) {
+        type = ApplicationMessageType::Accepted;
+    } else if (messageType == QLatin1String("response")) {
+        type = ApplicationMessageType::Response;
+    } else {
+        type = ApplicationMessageType::Request;
+    }
+
+    requestId = root.value("requestId").toString();
     command = root.value("command").toString();
     args.clear();
 
@@ -192,18 +204,62 @@ Result<> ApplicationMessage::parse(const QByteArray& input)
     for (auto iter = parsedArgs.constBegin(); iter != parsedArgs.constEnd(); iter++) {
         args.insert(iter.key(), iter.value().toString());
     }
+
+    ok = root.value("ok").toBool();
+    exitCode = root.value("exitCode").toInt();
+    data = root.value("data").toObject();
+    rawOutput = root.value("rawOutput").toBool();
+
+    const auto error = root.value("error").toObject();
+    errorCode = error.value("code").toString();
+    errorMessage = error.value("message").toString();
+
     return {};
 }
 
 QByteArray ApplicationMessage::serialize() const
 {
     QJsonObject root;
-    root.insert("command", command);
-    QJsonObject outArgs;
-    for (auto iter = args.constBegin(); iter != args.constEnd(); iter++) {
-        outArgs.insert(iter.key(), iter.value());
+    switch (type) {
+        case ApplicationMessageType::Request: {
+            // A request without a request id is a message of the first version
+            // of the protocol - it is not answered. Keeping the format the
+            // same lets an old launcher handle it.
+            if (!requestId.isEmpty()) {
+                root.insert("type", QStringLiteral("request"));
+                root.insert("requestId", requestId);
+            }
+            root.insert("command", command);
+            QJsonObject outArgs;
+            for (auto iter = args.constBegin(); iter != args.constEnd(); iter++) {
+                outArgs.insert(iter.key(), iter.value());
+            }
+            root.insert("args", outArgs);
+            break;
+        }
+        case ApplicationMessageType::Accepted: {
+            root.insert("type", QStringLiteral("accepted"));
+            root.insert("requestId", requestId);
+            break;
+        }
+        case ApplicationMessageType::Response: {
+            root.insert("type", QStringLiteral("response"));
+            root.insert("requestId", requestId);
+            root.insert("ok", ok);
+            root.insert("exitCode", exitCode);
+            root.insert("data", data);
+            if (rawOutput) {
+                root.insert("rawOutput", true);
+            }
+            if (!errorCode.isEmpty()) {
+                QJsonObject error;
+                error.insert("code", errorCode);
+                error.insert("message", errorMessage);
+                root.insert("error", error);
+            }
+            break;
+        }
     }
-    root.insert("args", outArgs);
 
     return Json::toText(root);
 }
@@ -1340,4 +1396,40 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
 
     std::visit(serializer, cmd);
     return serializer.message;
+}
+
+ApplicationMessage ApplicationMessage::request(const Cli::Command& cmd, const QString& requestId)
+{
+    auto message = fromCliCommand(cmd);
+    message.type = ApplicationMessageType::Request;
+    message.requestId = requestId;
+    return message;
+}
+
+ApplicationMessage ApplicationMessage::accepted(const QString& requestId)
+{
+    ApplicationMessage message;
+    message.type = ApplicationMessageType::Accepted;
+    message.requestId = requestId;
+    return message;
+}
+
+ApplicationMessage ApplicationMessage::response(const QString& requestId, bool ok, int exitCode, const QJsonObject& data)
+{
+    ApplicationMessage message;
+    message.type = ApplicationMessageType::Response;
+    message.requestId = requestId;
+    message.ok = ok;
+    message.exitCode = exitCode;
+    message.data = data;
+
+    // The error of the envelope of the command is copied to the response, so
+    // that the client does not have to dig it out of the data.
+    const auto error = data.value("error").toObject();
+    if (error.value("code").isString()) {
+        message.errorCode = error.value("code").toString();
+        message.errorMessage = error.value("message").toString();
+    }
+
+    return message;
 }
