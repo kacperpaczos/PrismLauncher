@@ -431,7 +431,9 @@ ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldImport& cmd)
     // found while the metadata is read.
     World world(source);
     world.loadMetadata();
-    if (!world.isValid()) {
+    // A zip is treated as a world as soon as it has a level.dat, so the name
+    // of the world is what tells a real world from a broken one.
+    if (!world.isValid() || world.name().isEmpty()) {
         return outputError(QStringLiteral("invalid_world"),
                            QStringLiteral("'%1' does not contain a world (no level.dat was found)").arg(cmd.path),
                            ExitCode::NotFound);
