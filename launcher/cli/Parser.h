@@ -117,6 +117,53 @@ struct InstanceCli {
     // instance info
     std::string infoId;
 
+    // instance create
+    CLI::Option* createName{};
+    std::string createNameValue;
+    CLI::Option* createMc{};
+    std::string createMcValue;
+    CLI::Option* createLoader{};
+    std::string createLoaderValue;
+    CLI::Option* createLoaderVersion{};
+    std::string createLoaderVersionValue;
+    CLI::Option* createGroup{};
+    std::string createGroupValue;
+    CLI::Option* createIcon{};
+    std::string createIconValue;
+    bool createDownload = false;
+    bool createNoDownload = false;
+    CLI::Option* createFrom{};
+    std::string createFromValue;
+
+    // instance duplicate
+    std::string duplicateId;
+    CLI::Option* duplicateName{};
+    std::string duplicateNameValue;
+    bool duplicateCopy = false;
+    bool duplicateLinks = false;
+    bool duplicateHardlinks = false;
+    bool duplicateClone = false;
+    bool duplicateNoSaves = false;
+    bool duplicateNoMods = false;
+    bool duplicateNoResourcePacks = false;
+    bool duplicateNoShaderPacks = false;
+    bool duplicateNoOptions = false;
+    bool duplicateNoConfigs = false;
+
+    // instance rename
+    std::string renameId;
+    std::string renameNewName;
+    bool renameKeepFolder = false;
+    bool renameRenameFolder = false;
+
+    // instance delete
+    std::string deleteId;
+    bool deletePurge = false;
+
+    // instance icon set
+    std::string iconSetId;
+    std::string iconSetIcon;
+
     void addInstanceArgs(CLI::App& app);
     void flush(Args& args) const;
 };

@@ -98,6 +98,22 @@ bool loadProfile(MinecraftInstance* instance)
     return true;
 }
 
+/**
+ * The version of a component.
+ *
+ * The cached version of a component is only known after the components were
+ * resolved (it needs the metadata of the components), so the version that is
+ * stored in the profile is used as a fallback.
+ */
+QString componentVersion(const shared_qobject_ptr<Component>& component)
+{
+    if (!component) {
+        return QString();
+    }
+    const auto cached = component->getVersion();
+    return cached.isEmpty() ? component->m_version : cached;
+}
+
 std::optional<LoaderInfo> findLoader(PackProfile* profile)
 {
     if (!profile) {
@@ -108,7 +124,7 @@ std::optional<LoaderInfo> findLoader(PackProfile* profile)
         if (component && component->isEnabled()) {
             return LoaderInfo{ .name = ModPlatform::getModLoaderAsString(it.value().type),
                                .uid = it.key(),
-                               .version = component->getVersion() };
+                               .version = componentVersion(component) };
         }
     }
     return std::nullopt;
@@ -135,7 +151,10 @@ QJsonObject instanceToJson(MinecraftInstance* instance, InstanceList* instances)
     object.insert(QStringLiteral("group"), instances ? instances->getInstanceGroup(instance->id()) : QString());
 
     auto* profile = instance->getPackProfile();
-    const auto mcVersion = profile ? profile->getComponentVersion(QStringLiteral("net.minecraft")) : QString();
+    // The cached version of the component is only known after the components
+    // were resolved - a freshly created instance has the requested version
+    // only.
+    const auto mcVersion = profile ? componentVersion(profile->getComponent(QStringLiteral("net.minecraft"))) : QString();
     object.insert(QStringLiteral("mc_version"), mcVersion.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(mcVersion));
 
     const auto loader = findLoader(profile);

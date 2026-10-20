@@ -27,6 +27,7 @@
 #include <optional>
 
 #include <QJsonObject>
+#include <QObjectPtr.h>
 #include <QString>
 
 #include "cli/Commands.h"
@@ -35,6 +36,7 @@
 class InstanceList;
 class MinecraftInstance;
 class PackProfile;
+struct Component;
 
 namespace Cli {
 
@@ -72,6 +74,13 @@ bool loadProfile(MinecraftInstance* instance);
  * The mod loader of the instance, if it has one.
  */
 std::optional<LoaderInfo> findLoader(PackProfile* profile);
+
+/**
+ * The version of a component. The cached version of a component is only known
+ * after the components were resolved, so the version that is stored in the
+ * profile is used as a fallback.
+ */
+QString componentVersion(const shared_qobject_ptr<Component>& component);
 
 /**
  * The JSON of an instance - the fields that `instance list` and

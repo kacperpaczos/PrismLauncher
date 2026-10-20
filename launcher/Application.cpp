@@ -1410,6 +1410,11 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::InstanceList& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
         void operator()(const Cli::Cmd::InstanceInfo& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceCreate& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceDuplicate& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceRename& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceDelete& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceIconSet& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
     } visitor{ .app = this, .toProcessURIs = toProcessURIs, .exitCode = headlessExitCode, .stop = stopProcessing, .modContext = modContext };
 
     for (const auto& cmd : cmds) {

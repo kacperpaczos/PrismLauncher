@@ -186,6 +186,70 @@ struct InstanceInfo {
     auto operator<=>(const InstanceInfo&) const = default;
 };
 
+struct InstanceCreate {
+    // The name of the new instance.
+    QString name;
+    // The Minecraft version of the new instance.
+    QString mcVersion;
+    // The mod loader of the new instance (`fabric`, `forge`, `neoforge`,
+    // `quilt` or `none`).
+    std::optional<QString> loader;
+    // The version of the mod loader (`latest` for the newest one).
+    std::optional<QString> loaderVersion;
+    // The group of the new instance.
+    std::optional<QString> group;
+    // The icon of the new instance (an icon key or the path of an image).
+    std::optional<QString> icon;
+    // Whether the files of the instance are downloaded.
+    bool download = true;
+    // Import an instance from a URL or a file instead of creating a vanilla
+    // one.
+    std::optional<QString> from;
+    auto operator<=>(const InstanceCreate&) const = default;
+};
+
+struct InstanceDuplicate {
+    QString id;
+    // The name of the copy (the name of the original with a suffix by
+    // default).
+    std::optional<QString> name;
+    // How the files of the instance are copied (`copy`, `links`, `hardlinks`
+    // or `clone`).
+    QString copyMode = QStringLiteral("copy");
+    // The parts of the instance that are not copied.
+    bool noSaves = false;
+    bool noMods = false;
+    bool noResourcePacks = false;
+    bool noShaderPacks = false;
+    bool noOptions = false;
+    bool noConfigs = false;
+    auto operator<=>(const InstanceDuplicate&) const = default;
+};
+
+struct InstanceRename {
+    QString id;
+    QString newName;
+    // Whether the folder of the instance is renamed too (the id of the
+    // instance changes with it).
+    bool renameFolder = true;
+    auto operator<=>(const InstanceRename&) const = default;
+};
+
+struct InstanceDelete {
+    QString id;
+    // Whether the files of the instance are deleted instead of being moved to
+    // the trash.
+    bool purge = false;
+    auto operator<=>(const InstanceDelete&) const = default;
+};
+
+struct InstanceIconSet {
+    QString id;
+    // The icon key or the path of an image file.
+    QString icon;
+    auto operator<=>(const InstanceIconSet&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -202,7 +266,12 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::ModDisable,
                                  Cmd::ModUpdate,
                                  Cmd::InstanceList,
-                                 Cmd::InstanceInfo>;
+                                 Cmd::InstanceInfo,
+                                 Cmd::InstanceCreate,
+                                 Cmd::InstanceDuplicate,
+                                 Cmd::InstanceRename,
+                                 Cmd::InstanceDelete,
+                                 Cmd::InstanceIconSet>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -214,7 +283,10 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::ModInfo>(cmd) || std::holds_alternative<Cmd::ModInstall>(cmd) ||
            std::holds_alternative<Cmd::ModRemove>(cmd) || std::holds_alternative<Cmd::ModEnable>(cmd) ||
            std::holds_alternative<Cmd::ModDisable>(cmd) || std::holds_alternative<Cmd::ModUpdate>(cmd) ||
-           std::holds_alternative<Cmd::InstanceList>(cmd) || std::holds_alternative<Cmd::InstanceInfo>(cmd);
+           std::holds_alternative<Cmd::InstanceList>(cmd) || std::holds_alternative<Cmd::InstanceInfo>(cmd) ||
+           std::holds_alternative<Cmd::InstanceCreate>(cmd) || std::holds_alternative<Cmd::InstanceDuplicate>(cmd) ||
+           std::holds_alternative<Cmd::InstanceRename>(cmd) || std::holds_alternative<Cmd::InstanceDelete>(cmd) ||
+           std::holds_alternative<Cmd::InstanceIconSet>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

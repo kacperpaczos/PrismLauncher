@@ -151,6 +151,31 @@ static char* toString(const Args& args)
         {
             return QStringLiteral("InstanceInfo{ id: \"%1\" }").arg(instanceInfo.id);
         }
+        QString operator()(const InstanceCreate& instanceCreate)
+        {
+            return QStringLiteral("InstanceCreate{ name: \"%1\", mcVersion: \"%2\" }")
+                .arg(instanceCreate.name, instanceCreate.mcVersion);
+        }
+        QString operator()(const InstanceDuplicate& instanceDuplicate)
+        {
+            return QStringLiteral("InstanceDuplicate{ id: \"%1\", name: \"%2\", copyMode: \"%3\" }")
+                .arg(instanceDuplicate.id, instanceDuplicate.name.value_or(QString()), instanceDuplicate.copyMode);
+        }
+        QString operator()(const InstanceRename& instanceRename)
+        {
+            return QStringLiteral("InstanceRename{ id: \"%1\", newName: \"%2\", renameFolder: %3 }")
+                .arg(instanceRename.id, instanceRename.newName, QString::number(instanceRename.renameFolder));
+        }
+        QString operator()(const InstanceDelete& instanceDelete)
+        {
+            return QStringLiteral("InstanceDelete{ id: \"%1\", purge: %2 }")
+                .arg(instanceDelete.id, QString::number(instanceDelete.purge));
+        }
+        QString operator()(const InstanceIconSet& instanceIconSet)
+        {
+            return QStringLiteral("InstanceIconSet{ id: \"%1\", icon: \"%2\" }")
+                .arg(instanceIconSet.id, instanceIconSet.icon);
+        }
     } cmdVisitor;
 
     QStringList cmds{};

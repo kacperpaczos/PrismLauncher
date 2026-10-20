@@ -315,6 +315,69 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return Cli::Cmd::InstanceInfo{ .id = id };
     }
 
+    // InstanceCreate
+    if (command == "instance_create") {
+        const QString notFoundMsg = "missing `%1` for instance_create command";
+        TRY_INTO(auto name, Try::findByMapKey(args, "name", notFoundMsg));
+        return Cli::Cmd::InstanceCreate{
+            .name = name,
+            .mcVersion = args.value("mcVersion"),
+            .loader = optionalArg(args, "loader"),
+            .loaderVersion = optionalArg(args, "loaderVersion"),
+            .group = optionalArg(args, "group"),
+            .icon = optionalArg(args, "icon"),
+            .download = argToBool(args.value("download")),
+            .from = optionalArg(args, "from"),
+        };
+    }
+
+    // InstanceDuplicate
+    if (command == "instance_duplicate") {
+        const QString notFoundMsg = "missing `%1` for instance_duplicate command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        return Cli::Cmd::InstanceDuplicate{
+            .id = id,
+            .name = optionalArg(args, "name"),
+            .copyMode = args.value("copyMode"),
+            .noSaves = argToBool(args.value("noSaves")),
+            .noMods = argToBool(args.value("noMods")),
+            .noResourcePacks = argToBool(args.value("noResourcePacks")),
+            .noShaderPacks = argToBool(args.value("noShaderPacks")),
+            .noOptions = argToBool(args.value("noOptions")),
+            .noConfigs = argToBool(args.value("noConfigs")),
+        };
+    }
+
+    // InstanceRename
+    if (command == "instance_rename") {
+        const QString notFoundMsg = "missing `%1` for instance_rename command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto newName, Try::findByMapKey(args, "newName", notFoundMsg));
+        return Cli::Cmd::InstanceRename{
+            .id = id,
+            .newName = newName,
+            .renameFolder = argToBool(args.value("renameFolder")),
+        };
+    }
+
+    // InstanceDelete
+    if (command == "instance_delete") {
+        const QString notFoundMsg = "missing `%1` for instance_delete command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        return Cli::Cmd::InstanceDelete{
+            .id = id,
+            .purge = argToBool(args.value("purge")),
+        };
+    }
+
+    // InstanceIconSet
+    if (command == "instance_icon_set") {
+        const QString notFoundMsg = "missing `%1` for instance_icon_set command";
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto icon, Try::findByMapKey(args, "icon", notFoundMsg));
+        return Cli::Cmd::InstanceIconSet{ .id = id, .icon = icon };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -454,6 +517,50 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
         {
             message.command = "instance_info";
             message.args.insert("id", instanceInfo.id);
+        }
+        void operator()(const Cli::Cmd::InstanceCreate& instanceCreate)
+        {
+            message.command = "instance_create";
+            message.args.insert("name", instanceCreate.name);
+            message.args.insert("mcVersion", instanceCreate.mcVersion);
+            insertOptional(message.args, "loader", instanceCreate.loader);
+            insertOptional(message.args, "loaderVersion", instanceCreate.loaderVersion);
+            insertOptional(message.args, "group", instanceCreate.group);
+            insertOptional(message.args, "icon", instanceCreate.icon);
+            message.args.insert("download", boolToArg(instanceCreate.download));
+            insertOptional(message.args, "from", instanceCreate.from);
+        }
+        void operator()(const Cli::Cmd::InstanceDuplicate& instanceDuplicate)
+        {
+            message.command = "instance_duplicate";
+            message.args.insert("id", instanceDuplicate.id);
+            insertOptional(message.args, "name", instanceDuplicate.name);
+            message.args.insert("copyMode", instanceDuplicate.copyMode);
+            message.args.insert("noSaves", boolToArg(instanceDuplicate.noSaves));
+            message.args.insert("noMods", boolToArg(instanceDuplicate.noMods));
+            message.args.insert("noResourcePacks", boolToArg(instanceDuplicate.noResourcePacks));
+            message.args.insert("noShaderPacks", boolToArg(instanceDuplicate.noShaderPacks));
+            message.args.insert("noOptions", boolToArg(instanceDuplicate.noOptions));
+            message.args.insert("noConfigs", boolToArg(instanceDuplicate.noConfigs));
+        }
+        void operator()(const Cli::Cmd::InstanceRename& instanceRename)
+        {
+            message.command = "instance_rename";
+            message.args.insert("id", instanceRename.id);
+            message.args.insert("newName", instanceRename.newName);
+            message.args.insert("renameFolder", boolToArg(instanceRename.renameFolder));
+        }
+        void operator()(const Cli::Cmd::InstanceDelete& instanceDelete)
+        {
+            message.command = "instance_delete";
+            message.args.insert("id", instanceDelete.id);
+            message.args.insert("purge", boolToArg(instanceDelete.purge));
+        }
+        void operator()(const Cli::Cmd::InstanceIconSet& instanceIconSet)
+        {
+            message.command = "instance_icon_set";
+            message.args.insert("id", instanceIconSet.id);
+            message.args.insert("icon", instanceIconSet.icon);
         }
     } serializer{};
 

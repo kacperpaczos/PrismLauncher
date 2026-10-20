@@ -471,6 +471,106 @@ void InstanceCli::addInstanceArgs(CLI::App& app)
         info->fallthrough();
     }
 
+    {
+        // instance create --name <n> --mc <ver> [...] | --from <url|file>
+        auto* create = instance->add_subcommand("create", "Create a new instance.");
+        createName = create->add_option("--name", createNameValue, "The name of the new instance.")->option_text("name");
+        createMc = create->add_option("--mc", createMcValue, "The Minecraft version of the new instance.")->option_text("version");
+        createLoader = create->add_option("--loader", createLoaderValue, "The mod loader of the new instance.")
+                          ->option_text("loader")
+                          ->check(CLI::IsMember(std::vector<std::string>{ "fabric", "forge", "neoforge", "quilt", "none" }));
+        createLoaderVersion = create->add_option("--loader-version", createLoaderVersionValue, "The version of the mod loader.")
+                                  ->option_text("version");
+        createGroup = create->add_option("--group", createGroupValue, "The group of the new instance.")->option_text("group");
+        createIcon = create->add_option("--icon", createIconValue, "The icon of the new instance (an icon key or an image file).")
+                         ->option_text("icon");
+        auto* download = create->add_flag("--download", createDownload, "Download the files of the new instance (the default).");
+        auto* noDownload = create->add_flag("--no-download", createNoDownload, "Do not download the files of the new instance.");
+        createFrom = create->add_option("--from", createFromValue, "Import an instance from a URL or a file instead of creating a vanilla one.")
+                        ->option_text("url|file");
+        addJsonFlag(create);
+        create->fallthrough();
+
+        // `--download` and `--no-download` contradict each other.
+        download->excludes(noDownload);
+
+        // A vanilla instance needs a name and a Minecraft version, an imported
+        // one takes them from the pack.
+        create->parse_complete_callback([this] {
+            if (createFrom != nullptr && createFrom->count() > 0) {
+                return;
+            }
+            if (createName == nullptr || createName->count() == 0) {
+                throw CLI::ValidationError("instance create", "either `--from` or `--name` is required");
+            }
+            if (createMc == nullptr || createMc->count() == 0) {
+                throw CLI::ValidationError("instance create", "either `--from` or `--mc` is required");
+            }
+        });
+    }
+
+    {
+        // instance duplicate <id> [--name <n>] [--copy|--links|--hardlinks|--clone] [--no-saves] ...
+        auto* duplicate = instance->add_subcommand("duplicate", "Duplicate an instance.");
+        duplicate->add_option("id", duplicateId, "Instance ID.")->option_text("id")->required();
+        duplicateName = duplicate->add_option("--name", duplicateNameValue, "The name of the copy.")->option_text("name");
+        auto* copy = duplicate->add_flag("--copy", duplicateCopy, "Copy the files of the instance.");
+        auto* links = duplicate->add_flag("--links", duplicateLinks, "Copy the files of the instance as symbolic links.");
+        auto* hardlinks = duplicate->add_flag("--hardlinks", duplicateHardlinks, "Copy the files of the instance as hard links.");
+        auto* clone = duplicate->add_flag("--clone", duplicateClone, "Copy the files of the instance with a copy-on-write clone.");
+        duplicate->add_flag("--no-saves", duplicateNoSaves, "Do not copy the saves of the instance.");
+        duplicate->add_flag("--no-mods", duplicateNoMods, "Do not copy the mods of the instance.");
+        duplicate->add_flag("--no-resource-packs", duplicateNoResourcePacks, "Do not copy the resource packs of the instance.");
+        duplicate->add_flag("--no-shader-packs", duplicateNoShaderPacks, "Do not copy the shader packs of the instance.");
+        duplicate->add_flag("--no-options", duplicateNoOptions, "Do not copy the options of the instance.");
+        duplicate->add_flag("--no-configs", duplicateNoConfigs, "Do not copy the configs of the instance.");
+        addJsonFlag(duplicate);
+        duplicate->fallthrough();
+
+        // Only one copy mode can be used at a time.
+        for (auto* option : { copy, links, hardlinks, clone }) {
+            for (auto* other : { copy, links, hardlinks, clone }) {
+                if (option != other) {
+                    option->excludes(other);
+                }
+            }
+        }
+    }
+
+    {
+        // instance rename <id> <new-name> [--keep-folder|--rename-folder]
+        auto* rename = instance->add_subcommand("rename", "Rename an instance.");
+        rename->add_option("id", renameId, "Instance ID.")->option_text("id")->required();
+        rename->add_option("new-name", renameNewName, "The new name of the instance.")->option_text("name")->required();
+        auto* keepFolder = rename->add_flag("--keep-folder", renameKeepFolder, "Keep the folder of the instance as it is.");
+        auto* renameFolder = rename->add_flag("--rename-folder", renameRenameFolder, "Rename the folder of the instance too (the default).");
+        addJsonFlag(rename);
+        rename->fallthrough();
+
+        keepFolder->excludes(renameFolder);
+        renameFolder->excludes(keepFolder);
+    }
+
+    {
+        // instance delete <id> [--purge]
+        auto* remove = instance->add_subcommand("delete", "Delete an instance.");
+        remove->add_option("id", deleteId, "Instance ID.")->option_text("id")->required();
+        remove->add_flag("--purge", deletePurge, "Delete the files of the instance instead of moving them to the trash.");
+        addJsonFlag(remove);
+        remove->fallthrough();
+    }
+
+    {
+        // instance icon set <id> <key|file>
+        auto* icon = instance->add_subcommand("icon", "Manage the icon of an instance.");
+        icon->require_subcommand();
+        icon->fallthrough();
+        auto* set = icon->add_subcommand("set", "Set the icon of an instance.");
+        set->add_option("id", iconSetId, "Instance ID.")->option_text("id")->required();
+        set->add_option("icon", iconSetIcon, "The icon key or the path of an image file.")->option_text("icon")->required();
+        addJsonFlag(set);
+        set->fallthrough();
+    }
 }
 
 void InstanceCli::flush(Args& args) const
@@ -494,6 +594,75 @@ void InstanceCli::flush(Args& args) const
         Cmd::InstanceInfo cmd;
         cmd.id = QString::fromStdString(infoId);
         args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("create")) {
+        Cmd::InstanceCreate cmd;
+        if (createName != nullptr && createName->count() > 0) {
+            cmd.name = QString::fromStdString(createNameValue);
+        }
+        if (createMc != nullptr && createMc->count() > 0) {
+            cmd.mcVersion = QString::fromStdString(createMcValue);
+        }
+        if (createLoader != nullptr && createLoader->count() > 0) {
+            cmd.loader = QString::fromStdString(createLoaderValue);
+        }
+        if (createLoaderVersion != nullptr && createLoaderVersion->count() > 0) {
+            cmd.loaderVersion = QString::fromStdString(createLoaderVersionValue);
+        }
+        if (createGroup != nullptr && createGroup->count() > 0) {
+            cmd.group = QString::fromStdString(createGroupValue);
+        }
+        if (createIcon != nullptr && createIcon->count() > 0) {
+            cmd.icon = QString::fromStdString(createIconValue);
+        }
+        if (createFrom != nullptr && createFrom->count() > 0) {
+            cmd.from = QString::fromStdString(createFromValue);
+        }
+        // The files are downloaded unless `--no-download` is used.
+        cmd.download = !createNoDownload;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("duplicate")) {
+        Cmd::InstanceDuplicate cmd;
+        cmd.id = QString::fromStdString(duplicateId);
+        if (duplicateName != nullptr && duplicateName->count() > 0) {
+            cmd.name = QString::fromStdString(duplicateNameValue);
+        }
+        if (duplicateLinks) {
+            cmd.copyMode = QStringLiteral("links");
+        } else if (duplicateHardlinks) {
+            cmd.copyMode = QStringLiteral("hardlinks");
+        } else if (duplicateClone) {
+            cmd.copyMode = QStringLiteral("clone");
+        } else {
+            cmd.copyMode = QStringLiteral("copy");
+        }
+        cmd.noSaves = duplicateNoSaves;
+        cmd.noMods = duplicateNoMods;
+        cmd.noResourcePacks = duplicateNoResourcePacks;
+        cmd.noShaderPacks = duplicateNoShaderPacks;
+        cmd.noOptions = duplicateNoOptions;
+        cmd.noConfigs = duplicateNoConfigs;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("rename")) {
+        Cmd::InstanceRename cmd;
+        cmd.id = QString::fromStdString(renameId);
+        cmd.newName = QString::fromStdString(renameNewName);
+        // The folder of the instance is renamed unless `--keep-folder` is used.
+        cmd.renameFolder = !renameKeepFolder;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("delete")) {
+        Cmd::InstanceDelete cmd;
+        cmd.id = QString::fromStdString(deleteId);
+        cmd.purge = deletePurge;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("icon")) {
+        auto* icon = instance->get_subcommand_no_throw("icon");
+        auto* set = icon != nullptr ? icon->get_subcommand_no_throw("set") : nullptr;
+        if (set != nullptr && set->parsed()) {
+            Cmd::InstanceIconSet cmd;
+            cmd.id = QString::fromStdString(iconSetId);
+            cmd.icon = QString::fromStdString(iconSetIcon);
+            args.commands.emplace_back(std::move(cmd));
+        }
     }
 }
 

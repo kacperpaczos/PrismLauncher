@@ -31,5 +31,10 @@ namespace Cli {
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceList& cmd);
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceInfo& cmd);
+ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd);
+ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd);
+ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd);
+ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd);
+ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceIconSet& cmd);
 
 }  // namespace Cli

@@ -204,6 +204,83 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedInfo == info);
     }
 
+    void test_instanceCreate()
+    {
+        const Cli::Cmd::InstanceCreate cmd{
+            .name = QStringLiteral("Test"),
+            .mcVersion = QStringLiteral("1.21.1"),
+            .loader = QStringLiteral("fabric"),
+            .loaderVersion = QStringLiteral("latest"),
+            .group = QStringLiteral("modded"),
+            .icon = QStringLiteral("default"),
+            .download = true,
+            .from = std::nullopt,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_instanceCreate_import()
+    {
+        const Cli::Cmd::InstanceCreate cmd{
+            .name = QString(),
+            .mcVersion = QString(),
+            .loader = std::nullopt,
+            .loaderVersion = std::nullopt,
+            .group = std::nullopt,
+            .icon = std::nullopt,
+            .download = false,
+            .from = QStringLiteral("https://example.com/pack.mrpack"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_instanceDuplicateRenameDeleteIcon()
+    {
+        const Cli::Cmd::InstanceDuplicate duplicate{
+            .id = QStringLiteral("X"),
+            .name = QStringLiteral("Y"),
+            .copyMode = QStringLiteral("hardlinks"),
+            .noSaves = true,
+            .noMods = false,
+            .noResourcePacks = true,
+            .noShaderPacks = false,
+            .noOptions = true,
+            .noConfigs = false,
+        };
+        const auto decodedDuplicate = roundTrip(duplicate);
+        QVERIFY(decodedDuplicate.has_value());
+        QVERIFY(*decodedDuplicate == duplicate);
+
+        const Cli::Cmd::InstanceRename rename{
+            .id = QStringLiteral("X"),
+            .newName = QStringLiteral("New Name"),
+            .renameFolder = true,
+        };
+        const auto decodedRename = roundTrip(rename);
+        QVERIFY(decodedRename.has_value());
+        QVERIFY(*decodedRename == rename);
+
+        const Cli::Cmd::InstanceDelete remove{
+            .id = QStringLiteral("X"),
+            .purge = true,
+        };
+        const auto decodedRemove = roundTrip(remove);
+        QVERIFY(decodedRemove.has_value());
+        QVERIFY(*decodedRemove == remove);
+
+        const Cli::Cmd::InstanceIconSet icon{
+            .id = QStringLiteral("X"),
+            .icon = QStringLiteral("default"),
+        };
+        const auto decodedIcon = roundTrip(icon);
+        QVERIFY(decodedIcon.has_value());
+        QVERIFY(*decodedIcon == icon);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

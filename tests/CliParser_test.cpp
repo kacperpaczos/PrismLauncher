@@ -321,6 +321,121 @@ class CliParserTest : public QObject {
         QCOMPARE(parseThrows({ "prismlauncher", "instance", "info" }), true);
     }
 
+    void test_instanceCreate()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "create", "--name", "Test", "--mc", "1.21.1", "--loader", "fabric",
+                                    "--loader-version", "latest", "--group", "modded", "--icon", "default" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceCreate>(args);
+        QCOMPARE(cmd.name, QString("Test"));
+        QCOMPARE(cmd.mcVersion, QString("1.21.1"));
+        QVERIFY(cmd.loader.has_value());
+        QCOMPARE(*cmd.loader, QString("fabric"));
+        QVERIFY(cmd.loaderVersion.has_value());
+        QCOMPARE(*cmd.loaderVersion, QString("latest"));
+        QVERIFY(cmd.group.has_value());
+        QCOMPARE(*cmd.group, QString("modded"));
+        QVERIFY(cmd.icon.has_value());
+        QCOMPARE(*cmd.icon, QString("default"));
+        QVERIFY(!cmd.from.has_value());
+        // the files are downloaded unless `--no-download` is used
+        QCOMPARE(cmd.download, true);
+    }
+
+    void test_instanceCreate_noDownload()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "create", "--name", "Test", "--mc", "1.21.1", "--no-download" });
+        QCOMPARE(onlyCommand<Cli::Cmd::InstanceCreate>(args).download, false);
+    }
+
+    void test_instanceCreate_from()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "create", "--from", "https://example.com/pack.mrpack" });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceCreate>(args);
+        QVERIFY(cmd.from.has_value());
+        QCOMPARE(*cmd.from, QString("https://example.com/pack.mrpack"));
+        // a vanilla instance needs a name and a Minecraft version
+        QCOMPARE(cmd.name, QString());
+        QCOMPARE(cmd.mcVersion, QString());
+    }
+
+    void test_instanceCreate_requiresNameOrFrom()
+    {
+        // a vanilla instance needs a name and a Minecraft version
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "create" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "create", "--name", "Test" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "create", "--mc", "1.21.1" }), true);
+        // ...an imported one does not
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "create", "--from", "pack.mrpack" }), false);
+        // the loader is validated
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "create", "--name", "T", "--mc", "1.21.1", "--loader", "bukkit" }), true);
+    }
+
+    void test_instanceDuplicate()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "duplicate", "X", "--name", "Y", "--hardlinks", "--no-saves",
+                                    "--no-mods" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceDuplicate>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QVERIFY(cmd.name.has_value());
+        QCOMPARE(*cmd.name, QString("Y"));
+        QCOMPARE(cmd.copyMode, QString("hardlinks"));
+        QCOMPARE(cmd.noSaves, true);
+        QCOMPARE(cmd.noMods, true);
+        QCOMPARE(cmd.noConfigs, false);
+    }
+
+    void test_instanceDuplicate_copyModeIsExclusive()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "duplicate", "X", "--copy", "--links" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "duplicate", "X", "--clone", "--hardlinks" }), true);
+        // the default is a plain copy
+        const auto args = parseOk({ "prismlauncher", "instance", "duplicate", "X" });
+        QCOMPARE(onlyCommand<Cli::Cmd::InstanceDuplicate>(args).copyMode, QString("copy"));
+    }
+
+    void test_instanceRename()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "rename", "X", "New Name" });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceRename>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.newName, QString("New Name"));
+        // the folder is renamed unless `--keep-folder` is used
+        QCOMPARE(cmd.renameFolder, true);
+
+        const auto kept = parseOk({ "prismlauncher", "instance", "rename", "X", "New Name", "--keep-folder" });
+        QCOMPARE(onlyCommand<Cli::Cmd::InstanceRename>(kept).renameFolder, false);
+
+        // the two flags contradict each other
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "rename", "X", "Y", "--keep-folder", "--rename-folder" }), true);
+        // the new name is required
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "rename", "X" }), true);
+    }
+
+    void test_instanceDelete()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "delete", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceDelete>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.purge, false);
+
+        const auto purged = parseOk({ "prismlauncher", "instance", "delete", "X", "--purge" });
+        QCOMPARE(onlyCommand<Cli::Cmd::InstanceDelete>(purged).purge, true);
+    }
+
+    void test_instanceIconSet()
+    {
+        const auto args = parseOk({ "prismlauncher", "instance", "icon", "set", "X", "default" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::InstanceIconSet>(args);
+        QCOMPARE(cmd.id, QString("X"));
+        QCOMPARE(cmd.icon, QString("default"));
+
+        // the icon is required
+        QCOMPARE(parseThrows({ "prismlauncher", "instance", "icon", "set", "X" }), true);
+    }
+
     void test_positionalUri_untouched()
     {
         const auto args = parseOk({ "prismlauncher", "https://example.com/foo.mrpack" });
