@@ -369,6 +369,367 @@ class ApplicationMessageTest : public QObject {
         QVERIFY(*decodedReinstall == reinstall);
     }
 
+    void test_packList()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
+            const Cli::Cmd::PackList cmd{
+                .group = group,
+                .instance = QStringLiteral("My Instance"),
+                .includeDisabled = true,
+            };
+            const auto decoded = roundTrip(cmd);
+            QVERIFY(decoded.has_value());
+            QVERIFY(*decoded == cmd);
+        }
+    }
+
+    void test_packSearch()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
+            const Cli::Cmd::PackSearch cmd{
+                .group = group,
+                .query = QStringLiteral("faithful"),
+                .mcVersions = { QStringLiteral("1.20.1"), QStringLiteral("1.21") },
+                .limit = 50,
+                .offset = 25,
+            };
+            const auto decoded = roundTrip(cmd);
+            QVERIFY(decoded.has_value());
+            QVERIFY(*decoded == cmd);
+        }
+    }
+
+    void test_packInfo_optionalInstance()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
+            const Cli::Cmd::PackInfo withoutInstance{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+            };
+            const auto decodedA = roundTrip(withoutInstance);
+            QVERIFY(decodedA.has_value());
+            QVERIFY(*decodedA == withoutInstance);
+
+            const Cli::Cmd::PackInfo withInstance{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedB = roundTrip(withInstance);
+            QVERIFY(decodedB.has_value());
+            QVERIFY(*decodedB == withInstance);
+        }
+    }
+
+    void test_packInstall_optionalVersionAndFlags()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
+            const Cli::Cmd::PackInstall withoutVersion{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedA = roundTrip(withoutVersion);
+            QVERIFY(decodedA.has_value());
+            QVERIFY(*decodedA == withoutVersion);
+
+            const Cli::Cmd::PackInstall withVersion{
+                .group = group,
+                .project = QStringLiteral("faithful"),
+                .instance = QStringLiteral("X"),
+                .version = QStringLiteral("32"),
+                .noMetadata = true,
+                .assumeYes = true,
+            };
+            const auto decodedB = roundTrip(withVersion);
+            QVERIFY(decodedB.has_value());
+            QVERIFY(*decodedB == withVersion);
+        }
+    }
+
+    void test_packRemoveEnableDisable()
+    {
+        for (const auto group : { Cli::Cmd::PackGroup::Resource, Cli::Cmd::PackGroup::Shader, Cli::Cmd::PackGroup::Texture }) {
+            const Cli::Cmd::PackRemove remove{
+                .group = group,
+                .targets = { QStringLiteral("faithful") },
+                .instance = QStringLiteral("X"),
+                .force = true,
+                .assumeYes = true,
+            };
+            const auto decodedRemove = roundTrip(remove);
+            QVERIFY(decodedRemove.has_value());
+            QVERIFY(*decodedRemove == remove);
+
+            const Cli::Cmd::PackEnable enable{
+                .group = group,
+                .targets = { QStringLiteral("faithful") },
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedEnable = roundTrip(enable);
+            QVERIFY(decodedEnable.has_value());
+            QVERIFY(*decodedEnable == enable);
+
+            const Cli::Cmd::PackDisable disable{
+                .group = group,
+                .targets = { QStringLiteral("faithful") },
+                .instance = QStringLiteral("X"),
+            };
+            const auto decodedDisable = roundTrip(disable);
+            QVERIFY(decodedDisable.has_value());
+            QVERIFY(*decodedDisable == disable);
+        }
+    }
+
+    void test_worldList()
+    {
+        const Cli::Cmd::WorldList cmd{
+            .instance = QStringLiteral("My Instance"),
+            .withSize = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldInfo()
+    {
+        const Cli::Cmd::WorldInfo cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .withSize = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldCopy()
+    {
+        const Cli::Cmd::WorldCopy withoutName{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+        };
+        const auto decoded = roundTrip(withoutName);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutName);
+
+        const Cli::Cmd::WorldCopy withName{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .name = QStringLiteral("Copy of the world"),
+        };
+        const auto decodedNamed = roundTrip(withName);
+        QVERIFY(decodedNamed.has_value());
+        QVERIFY(*decodedNamed == withName);
+    }
+
+    void test_worldRename()
+    {
+        const Cli::Cmd::WorldRename cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .name = QStringLiteral("Renamed"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldDelete()
+    {
+        const Cli::Cmd::WorldDelete cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .permanent = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldImport()
+    {
+        const Cli::Cmd::WorldImport withoutName{
+            .instance = QStringLiteral("My Instance"),
+            .path = QStringLiteral("/tmp/world.zip"),
+        };
+        const auto decoded = roundTrip(withoutName);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutName);
+
+        const Cli::Cmd::WorldImport withName{
+            .instance = QStringLiteral("My Instance"),
+            .path = QStringLiteral("/tmp/world.zip"),
+            .name = QStringLiteral("Imported"),
+        };
+        const auto decodedNamed = roundTrip(withName);
+        QVERIFY(decodedNamed.has_value());
+        QVERIFY(*decodedNamed == withName);
+    }
+
+    void test_serverList()
+    {
+        const Cli::Cmd::ServerList cmd{
+            .instance = QStringLiteral("My Instance"),
+            .ping = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_serverAdd()
+    {
+        const Cli::Cmd::ServerAdd withoutIndex{
+            .instance = QStringLiteral("My Instance"),
+            .name = QStringLiteral("Hypixel"),
+            .address = QStringLiteral("mc.hypixel.net"),
+            .acceptsTextures = Cli::Cmd::AcceptsTextures::Never,
+        };
+        const auto decoded = roundTrip(withoutIndex);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutIndex);
+
+        const Cli::Cmd::ServerAdd withIndex{
+            .instance = QStringLiteral("My Instance"),
+            .name = QStringLiteral("Hypixel"),
+            .address = QStringLiteral("mc.hypixel.net"),
+            .index = 3,
+            .acceptsTextures = Cli::Cmd::AcceptsTextures::Always,
+        };
+        const auto decodedIndexed = roundTrip(withIndex);
+        QVERIFY(decodedIndexed.has_value());
+        QVERIFY(*decodedIndexed == withIndex);
+    }
+
+    void test_serverRemove()
+    {
+        const Cli::Cmd::ServerRemove cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("0"),
+            .force = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_logList()
+    {
+        const Cli::Cmd::LogList cmd{
+            .instance = QStringLiteral("My Instance"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_logRead()
+    {
+        const Cli::Cmd::LogRead cmd{
+            .instance = QStringLiteral("My Instance"),
+            .file = QStringLiteral("logs/latest.log"),
+            .head = 10,
+            .grep = QStringLiteral("ERROR"),
+            .level = QStringLiteral("warning"),
+            .json = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_logUpload()
+    {
+        const Cli::Cmd::LogUpload cmd{
+            .instance = QStringLiteral("My Instance"),
+            .file = QStringLiteral("logs/latest.log"),
+            .service = QStringLiteral("mclogs"),
+            .anonymize = true,
+            .assumeYes = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_screenshotList()
+    {
+        const Cli::Cmd::ScreenshotList cmd{
+            .instance = QStringLiteral("My Instance"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_screenshotUpload()
+    {
+        const Cli::Cmd::ScreenshotUpload withoutLimit{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("all"),
+            .assumeYes = true,
+        };
+        const auto decoded = roundTrip(withoutLimit);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutLimit);
+
+        const Cli::Cmd::ScreenshotUpload withLimit{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("shot.png"),
+            .limit = 5,
+            .assumeYes = true,
+        };
+        const auto decodedLimited = roundTrip(withLimit);
+        QVERIFY(decodedLimited.has_value());
+        QVERIFY(*decodedLimited == withLimit);
+    }
+
+    void test_screenshotCopy()
+    {
+        const Cli::Cmd::ScreenshotCopy cmd{
+            .instance = QStringLiteral("My Instance"),
+            .id = QStringLiteral("shot.png"),
+            .destination = QStringLiteral("/tmp/shot.png"),
+            .force = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_notesShow()
+    {
+        const Cli::Cmd::NotesShow cmd{
+            .instance = QStringLiteral("My Instance"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_notesSet()
+    {
+        const Cli::Cmd::NotesSet withoutText{
+            .instance = QStringLiteral("My Instance"),
+            .append = true,
+        };
+        const auto decoded = roundTrip(withoutText);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutText);
+
+        const Cli::Cmd::NotesSet withText{
+            .instance = QStringLiteral("My Instance"),
+            .text = QStringLiteral("some notes"),
+            .file = QStringLiteral("/tmp/notes.txt"),
+            .append = false,
+        };
+        const auto decodedText = roundTrip(withText);
+        QVERIFY(decodedText.has_value());
+        QVERIFY(*decodedText == withText);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

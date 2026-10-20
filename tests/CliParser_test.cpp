@@ -41,6 +41,12 @@ Cli::Args parseOk(std::vector<std::string> argv)
     cli.instanceCli.flush(args);
     cli.settingsCli.flush(args);
     cli.versionCli.flush(args);
+    cli.packCli.flush(args);
+    cli.worldCli.flush(args);
+    cli.serverCli.flush(args);
+    cli.logCli.flush(args);
+    cli.screenshotCli.flush(args);
+    cli.notesCli.flush(args);
     return args;
 }
 
@@ -58,6 +64,29 @@ template <typename T>
 const T& onlyCommand(const Cli::Args& args)
 {
     return std::get<T>(args.commands.front());
+}
+
+/// The name of the CLI group of a pack kind.
+const char* packGroupName(Cli::Cmd::PackGroup group)
+{
+    switch (group) {
+        case Cli::Cmd::PackGroup::Resource:
+            return "resource";
+        case Cli::Cmd::PackGroup::Shader:
+            return "shader";
+        case Cli::Cmd::PackGroup::Texture:
+            return "texture";
+    }
+    return "resource";
+}
+
+/// The pack kinds that the parser knows about.
+const std::vector<Cli::Cmd::PackGroup>& testedPackGroups()
+{
+    static const std::vector<Cli::Cmd::PackGroup> groups{ Cli::Cmd::PackGroup::Resource,
+                                                          Cli::Cmd::PackGroup::Shader,
+                                                          Cli::Cmd::PackGroup::Texture };
+    return groups;
 }
 
 /// Path to the launcher binary under test, so the exit-code/JSON contract can be
@@ -702,6 +731,546 @@ class CliParserTest : public QObject {
         const QJsonObject unsetSettings = unsetDoc.object().value("settings").toArray().at(0).toObject();
         QCOMPARE(unsetSettings.value("overridden").toBool(), false);
         QCOMPARE(unsetSettings.value("source").toString(), QStringLiteral("default"));
+    }
+
+
+    void test_packList()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto args = parseOk({ "prismlauncher", packGroupName(group), "list", "-i", "X" });
+            QCOMPARE(args.commands.size(), std::size_t{ 1 });
+            const auto& cmd = onlyCommand<Cli::Cmd::PackList>(args);
+            QCOMPARE(cmd.group, group);
+            QCOMPARE(cmd.instance, QString("X"));
+            QCOMPARE(cmd.includeDisabled, false);
+        }
+    }
+
+    void test_packList_includeDisabled()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto args = parseOk({ "prismlauncher", packGroupName(group), "list", "-i", "X", "--include-disabled", "--json" });
+            const auto& cmd = onlyCommand<Cli::Cmd::PackList>(args);
+            QCOMPARE(cmd.group, group);
+            QCOMPARE(cmd.instance, QString("X"));
+            QCOMPARE(cmd.includeDisabled, true);
+        }
+    }
+
+    void test_packSearch()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto args = parseOk({ "prismlauncher", packGroupName(group), "search", "faithful", "--mc", "1.20.1", "--mc", "1.21",
+                                        "--limit", "5", "--offset", "10" });
+            const auto& cmd = onlyCommand<Cli::Cmd::PackSearch>(args);
+            QCOMPARE(cmd.group, group);
+            QCOMPARE(cmd.query, QString("faithful"));
+            QCOMPARE(cmd.mcVersions.size(), std::size_t{ 2 });
+            QCOMPARE(cmd.mcVersions.at(0), QString("1.20.1"));
+            QCOMPARE(cmd.mcVersions.at(1), QString("1.21"));
+            QCOMPARE(cmd.limit, 5);
+            QCOMPARE(cmd.offset, 10);
+        }
+    }
+
+    void test_packSearch_queryAfterFilterOptions()
+    {
+        // The `--mc` option must not swallow the positional query.
+        const auto args = parseOk({ "prismlauncher", "resource", "search", "--mc", "1.20.1", "faithful" });
+        const auto& cmd = onlyCommand<Cli::Cmd::PackSearch>(args);
+        QCOMPARE(cmd.query, QString("faithful"));
+        QCOMPARE(cmd.mcVersions.size(), std::size_t{ 1 });
+        QCOMPARE(cmd.mcVersions.at(0), QString("1.20.1"));
+
+        // no query at all is still a valid (browse) search
+        const auto noQuery = parseOk({ "prismlauncher", "resource", "search", "--mc", "1.20.1" });
+        const auto& noQueryCmd = onlyCommand<Cli::Cmd::PackSearch>(noQuery);
+        QCOMPARE(noQueryCmd.query, QString());
+        QCOMPARE(noQueryCmd.mcVersions.size(), std::size_t{ 1 });
+    }
+
+    void test_packSearch_valueRanges()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "resource", "search", "--limit", "101", "faithful" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "resource", "search", "--offset", "1001", "faithful" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "resource", "search", "--limit", "-1", "faithful" }), true);
+        // boundary values are fine
+        const auto args = parseOk({ "prismlauncher", "resource", "search", "--limit", "100", "--offset", "1000", "faithful" });
+        const auto& cmd = onlyCommand<Cli::Cmd::PackSearch>(args);
+        QCOMPARE(cmd.limit, 100);
+        QCOMPARE(cmd.offset, 1000);
+    }
+
+    void test_packInfo_optionalInstance()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto withoutInstance = parseOk({ "prismlauncher", packGroupName(group), "info", "faithful" });
+            const auto& cmdA = onlyCommand<Cli::Cmd::PackInfo>(withoutInstance);
+            QCOMPARE(cmdA.group, group);
+            QCOMPARE(cmdA.project, QString("faithful"));
+            QCOMPARE(cmdA.instance.has_value(), false);
+
+            const auto withInstance = parseOk({ "prismlauncher", packGroupName(group), "info", "faithful", "-i", "X" });
+            const auto& cmdB = onlyCommand<Cli::Cmd::PackInfo>(withInstance);
+            QCOMPARE(cmdB.group, group);
+            QCOMPARE(cmdB.instance.has_value(), true);
+            QCOMPARE(*cmdB.instance, QString("X"));
+        }
+    }
+
+    void test_packInstall_optionalVersion()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto withVersion = parseOk({ "prismlauncher", packGroupName(group), "install", "faithful", "-i", "X", "--version", "32",
+                                               "--no-metadata" });
+            const auto& cmdA = onlyCommand<Cli::Cmd::PackInstall>(withVersion);
+            QCOMPARE(cmdA.group, group);
+            QCOMPARE(cmdA.project, QString("faithful"));
+            QCOMPARE(cmdA.instance, QString("X"));
+            QVERIFY(cmdA.version.has_value());
+            QCOMPARE(*cmdA.version, QString("32"));
+            QCOMPARE(cmdA.noMetadata, true);
+
+            const auto withoutVersion = parseOk({ "prismlauncher", packGroupName(group), "install", "faithful", "-i", "X" });
+            const auto& cmdB = onlyCommand<Cli::Cmd::PackInstall>(withoutVersion);
+            QCOMPARE(cmdB.group, group);
+            QCOMPARE(cmdB.version.has_value(), false);
+            QCOMPARE(cmdB.noMetadata, false);
+        }
+    }
+
+    void test_packRemove_targets()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto args = parseOk({ "prismlauncher", packGroupName(group), "remove", "faithful", "fabulous", "-i", "X", "--force" });
+            const auto& cmd = onlyCommand<Cli::Cmd::PackRemove>(args);
+            QCOMPARE(cmd.group, group);
+            QCOMPARE(cmd.targets.size(), std::size_t{ 2 });
+            QCOMPARE(cmd.targets.at(0), QString("faithful"));
+            QCOMPARE(cmd.targets.at(1), QString("fabulous"));
+            QCOMPARE(cmd.instance, QString("X"));
+            QCOMPARE(cmd.force, true);
+        }
+    }
+
+    void test_packRemoveEnableDisable_requireTargets()
+    {
+        // Mutating commands without a target have to be a usage error.
+        for (const auto group : testedPackGroups()) {
+            const auto name = std::string(packGroupName(group));
+            QCOMPARE(parseThrows({ "prismlauncher", name, "remove", "-i", "X" }), true);
+            QCOMPARE(parseThrows({ "prismlauncher", name, "enable", "-i", "X" }), true);
+            QCOMPARE(parseThrows({ "prismlauncher", name, "disable", "-i", "X" }), true);
+        }
+    }
+
+    void test_packEnableDisable()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto enable = parseOk({ "prismlauncher", packGroupName(group), "enable", "faithful", "-i", "X" });
+            const auto& enableCmd = onlyCommand<Cli::Cmd::PackEnable>(enable);
+            QCOMPARE(enableCmd.group, group);
+            QCOMPARE(enableCmd.targets.size(), std::size_t{ 1 });
+            QCOMPARE(enableCmd.instance, QString("X"));
+
+            const auto disable = parseOk({ "prismlauncher", packGroupName(group), "disable", "faithful", "-i", "X" });
+            const auto& disableCmd = onlyCommand<Cli::Cmd::PackDisable>(disable);
+            QCOMPARE(disableCmd.group, group);
+            QCOMPARE(disableCmd.targets.size(), std::size_t{ 1 });
+            QCOMPARE(disableCmd.instance, QString("X"));
+        }
+    }
+
+    void test_packAssumeYes_perCommand()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto name = std::string(packGroupName(group));
+            const auto install = parseOk({ "prismlauncher", name, "install", "faithful", "-i", "X", "-y" });
+            QCOMPARE(onlyCommand<Cli::Cmd::PackInstall>(install).assumeYes, true);
+
+            const auto remove = parseOk({ "prismlauncher", name, "remove", "faithful", "-i", "X", "--yes" });
+            QCOMPARE(onlyCommand<Cli::Cmd::PackRemove>(remove).assumeYes, true);
+
+            const auto enable = parseOk({ "prismlauncher", name, "enable", "faithful", "-i", "X", "-y" });
+            QCOMPARE(onlyCommand<Cli::Cmd::PackEnable>(enable).assumeYes, true);
+
+            const auto disable = parseOk({ "prismlauncher", name, "disable", "faithful", "-i", "X", "-y" });
+            QCOMPARE(onlyCommand<Cli::Cmd::PackDisable>(disable).assumeYes, true);
+
+            // default is false
+            const auto plain = parseOk({ "prismlauncher", name, "remove", "faithful", "-i", "X" });
+            QCOMPARE(onlyCommand<Cli::Cmd::PackRemove>(plain).assumeYes, false);
+        }
+    }
+
+    void test_packMissingRequiredArguments()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto name = std::string(packGroupName(group));
+            QCOMPARE(parseThrows({ "prismlauncher", name, "list" }), true);
+            QCOMPARE(parseThrows({ "prismlauncher", name, "install", "faithful" }), true);
+            QCOMPARE(parseThrows({ "prismlauncher", name, "info" }), true);
+            // the group needs a subcommand
+            QCOMPARE(parseThrows({ "prismlauncher", name }), true);
+            // the pack groups have no `update` verb - that is mod only
+            QCOMPARE(parseThrows({ "prismlauncher", name, "update", "--all", "-i", "X" }), true);
+        }
+    }
+
+    void test_packGlobalDir_acceptedAfterSubcommand()
+    {
+        for (const auto group : testedPackGroups()) {
+            const auto afterLeaf = parseOk({ "prismlauncher", packGroupName(group), "list", "-i", "X", "-d", "/tmp" });
+            QCOMPARE(afterLeaf.dataPath.source, Startup::DataPathSource::Commandline);
+            QCOMPARE(QString::fromStdString(afterLeaf.dataPath.dataPath.string()), QString("/tmp"));
+
+            // fallthrough must not turn unknown options or stray positionals
+            // into silently ignored input.
+            const auto name = std::string(packGroupName(group));
+            QCOMPARE(parseThrows({ "prismlauncher", name, "list", "-i", "X", "--bogus" }), true);
+            QCOMPARE(parseThrows({ "prismlauncher", name, "list", "-i", "X", "stray" }), true);
+        }
+    }
+
+    void test_packGroupsAreIndependent()
+    {
+        // Every group has its own options - the value of one group must not
+        // leak into another one.
+        int index = 0;
+        for (const auto group : testedPackGroups()) {
+            const auto instance = QStringLiteral("instance-%1").arg(index++);
+            const auto args = parseOk({ "prismlauncher", packGroupName(group), "list", "-i", instance.toStdString() });
+            const auto& cmd = onlyCommand<Cli::Cmd::PackList>(args);
+            QCOMPARE(cmd.group, group);
+            QCOMPARE(cmd.instance, instance);
+        }
+    }
+
+    void test_worldList()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.withSize, false);
+    }
+
+    void test_worldList_withSize()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "list", "-i", "X", "--size", "--json" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.withSize, true);
+    }
+
+    void test_worldInfo()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "info", "My World", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldInfo>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.withSize, false);
+    }
+
+    void test_worldCopy()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "copy", "My World", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldCopy>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.name.has_value(), false);
+    }
+
+    void test_worldCopy_withName()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "copy", "My World", "-i", "X", "--name", "Copy" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldCopy>(args);
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.name.has_value(), true);
+        QCOMPARE(cmd.name.value(), QString("Copy"));
+    }
+
+    void test_worldRename_requiresName()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "rename", "My World", "-i", "X", "--name", "New" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldRename>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.name, QString("New"));
+
+        // the name of a rename is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "rename", "My World", "-i", "X" }), true);
+    }
+
+    void test_worldDelete()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "delete", "My World", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldDelete>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.permanent, false);
+
+        const auto permanent = parseOk({ "prismlauncher", "world", "delete", "My World", "-i", "X", "--permanent" });
+        QCOMPARE(onlyCommand<Cli::Cmd::WorldDelete>(permanent).permanent, true);
+    }
+
+    void test_worldImport()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "import", "/tmp/world.zip", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldImport>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.path, QString("/tmp/world.zip"));
+        QCOMPARE(cmd.name.has_value(), false);
+    }
+
+    void test_worldImport_withName()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "import", "/tmp/world.zip", "-i", "X", "--name", "Imported" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldImport>(args);
+        QCOMPARE(cmd.path, QString("/tmp/world.zip"));
+        QCOMPARE(cmd.name.has_value(), true);
+        QCOMPARE(cmd.name.value(), QString("Imported"));
+    }
+
+    void test_worldMissingRequiredArguments()
+    {
+        // the instance is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "info", "My World" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "copy", "My World" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "delete", "My World" }), true);
+        // the target is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "info", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "copy", "-i", "X" }), true);
+        // the path of an import is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "import", "-i", "X" }), true);
+    }
+
+    void test_worldRejectsStrayPositional()
+    {
+        // a stray positional must not end up in the top level `uri` import
+        // option.
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "list", "-i", "X", "stray" }), true);
+    }
+
+    void test_serverList()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.ping, false);
+    }
+
+    void test_serverList_ping()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "list", "-i", "X", "--ping" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerList>(args);
+        QCOMPARE(cmd.ping, true);
+    }
+
+    void test_serverAdd()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerAdd>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.name, QString("Hypixel"));
+        QCOMPARE(cmd.address, QString("mc.hypixel.net"));
+        QCOMPARE(cmd.index.has_value(), false);
+        QCOMPARE(cmd.acceptsTextures, Cli::Cmd::AcceptsTextures::Ask);
+    }
+
+    void test_serverAdd_withIndexAndTextures()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net", "-i", "X", "--index", "2",
+                                    "--accepts-textures", "never" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerAdd>(args);
+        QCOMPARE(cmd.index.has_value(), true);
+        QCOMPARE(cmd.index.value(), 2);
+        QCOMPARE(cmd.acceptsTextures, Cli::Cmd::AcceptsTextures::Never);
+    }
+
+    void test_serverAdd_acceptsTexturesIsValidated()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "A", "example.com", "-i", "X", "--accepts-textures", "maybe" }), true);
+    }
+
+    void test_serverRemove()
+    {
+        const auto args = parseOk({ "prismlauncher", "server", "remove", "0", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ServerRemove>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("0"));
+        QCOMPARE(cmd.force, false);
+
+        const auto forced = parseOk({ "prismlauncher", "server", "remove", "Hypixel", "-i", "X", "--force" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ServerRemove>(forced).force, true);
+    }
+
+    void test_serverMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "Hypixel", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "add", "Hypixel", "mc.hypixel.net" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "server", "remove", "-i", "X" }), true);
+    }
+
+    void test_logList()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+    }
+
+    void test_logRead()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "read", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogRead>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.file.has_value(), false);
+        QCOMPARE(cmd.head.has_value(), false);
+        QCOMPARE(cmd.tail.has_value(), false);
+        QCOMPARE(cmd.json, false);
+    }
+
+    void test_logRead_options()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "read", "-i", "X", "--file", "logs/latest.log", "--tail", "10",
+                                    "--grep", "ERROR", "--level", "warning", "--json" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogRead>(args);
+        QCOMPARE(cmd.file.value(), QString("logs/latest.log"));
+        QCOMPARE(cmd.tail.value(), 10);
+        QCOMPARE(cmd.grep.value(), QString("ERROR"));
+        QCOMPARE(cmd.level.value(), QString("warning"));
+        QCOMPARE(cmd.json, true);
+    }
+
+    void test_logRead_headAndTailAreExclusive()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "read", "-i", "X", "--head", "5", "--tail", "5" }), true);
+    }
+
+    void test_logUpload()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "upload", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogUpload>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.service, QString("mclogs"));
+        QCOMPARE(cmd.anonymize, false);
+        QCOMPARE(cmd.assumeYes, false);
+    }
+
+    void test_logUpload_options()
+    {
+        const auto args = parseOk({ "prismlauncher", "log", "upload", "-i", "X", "--file", "logs/latest.log", "--service", "paste.gg",
+                                    "--anonymize", "--yes" });
+        const auto& cmd = onlyCommand<Cli::Cmd::LogUpload>(args);
+        QCOMPARE(cmd.file.value(), QString("logs/latest.log"));
+        QCOMPARE(cmd.service, QString("paste.gg"));
+        QCOMPARE(cmd.anonymize, true);
+        QCOMPARE(cmd.assumeYes, true);
+    }
+
+    void test_logUpload_serviceIsValidated()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "upload", "-i", "X", "--service", "not-a-service" }), true);
+    }
+
+    void test_logMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "read" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "log", "upload" }), true);
+    }
+
+    void test_screenshotList()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+    }
+
+    void test_screenshotUpload()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "upload", "all", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotUpload>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("all"));
+        QCOMPARE(cmd.limit.has_value(), false);
+        QCOMPARE(cmd.assumeYes, false);
+    }
+
+    void test_screenshotUpload_options()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "upload", "shot.png", "-i", "X", "--limit", "3", "--yes" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotUpload>(args);
+        QCOMPARE(cmd.target, QString("shot.png"));
+        QCOMPARE(cmd.limit.value(), 3);
+        QCOMPARE(cmd.assumeYes, true);
+    }
+
+    void test_screenshotCopy()
+    {
+        const auto args = parseOk({ "prismlauncher", "screenshot", "copy", "shot.png", "/tmp/shot.png", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::ScreenshotCopy>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.id, QString("shot.png"));
+        QCOMPARE(cmd.destination, QString("/tmp/shot.png"));
+        QCOMPARE(cmd.force, false);
+
+        const auto forced = parseOk({ "prismlauncher", "screenshot", "copy", "shot.png", "/tmp/shot.png", "-i", "X", "--force" });
+        QCOMPARE(onlyCommand<Cli::Cmd::ScreenshotCopy>(forced).force, true);
+    }
+
+    void test_screenshotMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "upload", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "upload", "all" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "copy", "shot.png", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "screenshot", "copy", "-i", "X" }), true);
+    }
+
+    void test_notesShow()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "show", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesShow>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+    }
+
+    void test_notesSet()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "set", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesSet>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.text.has_value(), false);
+        QCOMPARE(cmd.file.has_value(), false);
+        QCOMPARE(cmd.append, false);
+    }
+
+    void test_notesSet_withText()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "set", "some notes", "-i", "X", "--append" });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesSet>(args);
+        QCOMPARE(cmd.text.value(), QString("some notes"));
+        QCOMPARE(cmd.append, true);
+    }
+
+    void test_notesSet_withFile()
+    {
+        const auto args = parseOk({ "prismlauncher", "notes", "set", "-i", "X", "--file", "/tmp/notes.txt" });
+        const auto& cmd = onlyCommand<Cli::Cmd::NotesSet>(args);
+        QCOMPARE(cmd.file.value(), QString("/tmp/notes.txt"));
+        QCOMPARE(cmd.text.has_value(), false);
+    }
+
+    void test_notesMissingRequiredArguments()
+    {
+        QCOMPARE(parseThrows({ "prismlauncher", "notes", "show" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "notes", "set" }), true);
     }
 
     void test_allCommandsHeadless()

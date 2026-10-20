@@ -50,47 +50,6 @@ constexpr int g_MetadataTimeoutMs = 300000;
 
 }  // namespace
 
-MinecraftInstance* resolveInstance(ModContext& ctx, const QString& id)
-{
-    if (id.isEmpty()) {
-        return nullptr;
-    }
-    auto* instances = ctx.app.instances();
-    if (!instances) {
-        return nullptr;
-    }
-    return instances->getInstanceById(id);
-}
-
-ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint)
-{
-    if (!instance->isRunning()) {
-        return ExitCode::OK;
-    }
-    auto message = QStringLiteral("The instance '%1' is running, refusing to %2").arg(instanceId, action);
-    if (!hint.isEmpty()) {
-        message += QStringLiteral(" (%1)").arg(hint);
-    }
-    return outputError(QStringLiteral("instance_running"), message, ExitCode::Conflict);
-}
-
-bool loadComponentProfile(MinecraftInstance* instance)
-{
-    auto* profile = instance->getPackProfile();
-    if (!profile) {
-        return false;
-    }
-    if (!profile->getComponentVersion("net.minecraft").isEmpty()) {
-        // The profile was already loaded.
-        return true;
-    }
-    if (auto result = profile->reload(Net::Mode::Offline); !result) {
-        qWarning() << "Could not load the component profile of the instance:" << result.error();
-        return false;
-    }
-    return true;
-}
-
 bool loadProfile(MinecraftInstance* instance)
 {
     auto* profile = instance->getPackProfile();

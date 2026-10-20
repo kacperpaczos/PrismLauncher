@@ -19,6 +19,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "cli/CommandUtils.h"
 #include "cli/SettingsCommands.h"
 
 #include <algorithm>
@@ -314,7 +315,7 @@ QJsonObject describeEnvVariable(SettingsObject* settings, const QString& name)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -355,7 +356,7 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -392,7 +393,7 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -501,7 +502,7 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsUnset& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),

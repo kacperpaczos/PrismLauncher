@@ -19,6 +19,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "cli/CommandUtils.h"
 #include "cli/InstanceCommands.h"
 
 #include <algorithm>
@@ -214,7 +215,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceList& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceInfo& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -419,7 +420,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -500,7 +501,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -566,7 +567,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -604,7 +605,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceIconSet& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),

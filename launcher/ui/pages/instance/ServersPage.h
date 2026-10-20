@@ -40,13 +40,13 @@
 #include <QString>
 
 #include "BaseInstance.h"
+#include "minecraft/ServersDat.h"
 #include "ui/pages/BasePage.h"
 
 namespace Ui {
 class ServersPage;
 }
 
-struct Server;
 class ServersModel;
 class MinecraftInstance;
 

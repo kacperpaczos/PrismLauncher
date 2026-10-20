@@ -54,23 +54,6 @@ struct LoaderInfo {
 };
 
 /**
- * Look up an instance by id. Returns nullptr when it does not exist.
- */
-MinecraftInstance* resolveInstance(ModContext& ctx, const QString& id);
-
-/**
- * A mutating command refuses to work on a running instance. The hint tells
- * the user how the command can be forced.
- */
-ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint = {});
-
-/**
- * Make sure the component profile of the instance is loaded. The GUI does that
- * when the instance is opened, a headless run has to do it itself.
- */
-bool loadComponentProfile(MinecraftInstance* instance);
-
-/**
  * Load the component profile of the instance and wait for the resolution of
  * the components, so that their versions are known.
  */

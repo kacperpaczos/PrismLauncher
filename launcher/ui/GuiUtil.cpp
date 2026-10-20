@@ -48,6 +48,7 @@
 #include "FileSystem.h"
 #include "logs/AnonymizeLog.h"
 #include "net/NetJob.h"
+#include "logs/LogTruncation.h"
 #include "net/PasteUpload.h"
 #include "ui/dialogs/CustomMessageBox.h"
 #include "ui/dialogs/ProgressDialog.h"
@@ -56,31 +57,6 @@
 #include <DesktopServices.h>
 #include <settings/SettingsObject.h>
 #include "Application.h"
-
-constexpr int g_MaxMclogsLines = 25000;
-constexpr int g_InitialMclogsLines = 10000;
-constexpr int g_FinalMclogsLines = 14900;
-
-namespace {
-QString truncateLogForMclogs(const QString& logContent)
-{
-    QStringList lines = logContent.split("\n");
-    if (lines.size() > g_MaxMclogsLines) {
-        QString truncatedLog = lines.mid(0, g_InitialMclogsLines).join("\n");
-        truncatedLog +=
-            "\n\n\n\n\n\n\n\n\n\n"
-            "------------------------------------------------------------\n"
-            "----------------------- Log truncated ----------------------\n"
-            "------------------------------------------------------------\n"
-            "----- Middle portion omitted to fit mclo.gs size limits ----\n"
-            "------------------------------------------------------------\n"
-            "\n\n\n\n\n\n\n\n\n\n";
-        truncatedLog += lines.mid(lines.size() - g_FinalMclogsLines - 1).join("\n");
-        return truncatedLog;
-    }
-    return logContent;
-}
-}  // namespace
 
 Result<std::optional<QString>> GuiUtil::uploadPaste(const QString& name, const QFileInfo& filePath, QWidget* parentWidget)
 {
@@ -117,7 +93,7 @@ Result<std::optional<QString>> GuiUtil::uploadPaste(const QString& name, const Q
         return {};
     }
 
-    if (pasteType == PasteUpload::Type::Mclogs && data.count("\n") > g_MaxMclogsLines) {
+    if (pasteType == PasteUpload::Type::Mclogs && data.count("\n") > LogTruncation::g_MaxMclogsLines) {
         auto truncateResponse =
             CustomMessageBox::selectable(parentWidget, QObject::tr("Confirm Truncation"),
                                          QObject::tr("The log has %1 lines, exceeding mclo.gs' limit of %2.\n"
@@ -126,9 +102,9 @@ Result<std::optional<QString>> GuiUtil::uploadPaste(const QString& name, const Q
                                                      "potentially useful info like crashes at the end.\n\n"
                                                      "Proceed with truncation?")
                                              .arg(data.count("\n"))
-                                             .arg(g_MaxMclogsLines)
-                                             .arg(g_InitialMclogsLines)
-                                             .arg(g_FinalMclogsLines),
+                                             .arg(LogTruncation::g_MaxMclogsLines)
+                                             .arg(LogTruncation::g_InitialMclogsLines)
+                                             .arg(LogTruncation::g_FinalMclogsLines),
                                          QMessageBox::Warning, QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::No)
                 ->exec();
 
@@ -140,7 +116,7 @@ Result<std::optional<QString>> GuiUtil::uploadPaste(const QString& name, const Q
 
     QString textToUpload = data;
     if (shouldTruncate) {
-        textToUpload = truncateLogForMclogs(data);
+        textToUpload = LogTruncation::truncateLogForMclogs(data);
     }
 
     auto job = NetJob::Ptr(new NetJob("Log Upload", APPLICATION->network()));

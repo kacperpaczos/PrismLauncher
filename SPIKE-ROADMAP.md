@@ -3,11 +3,19 @@
 > Cel spiKA: **pełne zarządzanie modami z konsoli** — `prism mod list|search|info|install|remove|enable|disable|update`
 > — działające headless (bez GUI, platforma offscreen), z wyjściem JSON i kodami wyjścia.
 > Baza: gałąź `cli_rebirth` (PR #6193, Ryex), pin **`059625c8b89509fe5180384fd9db8432512e93a7`**.
-> To jest SPIKE — poza zakresem: resource/shader/world/server/log/screenshot/notes,
-> IPC v2, pełny split initCore/initGui, CurseForge. Pełny plan: sesja Plan (Faza 0–6).
+> To jest SPIKE — poza zakresem: IPC v2, pełny split initCore/initGui, CurseForge.
+> Pełny plan: sesja Plan (Faza 0–6).
 >
 > **Etap A (2026-10-20)** rozszerza spiKA o grupy `instance`, `settings` i `version`
 > (zarządzanie instancjami, ustawieniami instancji i komponentami profilu).
+>
+> **Etap 2 (`spike/resources`, branch `kacperpaczos/spike-resources`)**: dołożenie grupy
+> resource/shader/texture packów (`resource|shader|texture list|search|info|install|remove|enable|disable`)
+> — szczegóły w sekcji „Etap 2 — resource / shader / texture packi".
+>
+> **Etap 3 (ten sam branch)**: dołożenie grup domenowych
+> (`world|server|log|screenshot|notes`) — szczegóły w sekcji
+> „Etap 3 — world / server / log / screenshot / notes".
 
 ## Kolejność prac (sekwencyjnie, per podagent)
 
@@ -108,6 +116,216 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - Gdy wszystkie komendy są headless i brak `DISPLAY`/`WAYLAND_DISPLAY` → `QT_QPA_PLATFORM=offscreen`
   + pominięcie kreatora konfiguracji; mod przez IPC do działającego GUI → `ipc_unsupported` + exit 8 (TODO).
 
+## Etap 2 — resource / shader / texture packi (2026-10-19)
+
+Stan: **zrobiony** (build zielony, ctest 28/28, smoke test E2E zielony).
+Branch: `kacperpaczos/spike-resources` (baza: `spike/mod-cli` @ `e6b1adbf8`).
+
+### Commity etapu 2
+
+| commit | treść |
+|---|---|
+| `fix(build): support worktree checkouts in the spike build script` | `containers/spike-build.sh` — montowanie `.git` worktree'a (gitfile wskazuje na ścieżkę bezwzględną poza `/repo`) |
+| `refactor(cli): share the resource helpers between the mod and pack commands` | `launcher/cli/CommandUtils.h/.cpp` — wspólne `sourceName`, `normalizedSlug`, `isoDate`, `resourceToJson`, `loadComponentProfile`, `waitForModel`, `fetchProject`, `fetchProjectVersions`, `matchTarget`, `resolveTargets` |
+| `feat(cli): resource pack commands` | grupa `resource` |
+| `feat(cli): shader pack commands` | grupa `shader` |
+| `feat(cli): texture pack commands` | grupa `texture` |
+| `test(spike): end-to-end smoke test for the pack commands` | `tests/cli/spike-pack-smoke.sh` |
+
+### Zaimplementowana składnia grup packów
+
+Trzy grupy (`resource`, `shader`, `texture`) mają identyczny zestaw podkomend:
+
+```text
+prismlauncher <grupa> list    -i <id> [--include-disabled] [--json]
+prismlauncher <grupa> search  [query] [--mc <v>...] [--limit N] [--offset N] [--json]
+prismlauncher <grupa> info    <project> [-i <id>] [--json]
+prismlauncher <grupa> install <project> -i <id> [--version <v>] [--no-metadata] [-y|--yes] [--json]
+prismlauncher <grupa> remove  <target>... -i <id> [--force] [-y|--yes] [--json]
+prismlauncher <grupa> enable  <target>... -i <id> [-y|--yes] [--json]
+prismlauncher <grupa> disable <target>... -i <id> [-y|--yes] [--json]
+```
+
+- `list` czyta model folderu instancji (`resourcepacks/`, `shaderpacks/`, `texturepacks/`).
+- `search`/`info`/`install` idą do Modrinth (jak w `mod`); `search` ma paginację po 25.
+- `install` zapisuje metadane packwiz (`.index/<slug>.pw.toml`), chyba że podano `--no-metadata`.
+- `remove`/`enable`/`disable` rozwiązują cele w kolejności: nazwa pliku (z lub bez `.disabled`)
+  → slug z metadanych → project id → nazwa wyświetlana; `--force` rozwiązuje niejednoznaczność
+  do wszystkich dopasowań.
+- Raport packa **nie** ma pola `lock_update` (ma je tylko raport moda). Dla resource packów
+  dodatkowo `pack_format` (z `pack.mcmeta`).
+
+### Decyzje zakresowe
+
+- **Brak czasownika `update` dla packów.** `update` wymaga mechaniki `EnsureMetadataTask` +
+  `ModrinthCheckUpdate` + wymiany pliku, a packi nie mają mechanizmu blokowania aktualizacji
+  (`lockUpdate`) ani `affected_by`. Aktualizacja packa = `remove` + `install` nowej wersji,
+  więc w etapie 2 świadomie jej nie ma (dla modów `mod update` istnieje).
+- **Brak rozwiązywania zależności — tylko mody.** `GetModDependenciesTask` dotyczy wyłącznie
+  modów (`mods/`); packi na Modrinth nie deklarują zależności w sposób, który dałoby się
+  rozwiązać (resource/shader packi nie zależą od siebie), więc `install` instaluje dokładnie
+  jeden projekt. Flagi `--no-deps` nie ma w komendach packów.
+- **Texture packi to resource packi w Modrinth.** Modrinth nie ma osobnego typu projektu dla
+  texture packów, więc grupa `texture` szuka i pobiera z typu `resourcepack`, a lokalnie
+  zapisuje do `texturepacks/`.
+- **Tylko Modrinth** — tak jak w etapie 1 (brak CurseForge, Flame, FTB).
+- **Datapacki nadal poza zakresem** (choć są rodzajem `Resource` w launcherze).
+
+### Smoke test
+
+`tests/cli/spike-pack-smoke.sh` — 33 kroki (list → search → info → install → list → disable →
+list → list --include-disabled → enable → info → remove → list + przypadki błędów; potem to samo
+dla shaderów i texture packów). Wymaga sieci (realne API Modrinth), więc **nie jest w ctest**;
+uruchamiany w kontenerze:
+
+```sh
+podman run --rm --security-opt label=disable -v "$PWD":/repo -w /repo -e HOME=/tmp \
+    prism-spike-dev bash tests/cli/spike-pack-smoke.sh
+```
+
+Realne wyniki (przykład z ostatniego przebiegu, 2026-10-19, MC 1.21.1):
+
+| grupa | projekt | wersja | zainstalowany plik |
+|---|---|---|---|
+| resource | `fresh-animations` (Fresh Animations) | 1.11.0 (`KYOqeb1P`) | `FreshAnimations_v1.11_1.20+.zip` |
+| shader | `complementary-reimagined` (Complementary Shaders - Reimagined) | r5.9.3 (`Bqen1mJX`) | `ComplementaryReimagined_r5.9.3.zip` |
+| texture | `cartoon-texture-pack` (Cartoon Texture Pack) | 1.0.11 (`KHKFUGdZ`) | `Cartoon Texture Pack.zip` |
+
+Przebieg: 33/33 kroków zielonych (w tym kody wyjścia 3 dla „nie znaleziono" i „brak instancji").
+
+### Testy jednostkowe
+
+Nowe przypadki są w istniejących binariach testowych (liczba binariów ctest bez zmian — 28/28):
+
+- `tests/CliParser_test.cpp` — 14 nowych przypadków: parsowanie trzech grup podkomend, walidacja
+  `--limit`/`--offset`, odrzucanie obcego pozycjonalu, `--mc` nie połyka zapytania, niezależność grup.
+- `tests/ApplicationMessage_test.cpp` — 5 nowych przypadków: round-trip `fromCliCommand`/`toCliCommand`
+  dla komend packów.
+- `tests/Regressions_test.cpp` — obsługa nowych wariantów komend w `toString` (test regresyjny
+  porównujący sparsowane komendy).
+
+## Etap 3 — world / server / log / screenshot / notes (2026-10-20)
+
+Stan: **zrobiony** (build zielony, ctest 32/32, smoke test E2E zielony).
+Branch: `kacperpaczos/spike-resources` (baza: `spike/mod-cli` @ `e6b1adbf8`).
+
+### Commity etapu 3
+
+| commit | treść |
+|---|---|
+| `refactor(cli): extract ServersDat from ServersPage` | `launcher/minecraft/ServersDat.{h,cpp}` — odczyt i zapis `servers.dat` wyciągnięte z `ServersPage`, używane przez GUI i przez CLI |
+| `feat(cli): world commands` | grupa `world` |
+| `feat(cli): server commands` | grupa `server` |
+| `feat(cli): log commands` | grupa `log` |
+| `feat(cli): screenshot commands` | grupa `screenshot` |
+| `feat(cli): notes commands` | grupa `notes` |
+| `refactor(cli): extract the reading of a log into a shared module` | `launcher/logs/LogReader.{h,cpp}` — czytanie logu wyciągnięte z komendy `log read`, żeby dało się je przetestować osobno |
+| `fix(cli): reject a world whose level.dat cannot be read` | `world import` odrzuca plik, którego `level.dat` nie daje się przeczytać |
+| `fix(cli): replace the notes of an instance when they are not appended` | `notes set` bez `--append` **zastępuje** notatki, a nie je dopisuje |
+| `test(spike): tests for the domain commands` | `tests/LogReader_test.cpp`, `tests/World_test.cpp`, `tests/cli/spike-domain-smoke.sh` |
+
+### Zaimplementowana składnia grup domenowych
+
+```text
+prismlauncher world list   -i <id> [--size] [--json]
+prismlauncher world info   <folder|name> -i <id> [--size] [--json]
+prismlauncher world copy   <folder|name> -i <id> [--name <name>] [--json]
+prismlauncher world rename <folder|name> -i <id> --name <name> [--json]
+prismlauncher world delete <folder|name> -i <id> [--permanent] [--json]
+prismlauncher world import <zip|dir>    -i <id> [--name <name>] [--json]
+
+prismlauncher server list   -i <id> [--ping] [--json]
+prismlauncher server add    <name> <address> -i <id> [--index N]
+                            [--accepts-textures ask|always|never] [--json]
+prismlauncher server remove <index|name> -i <id> [--force] [--json]
+
+prismlauncher log list   -i <id> [--json]
+prismlauncher log read   -i <id> [--file <path>] [--head N] [--tail N]
+                         [--grep <regex>] [--level <level>] [--json]
+prismlauncher log upload -i <id> [--file <path>]
+                         [--service mclogs|paste.gg|0x0.st|hastebin]
+                         [--anonymize] [-y|--yes] [--json]
+
+prismlauncher screenshot list   -i <id> [--json]
+prismlauncher screenshot upload <id|all> -i <id> [--limit N] [-y|--yes] [--json]
+prismlauncher screenshot copy   <id> <destination> -i <id> [--force] [--json]
+
+prismlauncher notes show -i <id> [--json]
+prismlauncher notes set  -i <id> [<text>] [--file <path>] [--append] [--json]
+```
+
+- Światy są adresowane **folderem** (stabilny identyfikator), nie pozycją na liście. `info`,
+  `copy`, `rename` i `delete` przyjmują folder albo nazwę z `level.dat`.
+- Metadane świata (`name`, `gameMode` + `gameModeRaw`, `seed`, `lastPlayed` w ISO-8601 UTC,
+  `icon`, `warnings`) czytane są przez `World`; `sizeBytes` jest raportowane tylko z `--size`.
+- `delete` przenosi świat do kosza, `--permanent` usuwa go od razu. `import` przyjmuje zip
+  (także z nestowanym folderem świata) albo folder.
+- `servers.dat` to **surowy NBT** (nie gzip) i jest obsługiwany wyłącznie przez
+  `launcher/minecraft/ServersDat` — wspólny dla GUI i CLI. Uszkodzony plik nie jest nadpisywany
+  (błąd parsowania → exit 6), brak pliku → utworzenie od zera.
+- Serwery są adresowane **indeksem** (tylko one) albo nazwą. `--ping` dokłada liczbę graczy
+  (albo `null`, gdy serwer nie odpowiada).
+- `log read` wypisuje surowe linie na stdout (da się je potokować); z `--json` linie są
+  obiektami `{n, level, text}`, a koperta mówi, czy log był ucięty. Poziom linii zgaduje się
+  tak samo jak w launcherze (`LogParser::guessLevel`).
+- `log upload` i `screenshot upload` **publikują** zawartość, więc wymagają `--yes`.
+- Notatki instancji żyją w kluczu `notes` pliku `instance.cfg` i są czytane oraz zapisywane
+  **wyłącznie** przez `SettingsObject` (`instance->notes()` / `instance->setNotes()`), plik
+  nigdy nie jest zapisywany na boku.
+
+### Decyzje zakresowe
+
+- **Osobny `ServersDat` zamiast kodu w `ServersPage`.** `servers.dat` to surowy NBT, a GUI
+  miało własny parser — bez wydzielenia nie dałoby się użyć w CLI bez duplikacji. Klasa jest
+  wspólna dla obu, więc GUI i CLI czytają oraz zapisują plik tak samo.
+- **Ochrona uszkodzonego `servers.dat` przeniesiona do `ServersDat`.** GUI odrzucało plik,
+  którego nie da się sparsować; CLI robi to samo (exit 6, bez zapisu). Plik nie istniejący jest
+  tworzony od zera (`{servers: []}`), a zapis idzie przez `PSaveFile` (atomowo, z opcjonalnym
+  `.bak`).
+- **`level.dat` i `servers.dat` mają osobne helpery.** `level.dat` to NBT w gzipie
+  (libnbtplusplus), `servers.dat` to surowy NBT — pomieszanie helperów daje błędne wyniki
+  po cichu, więc nie są wspólne.
+- **Adresowanie świata po folderze.** Folder świata jest stabilny (nazwa z `level.dat` może się
+  zmienić przy `rename`), więc to on jest identyfikatorem świata w JSON-ie.
+- **Usuwanie do kosza zamiast trwałego.** `world delete` domyślnie przenosi świat do kosza
+  (`--permanent` usuwa), tak jak w GUI. Osobne wywołanie kosza może nie działać w kontenerze
+  bez pulpitu — wtedy komenda mówi, żeby użyć `--permanent`.
+- **Ograniczenie „instancja uruchomiona" jest nieskuteczne w osobnym procesie.** Sprawdzenie
+  `instance->isRunning()` działa tylko wewnątrz procesu launchera — CLI to osobny proces, więc
+  nie widzi uruchomionej instancji. To samo ograniczenie co w etapie 1 (mody).
+- **`screenshot upload` ujawnia `deleteHash`.** GUI trzyma go tylko w pamięci, więc z CLI jest
+  to jedyna szansa na usunięcie wgranego screenshota — hash jest raportowany w JSON-ie.
+- **Wgrywanie wielu screenshotów tworzy album** (jak w GUI) — `ImgurAPI::makeAlbum`.
+
+### Smoke test
+
+`tests/cli/spike-domain-smoke.sh` — 42 kroki na fabrykowanej instancji (dwa światy, log,
+screenshot): listowanie, info (po folderze i po nazwie), kopiowanie, zmiana nazwy, usuwanie
+(do kosza i trwałe), import (zip z nestowanym folderem i zwykły folder), serwery (dodanie,
+lista, usunięcie po indeksie i po nazwie), notatki (zapis, dopisanie, `--file`, brak pliku),
+logi (lista, czytanie surowe i w JSON, `--tail`, `--level`, `--grep`, brak pliku) i screenshoty
+(lista, kopiowanie, `--force`, brak pliku).
+
+Test **nie potrzebuje sieci**, więc jest częścią ctest (`CliDomainSmoke`). Smoke testy modów
+i packów zostają poza ctest — gadają z prawdziwym API Modrinth.
+
+```sh
+podman run --rm --security-opt label=disable -v "$PWD":/repo -w /repo -e HOME=/tmp \
+    prism-spike-dev bash tests/cli/spike-domain-smoke.sh
+```
+
+Przebieg: 42/42 kroków zielonych (w tym kody wyjścia 3 dla „nie znaleziono" i „brak
+instancji", 4 dla „plik istnieje").
+
+### Testy jednostkowe
+
+Dwa nowe binaria ctest (liczba binariów: 28 → 31, z smoke testem 32):
+
+- `tests/LogReader_test.cpp` — czytanie logu: wszystkie linie, pierwsze linie, ostatnie linie,
+  plik bez końca linii, plik większy niż blok, plik spakowany (gzip) — odczyt, ogon i początek.
+- `tests/World_test.cpp` — metadane świata: nazwa, tryb gry, ziarno i czas ostatniej gry są
+  czytane z `level.dat`; folder bez `level.dat` i ze zepsutym `level.dat` nie jest światem.
+
 ## Reguły spiKA
 - Rzucalne, ale **nie łamiące legacy flags** ani istniejących testów.
 - Wszystkie zmiany w małych commitach z prefiksem (`feat(cli):`, `chore(build):`).
@@ -126,6 +344,14 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - [x] Etap A: `instance` (list, info, create, duplicate, rename, delete, icon)
 - [x] Etap A: `settings` (list, get, set, unset)
 - [x] Etap A: `version` (show, list-available, change-mc, install-loader, remove-loader, reinstall)
+- [x] Etap 2: resource/shader/texture packi — branch `kacperpaczos/spike-resources`
+- [x] Etap 2: build green + ctest 28/28
+- [x] Etap 2: smoke E2E packów (33/33 kroków)
+- [x] Etap 3: world/server/log/screenshot/notes — branch `kacperpaczos/spike-resources`
+- [x] Etap 3: build green + ctest 32/32
+- [x] Etap 3: smoke E2E domen (42/42 kroków, w ctest jako `CliDomainSmoke`)
+- [x] Merge: pełny CLI na `spike/mod-cli` (Etap A + Etap 2 + Etap 3), scalone z
+      `origin/kacperpaczos/spike-resources` — wszystkie 12 grup komend w jednej binarki
 
 ## Review round 1 (MiniMax): K1-K3 fixed
 - **K1** `fix(cli): headless exit scoped to startup commands` — decyzja „headless i wyjdź" zapada raz,
@@ -304,6 +530,7 @@ z `--force`), ale w headless zmianie nie zostanie wywołany — przyjęte i zaak
   ale instalowanie przez CLI nie).
 - Moduły (`coreModList`, `nilModList`) i pozostałe typy zasobów (resource packi, shader packi,
   datapacki, texture packi) nie są obsługiwane — tylko `mods/` instancji.
+  *(To stan etapu 1 — w etapie 2 resource/shader/texture packi są już obsługiwane; datapacki nadal nie.)*
 - `mod search` nie ma sortowania ani filtru po stronie — używa domyślnego sortowania Modrinth.
 - Brak `mod install --version` po `version_number` dla wersji z różnym `fileId` (match po `version_id`,
   `version_number` albo `name`).

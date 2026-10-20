@@ -314,6 +314,8 @@ set(MINECRAFT_SOURCES
     minecraft/WorldList.cpp
     minecraft/WorldTasks.h
     minecraft/WorldTasks.cpp
+    minecraft/ServersDat.h
+    minecraft/ServersDat.cpp
 
     minecraft/mod/MetadataHandler.h
     minecraft/mod/Mod.h
@@ -813,6 +815,20 @@ SET(LAUNCHER_SOURCES
     cli/SettingsCommands.cpp
     cli/VersionCommands.h
     cli/VersionCommands.cpp
+    cli/PackCommands.h
+    cli/PackCommands.cpp
+    cli/WorldCommands.h
+    cli/WorldCommands.cpp
+    cli/ServerCommands.h
+    cli/ServerCommands.cpp
+    cli/LogCommands.h
+    cli/LogCommands.cpp
+    cli/ScreenshotCommands.h
+    cli/ScreenshotCommands.cpp
+    cli/NotesCommands.h
+    cli/NotesCommands.cpp
+    cli/CommandUtils.h
+    cli/CommandUtils.cpp
 
     # GUI - general utilities
     DesktopServices.h
@@ -835,6 +851,10 @@ SET(LAUNCHER_SOURCES
     # log utils
     logs/AnonymizeLog.cpp
     logs/AnonymizeLog.h
+    logs/LogTruncation.cpp
+    logs/LogTruncation.h
+    logs/LogReader.cpp
+    logs/LogReader.h
 
     # GUI - windows
     ui/MainWindow.h

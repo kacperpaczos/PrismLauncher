@@ -48,6 +48,19 @@ static QString joinForTest(const std::vector<QString>& values)
     return parts.join(QStringLiteral(", "));
 }
 
+static QString packGroupForTest(Cmd::PackGroup group)
+{
+    switch (group) {
+        case Cmd::PackGroup::Resource:
+            return QStringLiteral("resource");
+        case Cmd::PackGroup::Shader:
+            return QStringLiteral("shader");
+        case Cmd::PackGroup::Texture:
+            return QStringLiteral("texture");
+    }
+    return QStringLiteral("resource");
+}
+
 // overload of QTest::toString
 static char* toString(const Args& args)
 {
@@ -229,6 +242,136 @@ static char* toString(const Args& args)
         QString operator()(const VersionReinstall& versionReinstall)
         {
             return QStringLiteral("VersionReinstall{ id: \"%1\" }").arg(versionReinstall.id);
+        }
+        QString operator()(const PackList& packList)
+        {
+            return QStringLiteral("PackList{ group: \"%1\", instance: \"%2\", includeDisabled: %3 }")
+                .arg(packGroupForTest(packList.group), packList.instance, QString::number(packList.includeDisabled));
+        }
+        QString operator()(const PackSearch& packSearch)
+        {
+            return QStringLiteral("PackSearch{ group: \"%1\", query: \"%2\", mc: [%3], limit: %4, offset: %5 }")
+                .arg(packGroupForTest(packSearch.group), packSearch.query, joinForTest(packSearch.mcVersions))
+                .arg(packSearch.limit)
+                .arg(packSearch.offset);
+        }
+        QString operator()(const PackInfo& packInfo)
+        {
+            return QStringLiteral("PackInfo{ group: \"%1\", project: \"%2\", instance: \"%3\" }")
+                .arg(packGroupForTest(packInfo.group), packInfo.project, packInfo.instance.value_or(QString()));
+        }
+        QString operator()(const PackInstall& packInstall)
+        {
+            return QStringLiteral("PackInstall{ group: \"%1\", project: \"%2\", instance: \"%3\", version: \"%4\", noMetadata: %5 }")
+                .arg(packGroupForTest(packInstall.group), packInstall.project, packInstall.instance,
+                     packInstall.version.value_or(QString()), QString::number(packInstall.noMetadata));
+        }
+        QString operator()(const PackRemove& packRemove)
+        {
+            return QStringLiteral("PackRemove{ group: \"%1\", targets: [%2], instance: \"%3\", force: %4 }")
+                .arg(packGroupForTest(packRemove.group), joinForTest(packRemove.targets), packRemove.instance,
+                     QString::number(packRemove.force));
+        }
+        QString operator()(const PackEnable& packEnable)
+        {
+            return QStringLiteral("PackEnable{ group: \"%1\", targets: [%2], instance: \"%3\" }")
+                .arg(packGroupForTest(packEnable.group), joinForTest(packEnable.targets), packEnable.instance);
+        }
+        QString operator()(const PackDisable& packDisable)
+        {
+            return QStringLiteral("PackDisable{ group: \"%1\", targets: [%2], instance: \"%3\" }")
+                .arg(packGroupForTest(packDisable.group), joinForTest(packDisable.targets), packDisable.instance);
+        }
+        QString operator()(const WorldList& worldList)
+        {
+            return QStringLiteral("WorldList{ instance: \"%1\", withSize: %2 }")
+                .arg(worldList.instance, QString::number(worldList.withSize));
+        }
+        QString operator()(const WorldInfo& worldInfo)
+        {
+            return QStringLiteral("WorldInfo{ instance: \"%1\", target: \"%2\", withSize: %3 }")
+                .arg(worldInfo.instance, worldInfo.target, QString::number(worldInfo.withSize));
+        }
+        QString operator()(const WorldCopy& worldCopy)
+        {
+            return QStringLiteral("WorldCopy{ instance: \"%1\", target: \"%2\", name: \"%3\" }")
+                .arg(worldCopy.instance, worldCopy.target, worldCopy.name.value_or(QString()));
+        }
+        QString operator()(const WorldRename& worldRename)
+        {
+            return QStringLiteral("WorldRename{ instance: \"%1\", target: \"%2\", name: \"%3\" }")
+                .arg(worldRename.instance, worldRename.target, worldRename.name);
+        }
+        QString operator()(const WorldDelete& worldDelete)
+        {
+            return QStringLiteral("WorldDelete{ instance: \"%1\", target: \"%2\", permanent: %3 }")
+                .arg(worldDelete.instance, worldDelete.target, QString::number(worldDelete.permanent));
+        }
+        QString operator()(const WorldImport& worldImport)
+        {
+            return QStringLiteral("WorldImport{ instance: \"%1\", path: \"%2\", name: \"%3\" }")
+                .arg(worldImport.instance, worldImport.path, worldImport.name.value_or(QString()));
+        }
+        QString operator()(const ServerList& serverList)
+        {
+            return QStringLiteral("ServerList{ instance: \"%1\", ping: %2 }")
+                .arg(serverList.instance, QString::number(serverList.ping));
+        }
+        QString operator()(const ServerAdd& serverAdd)
+        {
+            return QStringLiteral("ServerAdd{ instance: \"%1\", name: \"%2\", address: \"%3\", index: %4 }")
+                .arg(serverAdd.instance, serverAdd.name, serverAdd.address)
+                .arg(serverAdd.index.has_value() ? QString::number(*serverAdd.index) : QStringLiteral("none"));
+        }
+        QString operator()(const ServerRemove& serverRemove)
+        {
+            return QStringLiteral("ServerRemove{ instance: \"%1\", target: \"%2\", force: %3 }")
+                .arg(serverRemove.instance, serverRemove.target, QString::number(serverRemove.force));
+        }
+        QString operator()(const LogList& logList)
+        {
+            return QStringLiteral("LogList{ instance: \"%1\" }").arg(logList.instance);
+        }
+        QString operator()(const LogRead& logRead)
+        {
+            return QStringLiteral("LogRead{ instance: \"%1\", file: \"%2\", head: %3, tail: %4, grep: \"%5\", level: \"%6\", json: %7 }")
+                .arg(logRead.instance, logRead.file.value_or(QString()))
+                .arg(logRead.head.has_value() ? QString::number(*logRead.head) : QStringLiteral("none"))
+                .arg(logRead.tail.has_value() ? QString::number(*logRead.tail) : QStringLiteral("none"))
+                .arg(logRead.grep.value_or(QString()), logRead.level.value_or(QString()))
+                .arg(QString::number(logRead.json));
+        }
+        QString operator()(const LogUpload& logUpload)
+        {
+            return QStringLiteral("LogUpload{ instance: \"%1\", file: \"%2\", service: \"%3\", anonymize: %4, assumeYes: %5 }")
+                .arg(logUpload.instance, logUpload.file.value_or(QString()), logUpload.service)
+                .arg(QString::number(logUpload.anonymize), QString::number(logUpload.assumeYes));
+        }
+        QString operator()(const ScreenshotList& screenshotList)
+        {
+            return QStringLiteral("ScreenshotList{ instance: \"%1\" }").arg(screenshotList.instance);
+        }
+        QString operator()(const ScreenshotUpload& screenshotUpload)
+        {
+            return QStringLiteral("ScreenshotUpload{ instance: \"%1\", target: \"%2\", limit: %3, assumeYes: %4 }")
+                .arg(screenshotUpload.instance, screenshotUpload.target)
+                .arg(screenshotUpload.limit.has_value() ? QString::number(*screenshotUpload.limit) : QStringLiteral("none"))
+                .arg(QString::number(screenshotUpload.assumeYes));
+        }
+        QString operator()(const ScreenshotCopy& screenshotCopy)
+        {
+            return QStringLiteral("ScreenshotCopy{ instance: \"%1\", id: \"%2\", destination: \"%3\", force: %4 }")
+                .arg(screenshotCopy.instance, screenshotCopy.id, screenshotCopy.destination, QString::number(screenshotCopy.force));
+        }
+        QString operator()(const NotesShow& notesShow)
+        {
+            return QStringLiteral("NotesShow{ instance: \"%1\" }").arg(notesShow.instance);
+        }
+        QString operator()(const NotesSet& notesSet)
+        {
+            return QStringLiteral("NotesSet{ instance: \"%1\", text: \"%2\", file: \"%3\", append: %4 }")
+                .arg(notesSet.instance, notesSet.text.value_or(QString()), notesSet.file.value_or(QString()))
+                .arg(QString::number(notesSet.append));
         }
     } cmdVisitor;
 

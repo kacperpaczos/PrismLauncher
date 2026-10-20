@@ -22,6 +22,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <ranges>
@@ -328,6 +329,249 @@ struct VersionReinstall {
     auto operator<=>(const VersionReinstall&) const = default;
 };
 
+// ---- resource / shader / texture pack management (headless) ----
+//
+// The packs are managed the same way the mods are, but they live in their own
+// folder of the instance and they have no dependency graph - so there is no
+// `update` command and no dependency resolution.
+
+/// @brief the kind of pack a pack command works on
+///
+/// The kind selects the model of the instance that the command operates on
+/// (`resourcepacks/`, `shaderpacks/` or `texturepacks/`).
+enum class PackGroup : std::uint8_t { Resource, Shader, Texture };
+
+struct PackList {
+    PackGroup group = PackGroup::Resource;
+    QString instance;
+    bool includeDisabled = false;
+    auto operator<=>(const PackList&) const = default;
+};
+
+struct PackSearch {
+    PackGroup group = PackGroup::Resource;
+    QString query;
+    std::vector<QString> mcVersions;
+    int limit = 25;
+    int offset = 0;
+    auto operator<=>(const PackSearch&) const = default;
+};
+
+struct PackInfo {
+    PackGroup group = PackGroup::Resource;
+    QString project;
+    std::optional<QString> instance;
+    auto operator<=>(const PackInfo&) const = default;
+};
+
+struct PackInstall {
+    PackGroup group = PackGroup::Resource;
+    QString project;
+    QString instance;
+    std::optional<QString> version;
+    bool noMetadata = false;
+    // Accepted for forward compatibility. Headless runs never prompt, so this
+    // is currently a no-op (see SPIKE-ROADMAP.md).
+    bool assumeYes = false;
+    auto operator<=>(const PackInstall&) const = default;
+};
+
+struct PackRemove {
+    PackGroup group = PackGroup::Resource;
+    std::vector<QString> targets;
+    QString instance;
+    bool force = false;
+    bool assumeYes = false;
+    auto operator<=>(const PackRemove&) const = default;
+};
+
+struct PackEnable {
+    PackGroup group = PackGroup::Resource;
+    std::vector<QString> targets;
+    QString instance;
+    bool assumeYes = false;
+    auto operator<=>(const PackEnable&) const = default;
+};
+
+struct PackDisable {
+    PackGroup group = PackGroup::Resource;
+    std::vector<QString> targets;
+    QString instance;
+    bool assumeYes = false;
+    auto operator<=>(const PackDisable&) const = default;
+};
+
+// ---- world management (headless) ----
+//
+// The worlds live in the `saves` folder of the game root of an instance. A
+// world is addressed by its folder (the stable id) or by the name it has in
+// its `level.dat` - never by its position in a list.
+
+struct WorldList {
+    QString instance;
+    bool withSize = false;
+    auto operator<=>(const WorldList&) const = default;
+};
+
+struct WorldInfo {
+    QString instance;
+    QString target;
+    bool withSize = false;
+    auto operator<=>(const WorldInfo&) const = default;
+};
+
+struct WorldCopy {
+    QString instance;
+    QString target;
+    std::optional<QString> name;
+    auto operator<=>(const WorldCopy&) const = default;
+};
+
+struct WorldRename {
+    QString instance;
+    QString target;
+    QString name;
+    auto operator<=>(const WorldRename&) const = default;
+};
+
+struct WorldDelete {
+    QString instance;
+    QString target;
+    bool permanent = false;
+    auto operator<=>(const WorldDelete&) const = default;
+};
+
+struct WorldImport {
+    QString instance;
+    QString path;
+    std::optional<QString> name;
+    auto operator<=>(const WorldImport&) const = default;
+};
+
+// ---- server management (headless) ----
+//
+// The servers of an instance live in its `servers.dat` file. They are
+// addressed by their index in the list or by their name.
+
+/// @brief how a server handles the resource packs of the client
+enum class AcceptsTextures : std::uint8_t { Ask, Always, Never };
+
+struct ServerList {
+    QString instance;
+    bool ping = false;
+    auto operator<=>(const ServerList&) const = default;
+};
+
+struct ServerAdd {
+    QString instance;
+    QString name;
+    QString address;
+    /// The position of the new server in the list - it is appended when it is
+    /// past the end of the list.
+    std::optional<int> index;
+    AcceptsTextures acceptsTextures = AcceptsTextures::Ask;
+    auto operator<=>(const ServerAdd&) const = default;
+};
+
+struct ServerRemove {
+    QString instance;
+    /// The index of the server or its name.
+    QString target;
+    bool force = false;
+    auto operator<=>(const ServerRemove&) const = default;
+};
+
+// ---- log management (headless) ----
+//
+// The logs of an instance live in the folders that the launcher searches for
+// logs (`crash-reports`, `logs` and the game root itself). They are addressed
+// by their path, relative to the game root.
+
+struct LogList {
+    QString instance;
+    auto operator<=>(const LogList&) const = default;
+};
+
+struct LogRead {
+    QString instance;
+    /// The path of the log, relative to the game root of the instance.
+    std::optional<QString> file;
+    /// The number of the lines to read from the beginning of the log.
+    std::optional<int> head;
+    /// The number of the lines to read from the end of the log.
+    std::optional<int> tail;
+    /// The lines that do not match the expression are skipped.
+    std::optional<QString> grep;
+    /// The lines that are less severe than the level are skipped.
+    std::optional<QString> level;
+    /// Report the lines as JSON instead of writing them to the output.
+    bool json = false;
+    auto operator<=>(const LogRead&) const = default;
+};
+
+struct LogUpload {
+    QString instance;
+    /// The path of the log, relative to the game root of the instance.
+    std::optional<QString> file;
+    /// The paste service the log is uploaded to.
+    QString service = QStringLiteral("mclogs");
+    bool anonymize = false;
+    bool assumeYes = false;
+    auto operator<=>(const LogUpload&) const = default;
+};
+
+// ---- screenshot management (headless) ----
+//
+// The screenshots of an instance live in the `screenshots` folder of its game
+// root. They are addressed by their file name.
+
+struct ScreenshotList {
+    QString instance;
+    auto operator<=>(const ScreenshotList&) const = default;
+};
+
+struct ScreenshotUpload {
+    QString instance;
+    /// The id of a screenshot or `all` for every screenshot of the instance.
+    QString target;
+    /// The number of the screenshots that are uploaded when the target is
+    /// `all`.
+    std::optional<int> limit;
+    bool assumeYes = false;
+    auto operator<=>(const ScreenshotUpload&) const = default;
+};
+
+struct ScreenshotCopy {
+    QString instance;
+    /// The id of the screenshot.
+    QString id;
+    /// The file or the folder the screenshot is copied to.
+    QString destination;
+    bool force = false;
+    auto operator<=>(const ScreenshotCopy&) const = default;
+};
+
+// ---- notes of an instance (headless) ----
+//
+// The notes of an instance are a setting of the instance - they live in the
+// `notes` key of its `instance.cfg`.
+
+struct NotesShow {
+    QString instance;
+    auto operator<=>(const NotesShow&) const = default;
+};
+
+struct NotesSet {
+    QString instance;
+    /// The text of the notes.
+    std::optional<QString> text;
+    /// The file the text of the notes is read from.
+    std::optional<QString> file;
+    /// Add the text to the notes instead of replacing them.
+    bool append = false;
+    auto operator<=>(const NotesSet&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -359,7 +603,31 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::VersionChangeMc,
                                  Cmd::VersionInstallLoader,
                                  Cmd::VersionRemoveLoader,
-                                 Cmd::VersionReinstall>;
+                                 Cmd::VersionReinstall,
+                                 Cmd::PackList,
+                                 Cmd::PackSearch,
+                                 Cmd::PackInfo,
+                                 Cmd::PackInstall,
+                                 Cmd::PackRemove,
+                                 Cmd::PackEnable,
+                                 Cmd::PackDisable,
+                                 Cmd::WorldList,
+                                 Cmd::WorldInfo,
+                                 Cmd::WorldCopy,
+                                 Cmd::WorldRename,
+                                 Cmd::WorldDelete,
+                                 Cmd::WorldImport,
+                                 Cmd::ServerList,
+                                 Cmd::ServerAdd,
+                                 Cmd::ServerRemove,
+                                 Cmd::LogList,
+                                 Cmd::LogRead,
+                                 Cmd::LogUpload,
+                                 Cmd::ScreenshotList,
+                                 Cmd::ScreenshotUpload,
+                                 Cmd::ScreenshotCopy,
+                                 Cmd::NotesShow,
+                                 Cmd::NotesSet>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -379,7 +647,19 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::SettingsUnset>(cmd) || std::holds_alternative<Cmd::VersionShow>(cmd) ||
            std::holds_alternative<Cmd::VersionListAvailable>(cmd) || std::holds_alternative<Cmd::VersionChangeMc>(cmd) ||
            std::holds_alternative<Cmd::VersionInstallLoader>(cmd) ||
-           std::holds_alternative<Cmd::VersionRemoveLoader>(cmd) || std::holds_alternative<Cmd::VersionReinstall>(cmd);
+           std::holds_alternative<Cmd::VersionRemoveLoader>(cmd) || std::holds_alternative<Cmd::VersionReinstall>(cmd) ||
+           std::holds_alternative<Cmd::PackList>(cmd) || std::holds_alternative<Cmd::PackSearch>(cmd) ||
+           std::holds_alternative<Cmd::PackInfo>(cmd) || std::holds_alternative<Cmd::PackInstall>(cmd) ||
+           std::holds_alternative<Cmd::PackRemove>(cmd) || std::holds_alternative<Cmd::PackEnable>(cmd) ||
+           std::holds_alternative<Cmd::PackDisable>(cmd) || std::holds_alternative<Cmd::WorldList>(cmd) ||
+           std::holds_alternative<Cmd::WorldInfo>(cmd) || std::holds_alternative<Cmd::WorldCopy>(cmd) ||
+           std::holds_alternative<Cmd::WorldRename>(cmd) || std::holds_alternative<Cmd::WorldDelete>(cmd) ||
+           std::holds_alternative<Cmd::WorldImport>(cmd) || std::holds_alternative<Cmd::ServerList>(cmd) ||
+           std::holds_alternative<Cmd::ServerAdd>(cmd) || std::holds_alternative<Cmd::ServerRemove>(cmd) ||
+           std::holds_alternative<Cmd::LogList>(cmd) || std::holds_alternative<Cmd::LogRead>(cmd) ||
+           std::holds_alternative<Cmd::LogUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotList>(cmd) ||
+           std::holds_alternative<Cmd::ScreenshotUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotCopy>(cmd) ||
+           std::holds_alternative<Cmd::NotesShow>(cmd) || std::holds_alternative<Cmd::NotesSet>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

@@ -19,6 +19,7 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include "cli/CommandUtils.h"
 #include "cli/VersionCommands.h"
 
 #include <algorithm>
@@ -125,7 +126,7 @@ bool matchesType(const Meta::Version::Ptr& version, const QString& type)
 
 ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionShow& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -234,7 +235,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionListAvailable& cmd
 
 ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionChangeMc& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -302,7 +303,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionChangeMc& cmd)
 
 ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionInstallLoader& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -405,7 +406,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionInstallLoader& cmd
 
 ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionRemoveLoader& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
@@ -468,7 +469,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionRemoveLoader& cmd)
 
 ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionReinstall& cmd)
 {
-    auto* instance = resolveInstance(ctx, cmd.id);
+    auto* instance = resolveInstance(ctx.app, cmd.id);
     if (!instance) {
         return outputError(QStringLiteral("instance_not_found"),
                            QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),

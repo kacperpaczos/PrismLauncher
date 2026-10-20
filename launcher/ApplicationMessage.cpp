@@ -126,6 +126,59 @@ std::vector<std::pair<QString, QString>> splitKeyValues(const QString& value)
     return out;
 }
 
+/// The name of the way a server handles the resource packs in the IPC
+/// encoding.
+QString acceptsTexturesToArg(Cli::Cmd::AcceptsTextures value)
+{
+    switch (value) {
+        case Cli::Cmd::AcceptsTextures::Always:
+            return QStringLiteral("always");
+        case Cli::Cmd::AcceptsTextures::Never:
+            return QStringLiteral("never");
+        case Cli::Cmd::AcceptsTextures::Ask:
+            break;
+    }
+    return QStringLiteral("ask");
+}
+
+/// The way a server handles the resource packs. An unknown value asks.
+Cli::Cmd::AcceptsTextures acceptsTexturesFromArg(const QString& value)
+{
+    if (value == QLatin1String("always")) {
+        return Cli::Cmd::AcceptsTextures::Always;
+    }
+    if (value == QLatin1String("never")) {
+        return Cli::Cmd::AcceptsTextures::Never;
+    }
+    return Cli::Cmd::AcceptsTextures::Ask;
+}
+
+/// The name of a pack group in the IPC encoding.
+QString packGroupToArg(Cli::Cmd::PackGroup group)
+{
+    switch (group) {
+        case Cli::Cmd::PackGroup::Resource:
+            return QStringLiteral("resource");
+        case Cli::Cmd::PackGroup::Shader:
+            return QStringLiteral("shader");
+        case Cli::Cmd::PackGroup::Texture:
+            return QStringLiteral("texture");
+    }
+    return QStringLiteral("resource");
+}
+
+/// The pack group of an IPC argument. An unknown value is the resource group.
+Cli::Cmd::PackGroup packGroupFromArg(const QString& value)
+{
+    if (value == QLatin1String("shader")) {
+        return Cli::Cmd::PackGroup::Shader;
+    }
+    if (value == QLatin1String("texture")) {
+        return Cli::Cmd::PackGroup::Texture;
+    }
+    return Cli::Cmd::PackGroup::Resource;
+}
+
 }  // namespace
 
 Result<> ApplicationMessage::parse(const QByteArray& input)
@@ -505,6 +558,330 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         return Cli::Cmd::VersionReinstall{ .id = id };
     }
 
+    // PackList
+    if (command == "pack_list") {
+        const QString notFoundMsg = "missing `%1` for pack_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackList{
+            .group = packGroupFromArg(args.value("group")),
+            .instance = instance,
+            .includeDisabled = argToBool(args.value("includeDisabled")),
+        };
+    }
+
+    // PackSearch
+    if (command == "pack_search") {
+        return Cli::Cmd::PackSearch{
+            .group = packGroupFromArg(args.value("group")),
+            .query = args.value("query"),
+            .mcVersions = splitStringList(args.value("mcVersions")),
+            .limit = args.value("limit").toInt(),
+            .offset = args.value("offset").toInt(),
+        };
+    }
+
+    // PackInfo
+    if (command == "pack_info") {
+        const QString notFoundMsg = "missing `%1` for pack_info command";
+        TRY_INTO(auto project, Try::findByMapKey(args, "project", notFoundMsg));
+        Cli::Cmd::PackInfo cmd{
+            .group = packGroupFromArg(args.value("group")),
+            .project = project,
+        };
+        if (args.contains("instance")) {
+            cmd.instance = args.value("instance");
+        }
+        return cmd;
+    }
+
+    // PackInstall
+    if (command == "pack_install") {
+        const QString notFoundMsg = "missing `%1` for pack_install command";
+        TRY_INTO(auto project, Try::findByMapKey(args, "project", notFoundMsg));
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::PackInstall cmd{
+            .group = packGroupFromArg(args.value("group")),
+            .project = project,
+            .instance = instance,
+            .noMetadata = argToBool(args.value("noMetadata")),
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+        if (args.contains("version")) {
+            cmd.version = args.value("version");
+        }
+        return cmd;
+    }
+
+    // PackRemove
+    if (command == "pack_remove") {
+        const QString notFoundMsg = "missing `%1` for pack_remove command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackRemove{
+            .group = packGroupFromArg(args.value("group")),
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .force = argToBool(args.value("force")),
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+    }
+
+    // PackEnable
+    if (command == "pack_enable") {
+        const QString notFoundMsg = "missing `%1` for pack_enable command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackEnable{
+            .group = packGroupFromArg(args.value("group")),
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+    }
+
+    // PackDisable
+    if (command == "pack_disable") {
+        const QString notFoundMsg = "missing `%1` for pack_disable command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::PackDisable{
+            .group = packGroupFromArg(args.value("group")),
+            .targets = splitStringList(args.value("targets")),
+            .instance = instance,
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+    }
+
+    // WorldList
+    if (command == "world_list") {
+        const QString notFoundMsg = "missing `%1` for world_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::WorldList{
+            .instance = instance,
+            .withSize = argToBool(args.value("withSize")),
+        };
+    }
+
+    // WorldInfo
+    if (command == "world_info") {
+        const QString notFoundMsg = "missing `%1` for world_info command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        return Cli::Cmd::WorldInfo{
+            .instance = instance,
+            .target = target,
+            .withSize = argToBool(args.value("withSize")),
+        };
+    }
+
+    // WorldCopy
+    if (command == "world_copy") {
+        const QString notFoundMsg = "missing `%1` for world_copy command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        Cli::Cmd::WorldCopy cmd{
+            .instance = instance,
+            .target = target,
+        };
+        if (args.contains("name")) {
+            cmd.name = args.value("name");
+        }
+        return cmd;
+    }
+
+    // WorldRename
+    if (command == "world_rename") {
+        const QString notFoundMsg = "missing `%1` for world_rename command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        TRY_INTO(auto name, Try::findByMapKey(args, "name", notFoundMsg));
+        return Cli::Cmd::WorldRename{
+            .instance = instance,
+            .target = target,
+            .name = name,
+        };
+    }
+
+    // WorldDelete
+    if (command == "world_delete") {
+        const QString notFoundMsg = "missing `%1` for world_delete command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        return Cli::Cmd::WorldDelete{
+            .instance = instance,
+            .target = target,
+            .permanent = argToBool(args.value("permanent")),
+        };
+    }
+
+    // WorldImport
+    if (command == "world_import") {
+        const QString notFoundMsg = "missing `%1` for world_import command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto path, Try::findByMapKey(args, "path", notFoundMsg));
+        Cli::Cmd::WorldImport cmd{
+            .instance = instance,
+            .path = path,
+        };
+        if (args.contains("name")) {
+            cmd.name = args.value("name");
+        }
+        return cmd;
+    }
+
+    // LogList
+    if (command == "log_list") {
+        const QString notFoundMsg = "missing `%1` for log_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::LogList{
+            .instance = instance,
+        };
+    }
+
+    // LogRead
+    if (command == "log_read") {
+        const QString notFoundMsg = "missing `%1` for log_read command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::LogRead cmd{
+            .instance = instance,
+            .json = argToBool(args.value("json")),
+        };
+        if (args.contains("file")) {
+            cmd.file = args.value("file");
+        }
+        if (args.contains("head")) {
+            cmd.head = args.value("head").toInt();
+        }
+        if (args.contains("tail")) {
+            cmd.tail = args.value("tail").toInt();
+        }
+        if (args.contains("grep")) {
+            cmd.grep = args.value("grep");
+        }
+        if (args.contains("level")) {
+            cmd.level = args.value("level");
+        }
+        return cmd;
+    }
+
+    // LogUpload
+    if (command == "log_upload") {
+        const QString notFoundMsg = "missing `%1` for log_upload command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::LogUpload cmd{
+            .instance = instance,
+            .service = args.value("service"),
+            .anonymize = argToBool(args.value("anonymize")),
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+        if (args.contains("file")) {
+            cmd.file = args.value("file");
+        }
+        return cmd;
+    }
+
+    // NotesShow
+    if (command == "notes_show") {
+        const QString notFoundMsg = "missing `%1` for notes_show command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::NotesShow{
+            .instance = instance,
+        };
+    }
+
+    // NotesSet
+    if (command == "notes_set") {
+        const QString notFoundMsg = "missing `%1` for notes_set command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        Cli::Cmd::NotesSet cmd{
+            .instance = instance,
+            .append = argToBool(args.value("append")),
+        };
+        if (args.contains("text")) {
+            cmd.text = args.value("text");
+        }
+        if (args.contains("file")) {
+            cmd.file = args.value("file");
+        }
+        return cmd;
+    }
+
+    // ScreenshotList
+    if (command == "screenshot_list") {
+        const QString notFoundMsg = "missing `%1` for screenshot_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ScreenshotList{
+            .instance = instance,
+        };
+    }
+
+    // ScreenshotUpload
+    if (command == "screenshot_upload") {
+        const QString notFoundMsg = "missing `%1` for screenshot_upload command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        Cli::Cmd::ScreenshotUpload cmd{
+            .instance = instance,
+            .target = target,
+            .assumeYes = argToBool(args.value("assumeYes")),
+        };
+        if (args.contains("limit")) {
+            cmd.limit = args.value("limit").toInt();
+        }
+        return cmd;
+    }
+
+    // ScreenshotCopy
+    if (command == "screenshot_copy") {
+        const QString notFoundMsg = "missing `%1` for screenshot_copy command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto id, Try::findByMapKey(args, "id", notFoundMsg));
+        TRY_INTO(auto destination, Try::findByMapKey(args, "destination", notFoundMsg));
+        return Cli::Cmd::ScreenshotCopy{
+            .instance = instance,
+            .id = id,
+            .destination = destination,
+            .force = argToBool(args.value("force")),
+        };
+    }
+
+    // ServerList
+    if (command == "server_list") {
+        const QString notFoundMsg = "missing `%1` for server_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::ServerList{
+            .instance = instance,
+            .ping = argToBool(args.value("ping")),
+        };
+    }
+
+    // ServerAdd
+    if (command == "server_add") {
+        const QString notFoundMsg = "missing `%1` for server_add command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto name, Try::findByMapKey(args, "name", notFoundMsg));
+        TRY_INTO(auto address, Try::findByMapKey(args, "address", notFoundMsg));
+        Cli::Cmd::ServerAdd cmd{
+            .instance = instance,
+            .name = name,
+            .address = address,
+            .acceptsTextures = acceptsTexturesFromArg(args.value("acceptsTextures")),
+        };
+        if (args.contains("index")) {
+            cmd.index = args.value("index").toInt();
+        }
+        return cmd;
+    }
+
+    // ServerRemove
+    if (command == "server_remove") {
+        const QString notFoundMsg = "missing `%1` for server_remove command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        return Cli::Cmd::ServerRemove{
+            .instance = instance,
+            .target = target,
+            .force = argToBool(args.value("force")),
+        };
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -750,6 +1127,214 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
         {
             message.command = "version_reinstall";
             message.args.insert("id", versionReinstall.id);
+        }
+        void operator()(const Cli::Cmd::PackList& packList)
+        {
+            message.command = "pack_list";
+            message.args.insert("group", packGroupToArg(packList.group));
+            message.args.insert("instance", packList.instance);
+            message.args.insert("includeDisabled", boolToArg(packList.includeDisabled));
+        }
+        void operator()(const Cli::Cmd::PackSearch& packSearch)
+        {
+            message.command = "pack_search";
+            message.args.insert("group", packGroupToArg(packSearch.group));
+            message.args.insert("query", packSearch.query);
+            message.args.insert("mcVersions", joinStringList(packSearch.mcVersions));
+            message.args.insert("limit", QString::number(packSearch.limit));
+            message.args.insert("offset", QString::number(packSearch.offset));
+        }
+        void operator()(const Cli::Cmd::PackInfo& packInfo)
+        {
+            message.command = "pack_info";
+            message.args.insert("group", packGroupToArg(packInfo.group));
+            message.args.insert("project", packInfo.project);
+            if (packInfo.instance.has_value()) {
+                message.args.insert("instance", *packInfo.instance);
+            }
+        }
+        void operator()(const Cli::Cmd::PackInstall& packInstall)
+        {
+            message.command = "pack_install";
+            message.args.insert("group", packGroupToArg(packInstall.group));
+            message.args.insert("project", packInstall.project);
+            message.args.insert("instance", packInstall.instance);
+            if (packInstall.version.has_value()) {
+                message.args.insert("version", *packInstall.version);
+            }
+            message.args.insert("noMetadata", boolToArg(packInstall.noMetadata));
+            message.args.insert("assumeYes", boolToArg(packInstall.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackRemove& packRemove)
+        {
+            message.command = "pack_remove";
+            message.args.insert("group", packGroupToArg(packRemove.group));
+            message.args.insert("targets", joinStringList(packRemove.targets));
+            message.args.insert("instance", packRemove.instance);
+            message.args.insert("force", boolToArg(packRemove.force));
+            message.args.insert("assumeYes", boolToArg(packRemove.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackEnable& packEnable)
+        {
+            message.command = "pack_enable";
+            message.args.insert("group", packGroupToArg(packEnable.group));
+            message.args.insert("targets", joinStringList(packEnable.targets));
+            message.args.insert("instance", packEnable.instance);
+            message.args.insert("assumeYes", boolToArg(packEnable.assumeYes));
+        }
+        void operator()(const Cli::Cmd::PackDisable& packDisable)
+        {
+            message.command = "pack_disable";
+            message.args.insert("group", packGroupToArg(packDisable.group));
+            message.args.insert("targets", joinStringList(packDisable.targets));
+            message.args.insert("instance", packDisable.instance);
+            message.args.insert("assumeYes", boolToArg(packDisable.assumeYes));
+        }
+        void operator()(const Cli::Cmd::WorldList& worldList)
+        {
+            message.command = "world_list";
+            message.args.insert("instance", worldList.instance);
+            message.args.insert("withSize", boolToArg(worldList.withSize));
+        }
+        void operator()(const Cli::Cmd::WorldInfo& worldInfo)
+        {
+            message.command = "world_info";
+            message.args.insert("instance", worldInfo.instance);
+            message.args.insert("target", worldInfo.target);
+            message.args.insert("withSize", boolToArg(worldInfo.withSize));
+        }
+        void operator()(const Cli::Cmd::WorldCopy& worldCopy)
+        {
+            message.command = "world_copy";
+            message.args.insert("instance", worldCopy.instance);
+            message.args.insert("target", worldCopy.target);
+            if (worldCopy.name.has_value()) {
+                message.args.insert("name", *worldCopy.name);
+            }
+        }
+        void operator()(const Cli::Cmd::WorldRename& worldRename)
+        {
+            message.command = "world_rename";
+            message.args.insert("instance", worldRename.instance);
+            message.args.insert("target", worldRename.target);
+            message.args.insert("name", worldRename.name);
+        }
+        void operator()(const Cli::Cmd::WorldDelete& worldDelete)
+        {
+            message.command = "world_delete";
+            message.args.insert("instance", worldDelete.instance);
+            message.args.insert("target", worldDelete.target);
+            message.args.insert("permanent", boolToArg(worldDelete.permanent));
+        }
+        void operator()(const Cli::Cmd::WorldImport& worldImport)
+        {
+            message.command = "world_import";
+            message.args.insert("instance", worldImport.instance);
+            message.args.insert("path", worldImport.path);
+            if (worldImport.name.has_value()) {
+                message.args.insert("name", *worldImport.name);
+            }
+        }
+        void operator()(const Cli::Cmd::ServerList& serverList)
+        {
+            message.command = "server_list";
+            message.args.insert("instance", serverList.instance);
+            message.args.insert("ping", boolToArg(serverList.ping));
+        }
+        void operator()(const Cli::Cmd::ServerAdd& serverAdd)
+        {
+            message.command = "server_add";
+            message.args.insert("instance", serverAdd.instance);
+            message.args.insert("name", serverAdd.name);
+            message.args.insert("address", serverAdd.address);
+            if (serverAdd.index.has_value()) {
+                message.args.insert("index", QString::number(*serverAdd.index));
+            }
+            message.args.insert("acceptsTextures", acceptsTexturesToArg(serverAdd.acceptsTextures));
+        }
+        void operator()(const Cli::Cmd::ServerRemove& serverRemove)
+        {
+            message.command = "server_remove";
+            message.args.insert("instance", serverRemove.instance);
+            message.args.insert("target", serverRemove.target);
+            message.args.insert("force", boolToArg(serverRemove.force));
+        }
+        void operator()(const Cli::Cmd::LogList& logList)
+        {
+            message.command = "log_list";
+            message.args.insert("instance", logList.instance);
+        }
+        void operator()(const Cli::Cmd::LogRead& logRead)
+        {
+            message.command = "log_read";
+            message.args.insert("instance", logRead.instance);
+            if (logRead.file.has_value()) {
+                message.args.insert("file", *logRead.file);
+            }
+            if (logRead.head.has_value()) {
+                message.args.insert("head", QString::number(*logRead.head));
+            }
+            if (logRead.tail.has_value()) {
+                message.args.insert("tail", QString::number(*logRead.tail));
+            }
+            if (logRead.grep.has_value()) {
+                message.args.insert("grep", *logRead.grep);
+            }
+            if (logRead.level.has_value()) {
+                message.args.insert("level", *logRead.level);
+            }
+            message.args.insert("json", boolToArg(logRead.json));
+        }
+        void operator()(const Cli::Cmd::LogUpload& logUpload)
+        {
+            message.command = "log_upload";
+            message.args.insert("instance", logUpload.instance);
+            if (logUpload.file.has_value()) {
+                message.args.insert("file", *logUpload.file);
+            }
+            message.args.insert("service", logUpload.service);
+            message.args.insert("anonymize", boolToArg(logUpload.anonymize));
+            message.args.insert("assumeYes", boolToArg(logUpload.assumeYes));
+        }
+        void operator()(const Cli::Cmd::ScreenshotList& screenshotList)
+        {
+            message.command = "screenshot_list";
+            message.args.insert("instance", screenshotList.instance);
+        }
+        void operator()(const Cli::Cmd::ScreenshotUpload& screenshotUpload)
+        {
+            message.command = "screenshot_upload";
+            message.args.insert("instance", screenshotUpload.instance);
+            message.args.insert("target", screenshotUpload.target);
+            if (screenshotUpload.limit.has_value()) {
+                message.args.insert("limit", QString::number(*screenshotUpload.limit));
+            }
+            message.args.insert("assumeYes", boolToArg(screenshotUpload.assumeYes));
+        }
+        void operator()(const Cli::Cmd::ScreenshotCopy& screenshotCopy)
+        {
+            message.command = "screenshot_copy";
+            message.args.insert("instance", screenshotCopy.instance);
+            message.args.insert("id", screenshotCopy.id);
+            message.args.insert("destination", screenshotCopy.destination);
+            message.args.insert("force", boolToArg(screenshotCopy.force));
+        }
+        void operator()(const Cli::Cmd::NotesShow& notesShow)
+        {
+            message.command = "notes_show";
+            message.args.insert("instance", notesShow.instance);
+        }
+        void operator()(const Cli::Cmd::NotesSet& notesSet)
+        {
+            message.command = "notes_set";
+            message.args.insert("instance", notesSet.instance);
+            if (notesSet.text.has_value()) {
+                message.args.insert("text", *notesSet.text);
+            }
+            if (notesSet.file.has_value()) {
+                message.args.insert("file", *notesSet.file);
+            }
+            message.args.insert("append", boolToArg(notesSet.append));
         }
     } serializer{};
 

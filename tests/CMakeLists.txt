@@ -87,3 +87,23 @@ ecm_add_test(ApplicationMessage_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VE
 
 ecm_add_test(Regressions_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME RegressionTests)
+
+ecm_add_test(ServersDat_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME ServersDat)
+
+ecm_add_test(LogReader_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME LogReader)
+
+ecm_add_test(World_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME World)
+
+# The smoke test of the domain commands runs the real binary against a
+# throwaway instance - it needs bash and python3 and no network.
+if(UNIX)
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND)
+        add_test(NAME CliDomainSmoke
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli/spike-domain-smoke.sh $<TARGET_FILE:${Launcher_Name}>)
+        set_tests_properties(CliDomainSmoke PROPERTIES TIMEOUT 300)
+    endif()
+endif()
