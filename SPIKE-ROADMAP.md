@@ -3,7 +3,7 @@
 > Cel spiKA: **pełne zarządzanie modami z konsoli** — `prism mod list|search|info|install|remove|enable|disable|update`
 > — działające headless (bez GUI, platforma offscreen), z wyjściem JSON i kodami wyjścia.
 > Baza: gałąź `cli_rebirth` (PR #6193, Ryex), pin **`059625c8b89509fe5180384fd9db8432512e93a7`**.
-> To jest SPIKE — poza zakresem: IPC v2, pełny split initCore/initGui, CurseForge.
+> To jest SPIKE — poza zakresem: pełny split initCore/initGui, CurseForge.
 > Pełny plan: sesja Plan (Faza 0–6).
 >
 > **Etap A (2026-10-20)** rozszerza spiKA o grupy `instance`, `settings` i `version`
@@ -16,6 +16,10 @@
 > **Etap 3 (ten sam branch)**: dołożenie grup domenowych
 > (`world|server|log|screenshot|notes`) — szczegóły w sekcji
 > „Etap 3 — world / server / log / screenshot / notes".
+>
+> **Etap 4 (ten sam branch, 2026-10-20)**: IPC v2 — żądanie/odpowiedź przez gniazdo
+> (`requestId`, odpowiedź tym samym gniazdem) i polecenie `status` — szczegóły w sekcji
+> „Etap 4 — IPC v2: request/response + `status`".
 
 ## Kolejność prac (sekwencyjnie, per podagent)
 
@@ -114,7 +118,10 @@ prismlauncher mod update  [target...] [--all] -i <id> [--dry-run] [--no-deps] [-
 - `-y/--yes` jest przyjmowane, ale nie trafia do struktur `Cmd::Mod*` (headless i tak nie pyta).
 - `Cmd::ModRemove` ma `force` (nie `yes`); `--json` domyślnie włączone (flaga akceptowana, wyjście zawsze JSON).
 - Gdy wszystkie komendy są headless i brak `DISPLAY`/`WAYLAND_DISPLAY` → `QT_QPA_PLATFORM=offscreen`
-  + pominięcie kreatora konfiguracji; mod przez IPC do działającego GUI → `ipc_unsupported` + exit 8 (TODO).
+  + pominięcie kreatora konfiguracji. Od Etapu 4 komendy headless wysłane do działającego GUI są
+  **wykonywane w procesie GUI** przez IPC v2 (klient drukuje odesłany JSON i kończy się jego kodem
+  wyjścia); `ipc_unsupported` + exit 8 zostaje tylko wtedy, gdy działa stary build launchera,
+  który nie umie odpowiedzieć na żądanie z `requestId`.
 
 ## Etap 2 — resource / shader / texture packi (2026-10-19)
 
@@ -352,6 +359,10 @@ Dwa nowe binaria ctest (liczba binariów: 28 → 31, z smoke testem 32):
 - [x] Etap 3: smoke E2E domen (42/42 kroków, w ctest jako `CliDomainSmoke`)
 - [x] Merge: pełny CLI na `spike/mod-cli` (Etap A + Etap 2 + Etap 3), scalone z
       `origin/kacperpaczos/spike-resources` — wszystkie 12 grup komend w jednej binarki
+- [x] Etap 4: IPC v2 — `requestId` + koperta odpowiedzi, wykonanie komend CLI w działającym GUI
+- [x] Etap 4: polecenie `status` (GUI odpowiada przez IPC; headless: `running: null`, W1)
+- [x] Etap 4: build green + ctest 33/33
+- [x] Etap 4: smoke E2E IPC (start GUI offscreen, odpowiedzi przez gniazdo, K1 — w ctest jako `CliIpcSmoke`)
 
 ## Review round 1 (MiniMax): K1-K3 fixed
 - **K1** `fix(cli): headless exit scoped to startup commands` — decyzja „headless i wyjdź" zapada raz,
@@ -488,6 +499,10 @@ działającego launchera zwraca `ipc_unsupported` + exit 8 (gałąź T5, poza za
 Guard został zaimplementowany zgodnie z briefem (`MinecraftInstance::isRunning()` → `Conflict(4)`,
 z `--force`), ale w headless zmianie nie zostanie wywołany — przyjęte i zaakceptowane w ramach spiKA
 (gałąź do rozważenia w fazie 2+, gdy komendy mod będą działały w procesie launchera).
+
+> **Aktualizacja (Etap 4, 2026-10-20):** gałąź „komendy mod działają w procesie launchera"
+> zrealizowana — patrz sekcja „Etap 4 — IPC v2: request/response + `status`". Guard jest
+> teraz aktywny, gdy komenda zostaje wykonana przez działające GUI.
 
 ### Świadome odstępstwa od briefu (uzgodnione w review)
 - `Cli::outputError` ma dodatkowy overload z `QJsonObject` — bez niego nie da się dołożyć listy
@@ -646,7 +661,8 @@ min>max RAM), 3 not-found (instancja, wersja MC, wersja loadera, ikona, loader w
 
 - **Ochrona uruchomionej instancji jest nieosiągalna** — tak samo jak w komendach `mod`: `isRunning()`
   żyje w procesie GUI, a CLI to osobny proces. Guard jest zaimplementowany (`instance_running`,
-  exit 4), ale nie zostanie wywołany.
+  exit 4), ale nie zostanie wywołany. *(Aktualizacja, Etap 4: przez IPC do działającego GUI —
+  jest wywoływany; patrz sekcja „Etap 4".)*
 - **`settings` nie obejmuje ustawień paczki** (packwiz), globalnych ustawień launchera ani
   ustawień konta — tylko ustawienia instancji.
 - **`version change-mc` i `version install-loader` potrzebują sieci** — bez niej kończą się kodem 7.
@@ -664,3 +680,85 @@ min>max RAM), 3 not-found (instancja, wersja MC, wersja loadera, ikona, loader w
   flagą `--type` (domyślnie `all`).
 - Loadery `liteloader` nie są obsługiwane przez CLI (launcher zna tylko `fabric`, `forge`,
   `neoforge`, `quilt`).
+
+## Etap 4 — IPC v2: request/response + `status` (2026-10-20)
+
+Stan: **zrobiony** (build zielony, ctest 33/33, smoke E2E IPC zielony, w ctest jako `CliIpcSmoke`).
+Branch: `spike/mod-cli`. Ostatni brakujący element pełnego CLI: komendy CLI działają też wtedy,
+gdy launcher GUI już biega, a `status` eksponuje stan launchera.
+
+### Model interakcji
+
+- **Headless-first** — bez działającego launchera każda komenda CLI biega w swoim procesie
+  (offscreen, bez kreatora konfiguracji), dokładnie jak przed Etapem 4.
+- **IPC, gdy GUI biega** — klient wykrywa żywego peera (`LocalPeer::isClient()`) i wysyła żądanie
+  zamiast samego przekazu: `ApplicationMessage::request(cmd, requestId)`, gdzie `requestId`
+  to UUID (bez nawiasów). Peer potwierdza zrozumienie ramką `Accepted`, wykonuje komendę
+  i odsyła **tym samym gniazdem** ramkę `Response`: `{requestId, ok, exitCode, data|error}`
+  (+ `rawOutput`, gdy komenda pisała surowy tekst, oraz `errorCode`/`errorMessage` w kopercie
+  błędu). Klient drukuje otrzymany JSON na swoje stdout i kończy się otrzymanym kodem wyjścia.
+- **Timeouty** — klient czeka na odpowiedź `--ipc-timeout` sekund (domyślnie **300 s**, bo
+  `mod update` może pobierać długo). Brak odpowiedzi w czasie → koperta `ipc_timeout` + exit 8
+  (`GuiRequired`). Odpowiedź „nic" od starego builda launchera (protokół v1: zamknięcie gniazda bez
+  odpowiedzi) → `ipc_unsupported` + exit 8 — jedyny pozostały przypadek tego kodu.
+- **K1 nienaruszony** — strona odbierająca NIGDY nie woła `QCoreApplication::exit`; o wyjściu
+  headless decyduje wyłącznie `m_headlessRun`. GUI przeżywa obsługę żądań (też nieudanych) —
+  sprawdzane w smoke teście po każdej komendzie.
+- **Przechwytywanie wyjścia (sink)** — komendy wykonywane w procesie GUI nie mogą pisać na jego
+  terminal. Wokół `processCommands` instalowany jest `Cli::OutputCapture` (`Output::setOutputSink`),
+  który zbiera dokumenty JSON (i surowy tekst, z limitem rozmiaru, żeby ogromny `log read`
+  nie spułkował ramki odpowiedzi); ostatni dokument wraca w `data`. Ścieżka headless dalej pisze
+  na realne stdout.
+- **Kompatybilność wstecz** — wiadomości bez `requestId` (stary klient / GUI) lecą starym torem
+  (`processCommands` bez odpowiedzi); nowe pola parsowane tolerancyjnie, stare GUI ignoruje
+  nieznane typy wiadomości.
+
+### `status`
+
+```
+prismlauncher status [--json]
+```
+
+- GUI biega: stan przez IPC — `{version, dataPath, instances: [{id, name, running}],
+  accounts: [{id, name, type}]}`; `running` jest realnym stanem procesów instancji.
+- Headless: te same dane zbierane lokalnie; `running: null` (JSON `null`) — osobny proces CLI
+  nie widzi procesów instancji, więc stan jest **nieznany** (W1), a nie fałszywy.
+
+### Commity etapu 4
+
+| commit | treść |
+|---|---|
+| `feat(ipc): request id and response envelope` | `ApplicationMessage`: `type` (`Request`/`Accepted`/`Response`), `requestId`, `ok`, `exitCode`, `rawOutput`, `errorCode`/`errorMessage`; fabryki `request`/`accepted`/`response` |
+| `feat(ipc): execute cli commands in the running gui` | `LocalPeer::sendRequest` (ramki na tym samym gnieździe, ack, deadline), `Cli::Ipc` (`sendCommandToPeer`), `OutputCapture` (sink), dispatch w `Application::messageReceived` → `answerRequest`, `--ipc-timeout` |
+| `fix(ipc): do not touch the peer when its sockets are deleted` | racy shutdown peera przy zamykaniu GUI |
+| `feat(cli): status command` | `StatusCommands` + parsowanie `status [--json]` + serializacja przez IPC |
+| `test(ipc): cover request id, error envelope and raw output round-trips` | 7 testów `ApplicationMessage`, 5 testów `CliParser` (status, ipc-timeout) |
+| `test(ipc): end-to-end smoke of the request/response IPC` | `tests/cli/spike-ipc-smoke.sh` + rejestracja `CliIpcSmoke` w ctest |
+
+W trakcie etapu wpadły też porządki poprzednich przebiegów (refaktor `resolveInstance` do
+`CommandUtils`, usunięcie martwego kodu, styl) i dwie poprawki: notes ze stdin odmawia przez IPC
+(proces GUI nie ma terminala klienta) oraz nazwa sterownika zink nadpisana przebiegiem clang-tidy.
+
+### Testy
+
+- `ApplicationMessage` (7 nowych): `requestId` w żądaniu, round-trip `Accepted`/`Response`,
+  błędy w kopercie, `rawOutput`, `status` przez IPC, stare wiadomości bez odpowiedzi.
+- `CliParser` (5 nowych): `status`, `status --json`, `status` nie miesza się z innymi komendami,
+  `--ipc-timeout` parsowanie, domyślny timeout 300 s.
+- `CliIpcSmoke` (ctest, 13 kroków, bez sieci): start GUI offscreen w rzucalnym katalogu danych,
+  potem `status`, `instance list`, `notes show/set` (launcher realnie zapisuje plik),
+  komenda na nieistniejącej instancji (błąd przez IPC, kod 3), kontrolki K1 po każdej grupie,
+  na koniec status/instancje po ubiciu GUI (ścieżka headless, `running: null`).
+
+### Znane ograniczenia (Etap 4)
+
+- **`status` headless raportuje `running: null`** — świadome (W1): CLI to osobny proces; stan
+  procesów instancji zna tylko GUI. Rozróżnienie „false"/„null" pozwala klientom nie mylić
+  „na pewno nie biega" z „nie wiem".
+- **Jeden żądanie na gniazdo** — klient wysyła komendę i czeka; nie ma multipleksowania ani
+  anulowania w trakcie (przerwanie Ctrl+C u klienta zostawia GUI wykonywać komendę dalej).
+- **`notes set` bez `--text`/`--file` (stdin) przez IPC → `notes_not_read`** — czytanie stdin
+  zablokowałoby pętlę zdarzeń GUI, więc komenda wykonana w procesie launchera tego odmawia
+  (`allowStdin = isHeadlessRun()`); ścieżka headless czyta stdin jak przed Etapem 4.
+- **`ipc_timeout` nie cofa skutków** — jeśli GUI odpowiedzi po limicie, komenda i tak została
+  wykonana; klient tylko nie poznał wyniku.
