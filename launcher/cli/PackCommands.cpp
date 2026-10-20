@@ -147,11 +147,8 @@ QJsonObject packToJson(const Resource* resource, Cmd::PackGroup group)
  */
 ExitCode resolvePackInstance(PackContext& ctx, const QString& instanceId, MinecraftInstance*& instance)
 {
-    instance = resolveInstance(ctx.app, instanceId);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(instanceId),
-                           ExitCode::NotFound);
+    if (auto code = resolveInstance(ctx.app, instanceId, instance); code != ExitCode::OK) {
+        return code;
     }
     return ExitCode::OK;
 }

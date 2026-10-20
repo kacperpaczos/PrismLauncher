@@ -77,17 +77,6 @@ constexpr int g_NetworkTimeoutMs = 180000;
  * Resolve the instance of a mod command. The error is reported and the exit
  * code is returned when the instance does not exist.
  */
-ExitCode resolveModInstance(ModContext& ctx, const QString& instanceId, MinecraftInstance*& instance)
-{
-    instance = resolveInstance(ctx.app, instanceId);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(instanceId),
-                           ExitCode::NotFound);
-    }
-    return ExitCode::OK;
-}
-
 /**
  * Open the mod model of an instance and wait for it to be up to date. The
  * error is reported and the exit code is returned when it fails.
@@ -286,7 +275,7 @@ ExitCode runEnableDisable(ModContext& ctx,
                           EnableAction action)
 {
     MinecraftInstance* instance = nullptr;
-    if (auto code = resolveModInstance(ctx, instanceId, instance); code != ExitCode::OK) {
+    if (auto code = resolveInstance(ctx.app, instanceId, instance); code != ExitCode::OK) {
         return code;
     }
     if (auto code = checkInstanceRunning(instance, instanceId, QStringLiteral("change mods")); code != ExitCode::OK) {
@@ -389,7 +378,7 @@ ExitCode runEnableDisable(ModContext& ctx,
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
 {
     MinecraftInstance* instance = nullptr;
-    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+    if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
         return code;
     }
 
@@ -596,7 +585,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
     QJsonValue installed = QJsonValue(QJsonValue::Null);
     if (cmd.instance.has_value()) {
         MinecraftInstance* instance = nullptr;
-        if (auto code = resolveModInstance(ctx, cmd.instance.value(), instance); code != ExitCode::OK) {
+        if (auto code = resolveInstance(ctx.app, cmd.instance.value(), instance); code != ExitCode::OK) {
             return code;
         }
         ModFolderModel* model = nullptr;
@@ -626,7 +615,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
 {
     MinecraftInstance* instance = nullptr;
-    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+    if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
         return code;
     }
     if (auto code = checkInstanceRunning(instance, cmd.instance, QStringLiteral("install mods")); code != ExitCode::OK) {
@@ -844,7 +833,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
 {
     MinecraftInstance* instance = nullptr;
-    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+    if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
         return code;
     }
     if (!cmd.force) {
@@ -951,7 +940,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd)
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
 {
     MinecraftInstance* instance = nullptr;
-    if (auto code = resolveModInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
+    if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
         return code;
     }
     if (!cmd.force) {

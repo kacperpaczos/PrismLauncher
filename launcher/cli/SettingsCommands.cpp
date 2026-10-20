@@ -315,11 +315,9 @@ QJsonObject describeEnvVariable(SettingsObject* settings, const QString& name)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     // The settings of the instance have to be loaded before they can be read.
     auto* settings = instance->settings();
@@ -356,11 +354,9 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     auto* settings = instance->settings();
     auto* globalSettings = ctx.app.settings();
@@ -393,11 +389,9 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     auto* settings = instance->settings();
 
@@ -502,11 +496,9 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd)
 
 ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsUnset& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     auto* settings = instance->settings();
 

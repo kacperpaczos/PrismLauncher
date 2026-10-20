@@ -215,11 +215,9 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceList& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceInfo& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     auto* instances = ctx.app.instances();
 
@@ -420,11 +418,9 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     if (auto code = checkInstanceRunning(instance, cmd.id, QStringLiteral("duplicate the instance")); code != ExitCode::OK) {
         return code;
@@ -501,11 +497,9 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     if (auto code = checkInstanceRunning(instance, cmd.id, QStringLiteral("rename the instance")); code != ExitCode::OK) {
         return code;
@@ -567,11 +561,9 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     if (auto code = checkInstanceRunning(instance, cmd.id, QStringLiteral("delete the instance")); code != ExitCode::OK) {
         return code;
@@ -605,11 +597,9 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd)
 
 ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceIconSet& cmd)
 {
-    auto* instance = resolveInstance(ctx.app, cmd.id);
-    if (!instance) {
-        return outputError(QStringLiteral("instance_not_found"),
-                           QStringLiteral("No instance with the id '%1' was found").arg(cmd.id),
-                           ExitCode::NotFound);
+    MinecraftInstance* instance = nullptr;
+    if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
+        return code;
     }
     if (auto code = checkInstanceRunning(instance, cmd.id, QStringLiteral("change the icon of the instance")); code != ExitCode::OK) {
         return code;
