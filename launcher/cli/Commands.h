@@ -572,6 +572,14 @@ struct NotesSet {
     auto operator<=>(const NotesSet&) const = default;
 };
 
+// ---- the state of the launcher (headless) ----
+
+/// The state of the launcher - its version, its data directory, its instances
+/// and its accounts.
+struct Status {
+    auto operator<=>(const Status&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -627,7 +635,8 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::ScreenshotUpload,
                                  Cmd::ScreenshotCopy,
                                  Cmd::NotesShow,
-                                 Cmd::NotesSet>;
+                                 Cmd::NotesSet,
+                                 Cmd::Status>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -659,7 +668,8 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::LogList>(cmd) || std::holds_alternative<Cmd::LogRead>(cmd) ||
            std::holds_alternative<Cmd::LogUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotList>(cmd) ||
            std::holds_alternative<Cmd::ScreenshotUpload>(cmd) || std::holds_alternative<Cmd::ScreenshotCopy>(cmd) ||
-           std::holds_alternative<Cmd::NotesShow>(cmd) || std::holds_alternative<Cmd::NotesSet>(cmd);
+           std::holds_alternative<Cmd::NotesShow>(cmd) || std::holds_alternative<Cmd::NotesSet>(cmd) ||
+           std::holds_alternative<Cmd::Status>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

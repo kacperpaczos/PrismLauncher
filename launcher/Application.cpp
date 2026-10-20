@@ -199,6 +199,7 @@
 #include "cli/LogCommands.h"
 #include "cli/ModCommands.h"
 #include "cli/NotesCommands.h"
+#include "cli/StatusCommands.h"
 #include "cli/Output.h"
 #include "cli/PackCommands.h"
 #include "cli/ScreenshotCommands.h"
@@ -1343,6 +1344,7 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
     Cli::LogContext logContext{ *this };
     Cli::ScreenshotContext screenshotContext{ *this };
     Cli::NotesContext notesContext{ *this };
+    Cli::StatusContext statusContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1366,6 +1368,8 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
         Cli::ScreenshotContext& screenshotContext;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::NotesContext& notesContext;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::StatusContext& statusContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1523,6 +1527,7 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
         // reports an exit code; the first failure aborts the rest of the batch.
         void operator()(const Cli::Cmd::NotesShow& cmd) { recordResult(Cli::runNotesCommand(notesContext, cmd)); }
         void operator()(const Cli::Cmd::NotesSet& cmd) { recordResult(Cli::runNotesCommand(notesContext, cmd)); }
+        void operator()(const Cli::Cmd::Status& cmd) { recordResult(Cli::runStatusCommand(statusContext, cmd)); }
     } visitor{ .app = this,
                .toProcessURIs = toProcessURIs,
                .exitCode = headlessExitCode,
@@ -1533,7 +1538,8 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
                .serverContext = serverContext,
                .logContext = logContext,
                .screenshotContext = screenshotContext,
-               .notesContext = notesContext };
+               .notesContext = notesContext,
+               .statusContext = statusContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

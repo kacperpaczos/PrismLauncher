@@ -438,6 +438,14 @@ struct NotesCli {
     void flush(Args& args) const;
 };
 
+/// `status` subcommand.
+struct StatusCli {
+    CLI::App* status{};
+
+    void addStatusArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
@@ -450,6 +458,7 @@ struct Cli {
     LogCli logCli{};
     ScreenshotCli screenshotCli{};
     NotesCli notesCli{};
+    StatusCli statusCli{};
 
     void attach(CLI::App& app, Args& args);
 };

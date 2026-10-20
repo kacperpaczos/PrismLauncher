@@ -898,6 +898,11 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         };
     }
 
+    // Status
+    if (command == "status") {
+        return Cli::Cmd::Status{};
+    }
+
     // ServerList
     if (command == "server_list") {
         const QString notFoundMsg = "missing `%1` for server_list command";
@@ -1392,6 +1397,7 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             }
             message.args.insert("append", boolToArg(notesSet.append));
         }
+        void operator()(const Cli::Cmd::Status& /*status*/) { message.command = "status"; }
     } serializer{};
 
     std::visit(serializer, cmd);

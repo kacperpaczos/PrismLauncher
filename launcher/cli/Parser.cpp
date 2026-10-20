@@ -1563,6 +1563,23 @@ void NotesCli::flush(Args& args) const
     }
 }
 
+void StatusCli::addStatusArgs(CLI::App& app)
+{
+    // status [--json]
+    status = app.add_subcommand("status", "Show the state of the launcher.");
+    addJsonFlag(status);
+    status->fallthrough();
+}
+
+void StatusCli::flush(Args& args) const
+{
+    if (status == nullptr || !status->parsed()) {
+        return;
+    }
+
+    args.commands.emplace_back(Cmd::Status{});
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -1630,6 +1647,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) notes management
     notesCli.addNotesArgs(app);
+
+    // subcommand based (headless) state of the launcher
+    statusCli.addStatusArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -1717,6 +1737,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // ...and for the `notes` subcommand
     cli.notesCli.flush(args);
+
+    // ...and for the `status` subcommand
+    cli.statusCli.flush(args);
 }
 
 }  // namespace Cli

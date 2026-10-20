@@ -373,6 +373,7 @@ static char* toString(const Args& args)
                 .arg(notesSet.instance, notesSet.text.value_or(QString()), notesSet.file.value_or(QString()))
                 .arg(QString::number(notesSet.append));
         }
+        QString operator()(const Status& /**/) { return QStringLiteral("Status{}"); }
     } cmdVisitor;
 
     QStringList cmds{};
