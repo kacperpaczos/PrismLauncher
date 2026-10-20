@@ -119,16 +119,6 @@ void LegacyCli::addLegacyArgs(CLI::App& app, Args& args)
 {
     // legacy api
     //
-    // { { { "d", "dir" }, "Use a custom path as application root (use '.' for current directory)", "directory" },
-    //   { { "l", "launch" }, "Launch the specified instance (by instance ID)", "instance" },
-    //   { { "s", "server" }, "Join the specified server on launch (only valid in combination with --launch)", "address" },
-    //   { { "w", "world" }, "Join the specified world on launch (only valid in combination with --launch)", "world" },
-    //   { { "a", "profile" }, "Use the account specified by its profile name (only valid in combination with --launch)", "profile" },
-    //   { { "o", "offline" }, "Launch offline, with given player name (only valid in combination with --launch)", "offline" },
-    //   { "alive", "Write a small '" + g_liveCheckFile + "' file after the launcher starts" },
-    //   { "show-window", "Show the main launcher window (useful in combination with --launch)" },
-    //   { { "I", "import" }, "Import instance or resource from specified local path or URL", "url" },
-    //   { "show", "Opens the window for the specified instance (by instance ID)", "show" } });
 
     // legacy launch api
     {
@@ -1651,13 +1641,6 @@ void Cli::attach(CLI::App& app, Args& args)
     // subcommand based (headless) state of the launcher
     statusCli.addStatusArgs(app);
 
-    // these legacy options can be deprecated once we have a better subcommand based cli in place
-    // CLI::deprecate_option(legacyCli.launch, "replacement");
-    // CLI::deprecate_option(legacyCli.server, "replacement");
-    // CLI::deprecate_option(legacyCli.world, "replacement");
-    // CLI::deprecate_option(legacyCli.offline, "replacement");
-    // CLI::deprecate_option(legacyCli.account, "replacement");
-    // CLI::deprecate_option(legacyCli.import, "replacement");
 
     app.add_option_function<std::vector<std::string>>(
            "uri",
