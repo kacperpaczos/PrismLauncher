@@ -63,7 +63,7 @@ QString trimTrailingBreak(const QString& text)
  * The text is given as an argument, read from a file or read from the
  * standard input.
  */
-Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd)
+Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd, bool allowStdin)
 {
     if (cmd.file.has_value()) {
         const QFileInfo info(*cmd.file);
@@ -80,6 +80,11 @@ Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd)
         return *cmd.text;
     }
     // No text was given - it is read from the standard input.
+    // When executed through IPC the read would block the GUI process, so it is refused there.
+    if (!allowStdin) {
+        return std::unexpected(
+            QStringLiteral("Reading the notes from the standard input is not supported while the launcher is running - pass --text or --file"));
+    }
     QFile input;
     if (!input.open(stdin, QIODevice::ReadOnly)) {
         return std::unexpected(QStringLiteral("The standard input could not be read"));
@@ -112,7 +117,7 @@ ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesSet& cmd)
         return code;
     }
 
-    auto text = readNotesText(cmd);
+    auto text = readNotesText(cmd, ctx.app.isHeadlessRun());
     if (!text) {
         return outputError(QStringLiteral("notes_not_read"), text.error(), ExitCode::NotFound);
     }
