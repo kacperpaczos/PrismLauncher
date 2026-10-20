@@ -19,8 +19,9 @@
  *  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "cli/CommandUtils.h"
 #include "cli/InstanceCommands.h"
+
+#include "cli/CommandUtils.h"
 
 #include <algorithm>
 #include <optional>

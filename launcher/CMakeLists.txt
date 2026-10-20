@@ -1370,9 +1370,7 @@ if(${Launcher_USE_PCH})
     target_precompile_headers(${Launcher_Name} REUSE_FROM Launcher_logic)
 endif()
 
-target_link_libraries(${Launcher_Name}
-  Launcher_logic
-)
+target_link_libraries(${Launcher_Name} Launcher_logic)
 
 if(DEFINED Launcher_APP_BINARY_NAME)
     set_target_properties(${Launcher_Name} PROPERTIES OUTPUT_NAME "${Launcher_APP_BINARY_NAME}")

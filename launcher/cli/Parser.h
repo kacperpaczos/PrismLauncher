@@ -44,9 +44,7 @@ struct LegacyCli {
     void addLegacyArgs(CLI::App& app, Args& args);
 };
 
-/// `mod` subcommand group. Options are bound to plain members here and turned
-/// into `Cmd::Mod*` commands by `flush()` after a successful parse - this keeps
-/// the CLI11 declarations free of ordering assumptions.
+/// `mod` subcommand group. Options are bound to plain members here.
 struct ModCli {
     CLI::App* mod{};
 
@@ -230,7 +228,7 @@ struct VersionCli {
 /**
  * @brief the options of one pack group (`resource`, `shader` or `texture`)
  *
- * The values are bound to the CLI11 options of that group and turned into
+ * The values are bound to the CLI11 options of that group.
  * `Cmd::Pack*` commands by `flush()` after a successful parse - this keeps the
  * CLI11 declarations free of ordering assumptions.
  */
@@ -289,8 +287,6 @@ struct PackCli {
 };
 
 /// `world` subcommand group. The options are bound to plain members here and
-/// turned into `Cmd::World*` commands by `flush()` after a successful parse -
-/// this keeps the CLI11 declarations free of ordering assumptions.
 struct WorldCli {
     CLI::App* world{};
 
@@ -330,8 +326,6 @@ struct WorldCli {
 };
 
 /// `server` subcommand group. The options are bound to plain members here and
-/// turned into `Cmd::Server*` commands by `flush()` after a successful parse -
-/// this keeps the CLI11 declarations free of ordering assumptions.
 struct ServerCli {
     CLI::App* server{};
 
@@ -358,8 +352,6 @@ struct ServerCli {
 };
 
 /// `log` subcommand group. The options are bound to plain members here and
-/// turned into `Cmd::Log*` commands by `flush()` after a successful parse -
-/// this keeps the CLI11 declarations free of ordering assumptions.
 struct LogCli {
     CLI::App* log{};
 
@@ -392,8 +384,6 @@ struct LogCli {
 };
 
 /// `screenshot` subcommand group. The options are bound to plain members here
-/// and turned into `Cmd::Screenshot*` commands by `flush()` after a successful
-/// parse - this keeps the CLI11 declarations free of ordering assumptions.
 struct ScreenshotCli {
     CLI::App* screenshot{};
 
@@ -418,8 +408,6 @@ struct ScreenshotCli {
 };
 
 /// `notes` subcommand group. The options are bound to plain members here and
-/// turned into `Cmd::Notes*` commands by `flush()` after a successful parse -
-/// this keeps the CLI11 declarations free of ordering assumptions.
 struct NotesCli {
     CLI::App* notes{};
 

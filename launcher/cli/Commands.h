@@ -38,7 +38,7 @@ class Application;
 
 namespace Cli {
 
-static constexpr std::string_view g_liveCheckFile = "live.check";
+inline constexpr std::string_view g_liveCheckFile = "live.check";
 
 /// Context handed to every command runner. It carries the application
 /// (instances, settings, network, ...) without pulling Application.h into the

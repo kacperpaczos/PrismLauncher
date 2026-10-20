@@ -122,6 +122,9 @@ class OutputCapture {
     OutputSink m_previous;
     std::vector<QJsonDocument> m_documents;
     QString m_text;
+    /// Set when the captured text hit the size cap - the cap keeps a huge
+    /// `log read` from ballooning the IPC response frame.
+    bool m_truncated = false;
 };
 
 }  // namespace Cli

@@ -141,11 +141,28 @@ QJsonObject errorEnvelope(const QString& code, const QString& message)
     return envelope;
 }
 
+namespace {
+
+/// Upper bound for the text captured during one command - keeps `log read`
+/// from ballooning the IPC response frame.
+constexpr qsizetype g_MaxCapturedTextBytes = 1024 * 1024;
+
+}  // namespace
+
 OutputCapture::OutputCapture() : m_previous(g_sink)
 {
     setOutputSink(OutputSink{
         .document = [this](const QJsonDocument& doc) { m_documents.push_back(doc); },
-        .text = [this](const QString& text) { m_text += text; },
+        .text = [this](const QString& text) {
+            if (m_text.size() >= g_MaxCapturedTextBytes) {
+                m_truncated = true;
+                return;
+            }
+            m_text += text.left(g_MaxCapturedTextBytes - m_text.size());
+            if (m_text.size() >= g_MaxCapturedTextBytes) {
+                m_truncated = true;
+            }
+        },
     });
 }
 
@@ -163,6 +180,9 @@ QJsonObject OutputCapture::result() const
     QJsonObject result;
     if (!m_text.isEmpty()) {
         result.insert(QStringLiteral("text"), m_text);
+    }
+    if (m_truncated) {
+        result.insert(QStringLiteral("truncated"), true);
     }
     return result;
 }
