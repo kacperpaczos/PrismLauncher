@@ -194,7 +194,16 @@ LocalPeer::LocalPeer(QObject* parent, const ApplicationId& appId) : QObject(pare
     lockFile->open(QIODevice::ReadWrite);
 }
 
-LocalPeer::~LocalPeer() {}
+LocalPeer::~LocalPeer()
+{
+    // The sockets are the children of the server - they are deleted with it.
+    // A socket that is deleted reports its disconnection, which must not
+    // touch the peer any more: its members are already gone by then.
+    for (auto socket : m_connections) {
+        socket->disconnect(this);
+    }
+    m_connections.clear();
+}
 
 ApplicationId LocalPeer::applicationId() const
 {
