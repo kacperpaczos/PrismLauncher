@@ -315,7 +315,9 @@ bool World::install(const QString& to, const QString& name)
     bool ok = false;
     if (m_containerFile.isFile()) {
         MMCZip::ArchiveReader zip(m_containerFile.absoluteFilePath());
-        ok = !MMCZip::extractSubDir(&zip, m_containerOffsetPath, finalPath);
+        // `extractSubDir` returns a result - the world was installed when it
+        // has a value, not when it has an error.
+        ok = MMCZip::extractSubDir(&zip, m_containerOffsetPath, finalPath).has_value();
     } else if (m_containerFile.isDir()) {
         QString from = m_containerFile.filePath();
         ok = FS::copy(from, finalPath)();

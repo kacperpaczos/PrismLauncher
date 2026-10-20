@@ -400,6 +400,83 @@ Result<Cli::Command> ApplicationMessage::toCliCommand() const
         };
     }
 
+    // WorldList
+    if (command == "world_list") {
+        const QString notFoundMsg = "missing `%1` for world_list command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        return Cli::Cmd::WorldList{
+            .instance = instance,
+            .withSize = argToBool(args.value("withSize")),
+        };
+    }
+
+    // WorldInfo
+    if (command == "world_info") {
+        const QString notFoundMsg = "missing `%1` for world_info command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        return Cli::Cmd::WorldInfo{
+            .instance = instance,
+            .target = target,
+            .withSize = argToBool(args.value("withSize")),
+        };
+    }
+
+    // WorldCopy
+    if (command == "world_copy") {
+        const QString notFoundMsg = "missing `%1` for world_copy command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        Cli::Cmd::WorldCopy cmd{
+            .instance = instance,
+            .target = target,
+        };
+        if (args.contains("name")) {
+            cmd.name = args.value("name");
+        }
+        return cmd;
+    }
+
+    // WorldRename
+    if (command == "world_rename") {
+        const QString notFoundMsg = "missing `%1` for world_rename command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        TRY_INTO(auto name, Try::findByMapKey(args, "name", notFoundMsg));
+        return Cli::Cmd::WorldRename{
+            .instance = instance,
+            .target = target,
+            .name = name,
+        };
+    }
+
+    // WorldDelete
+    if (command == "world_delete") {
+        const QString notFoundMsg = "missing `%1` for world_delete command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto target, Try::findByMapKey(args, "target", notFoundMsg));
+        return Cli::Cmd::WorldDelete{
+            .instance = instance,
+            .target = target,
+            .permanent = argToBool(args.value("permanent")),
+        };
+    }
+
+    // WorldImport
+    if (command == "world_import") {
+        const QString notFoundMsg = "missing `%1` for world_import command";
+        TRY_INTO(auto instance, Try::findByMapKey(args, "instance", notFoundMsg));
+        TRY_INTO(auto path, Try::findByMapKey(args, "path", notFoundMsg));
+        Cli::Cmd::WorldImport cmd{
+            .instance = instance,
+            .path = path,
+        };
+        if (args.contains("name")) {
+            cmd.name = args.value("name");
+        }
+        return cmd;
+    }
+
     return std::unexpected{ QString("unknown cli command `%1`").arg(command) };
 }
 
@@ -591,6 +668,51 @@ ApplicationMessage ApplicationMessage::fromCliCommand(const Cli::Command& cmd)
             message.args.insert("targets", joinStringList(packDisable.targets));
             message.args.insert("instance", packDisable.instance);
             message.args.insert("assumeYes", boolToArg(packDisable.assumeYes));
+        }
+        void operator()(const Cli::Cmd::WorldList& worldList)
+        {
+            message.command = "world_list";
+            message.args.insert("instance", worldList.instance);
+            message.args.insert("withSize", boolToArg(worldList.withSize));
+        }
+        void operator()(const Cli::Cmd::WorldInfo& worldInfo)
+        {
+            message.command = "world_info";
+            message.args.insert("instance", worldInfo.instance);
+            message.args.insert("target", worldInfo.target);
+            message.args.insert("withSize", boolToArg(worldInfo.withSize));
+        }
+        void operator()(const Cli::Cmd::WorldCopy& worldCopy)
+        {
+            message.command = "world_copy";
+            message.args.insert("instance", worldCopy.instance);
+            message.args.insert("target", worldCopy.target);
+            if (worldCopy.name.has_value()) {
+                message.args.insert("name", *worldCopy.name);
+            }
+        }
+        void operator()(const Cli::Cmd::WorldRename& worldRename)
+        {
+            message.command = "world_rename";
+            message.args.insert("instance", worldRename.instance);
+            message.args.insert("target", worldRename.target);
+            message.args.insert("name", worldRename.name);
+        }
+        void operator()(const Cli::Cmd::WorldDelete& worldDelete)
+        {
+            message.command = "world_delete";
+            message.args.insert("instance", worldDelete.instance);
+            message.args.insert("target", worldDelete.target);
+            message.args.insert("permanent", boolToArg(worldDelete.permanent));
+        }
+        void operator()(const Cli::Cmd::WorldImport& worldImport)
+        {
+            message.command = "world_import";
+            message.args.insert("instance", worldImport.instance);
+            message.args.insert("path", worldImport.path);
+            if (worldImport.name.has_value()) {
+                message.args.insert("name", *worldImport.name);
+            }
         }
     } serializer{};
 

@@ -660,6 +660,129 @@ void PackCli::flush(Args& args) const
     }
 }
 
+void WorldCli::addWorldArgs(CLI::App& app)
+{
+    world = app.add_subcommand("world", "Manage the worlds of an instance.");
+    world->require_subcommand();
+    // Let global options (e.g. `-d/--dir`) appear after the `world` subcommand
+    // (and its subcommands keep their own fallthrough below).
+    world->fallthrough();
+
+    {
+        // world list -i <instance> [--size] [--json]
+        auto* list = world->add_subcommand("list", "List the worlds of an instance.");
+        addInstanceOption(list, listInstance, /*required=*/true);
+        list->add_flag("--size", listWithSize, "Report the size of the worlds.");
+        addJsonFlag(list);
+        list->fallthrough();
+    }
+
+    {
+        // world info <target> -i <instance> [--size] [--json]
+        auto* info = world->add_subcommand("info", "Show information about a world.");
+        info->add_option("target", infoTarget, "Folder or name of the world.")->option_text("target")->required();
+        addInstanceOption(info, infoInstance, /*required=*/true);
+        info->add_flag("--size", infoWithSize, "Report the size of the world.");
+        addJsonFlag(info);
+        info->fallthrough();
+    }
+
+    {
+        // world copy <target> -i <instance> [--name <name>] [--json]
+        auto* copy = world->add_subcommand("copy", "Copy a world of an instance.");
+        copy->add_option("target", copyTarget, "Folder or name of the world.")->option_text("target")->required();
+        addInstanceOption(copy, copyInstance, /*required=*/true);
+        copyName = copy->add_option("--name", copyNameValue, "Name of the copy.")->option_text("name");
+        addJsonFlag(copy);
+        copy->fallthrough();
+    }
+
+    {
+        // world rename <target> -i <instance> --name <name> [--json]
+        auto* rename = world->add_subcommand("rename", "Rename a world of an instance.");
+        rename->add_option("target", renameTarget, "Folder or name of the world.")->option_text("target")->required();
+        addInstanceOption(rename, renameInstance, /*required=*/true);
+        rename->add_option("--name", renameName, "New name of the world.")->option_text("name")->required();
+        addJsonFlag(rename);
+        rename->fallthrough();
+    }
+
+    {
+        // world delete <target> -i <instance> [--permanent] [--json]
+        auto* del = world->add_subcommand("delete", "Delete a world of an instance.");
+        del->add_option("target", deleteTarget, "Folder or name of the world.")->option_text("target")->required();
+        addInstanceOption(del, deleteInstance, /*required=*/true);
+        del->add_flag("--permanent", deletePermanent, "Delete the world instead of moving it to the trash.");
+        addJsonFlag(del);
+        del->fallthrough();
+    }
+
+    {
+        // world import <path> -i <instance> [--name <name>] [--json]
+        auto* import = world->add_subcommand("import", "Import a world into an instance.");
+        import->add_option("path", importPath, "Zip file or folder of the world.")->option_text("path")->required();
+        addInstanceOption(import, importInstance, /*required=*/true);
+        importName = import->add_option("--name", importNameValue, "Name of the imported world.")->option_text("name");
+        addJsonFlag(import);
+        import->fallthrough();
+    }
+
+    rejectStrayPositionals(*world, app, "world", "world");
+}
+
+void WorldCli::flush(Args& args) const
+{
+    if (world == nullptr || !world->parsed()) {
+        return;
+    }
+
+    auto subParsed = [this](const char* name) -> bool {
+        auto* sub = world->get_subcommand_no_throw(name);
+        return sub != nullptr && sub->parsed();
+    };
+
+    if (subParsed("list")) {
+        Cmd::WorldList cmd;
+        cmd.instance = QString::fromStdString(listInstance);
+        cmd.withSize = listWithSize;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("info")) {
+        Cmd::WorldInfo cmd;
+        cmd.instance = QString::fromStdString(infoInstance);
+        cmd.target = QString::fromStdString(infoTarget);
+        cmd.withSize = infoWithSize;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("copy")) {
+        Cmd::WorldCopy cmd;
+        cmd.instance = QString::fromStdString(copyInstance);
+        cmd.target = QString::fromStdString(copyTarget);
+        if (copyName != nullptr && copyName->count() > 0) {
+            cmd.name = QString::fromStdString(copyNameValue);
+        }
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("rename")) {
+        Cmd::WorldRename cmd;
+        cmd.instance = QString::fromStdString(renameInstance);
+        cmd.target = QString::fromStdString(renameTarget);
+        cmd.name = QString::fromStdString(renameName);
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("delete")) {
+        Cmd::WorldDelete cmd;
+        cmd.instance = QString::fromStdString(deleteInstance);
+        cmd.target = QString::fromStdString(deleteTarget);
+        cmd.permanent = deletePermanent;
+        args.commands.emplace_back(std::move(cmd));
+    } else if (subParsed("import")) {
+        Cmd::WorldImport cmd;
+        cmd.instance = QString::fromStdString(importInstance);
+        cmd.path = QString::fromStdString(importPath);
+        if (importName != nullptr && importName->count() > 0) {
+            cmd.name = QString::fromStdString(importNameValue);
+        }
+        args.commands.emplace_back(std::move(cmd));
+    }
+}
+
 void Cli::attach(CLI::App& app, Args& args)
 {
     // set app name and description
@@ -703,6 +826,9 @@ void Cli::attach(CLI::App& app, Args& args)
 
     // subcommand based (headless) pack management
     packCli.addPackArgs(app);
+
+    // subcommand based (headless) world management
+    worldCli.addWorldArgs(app);
 
     // these legacy options can be deprecated once we have a better subcommand based cli in place
     // CLI::deprecate_option(legacyCli.launch, "replacement");
@@ -767,6 +893,9 @@ void parseArgs(int argc, char** argv, Args& args)
 
     // ...and the same for the `resource`, `shader` and `texture` subcommands
     cli.packCli.flush(args);
+
+    // ...and for the `world` subcommand
+    cli.worldCli.flush(args);
 }
 
 }  // namespace Cli

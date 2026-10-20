@@ -238,6 +238,53 @@ struct PackDisable {
     auto operator<=>(const PackDisable&) const = default;
 };
 
+// ---- world management (headless) ----
+//
+// The worlds live in the `saves` folder of the game root of an instance. A
+// world is addressed by its folder (the stable id) or by the name it has in
+// its `level.dat` - never by its position in a list.
+
+struct WorldList {
+    QString instance;
+    bool withSize = false;
+    auto operator<=>(const WorldList&) const = default;
+};
+
+struct WorldInfo {
+    QString instance;
+    QString target;
+    bool withSize = false;
+    auto operator<=>(const WorldInfo&) const = default;
+};
+
+struct WorldCopy {
+    QString instance;
+    QString target;
+    std::optional<QString> name;
+    auto operator<=>(const WorldCopy&) const = default;
+};
+
+struct WorldRename {
+    QString instance;
+    QString target;
+    QString name;
+    auto operator<=>(const WorldRename&) const = default;
+};
+
+struct WorldDelete {
+    QString instance;
+    QString target;
+    bool permanent = false;
+    auto operator<=>(const WorldDelete&) const = default;
+};
+
+struct WorldImport {
+    QString instance;
+    QString path;
+    std::optional<QString> name;
+    auto operator<=>(const WorldImport&) const = default;
+};
+
 };  // namespace Cmd
 
 using CommandBase = std::variant<Cmd::Launch,
@@ -259,7 +306,13 @@ using CommandBase = std::variant<Cmd::Launch,
                                  Cmd::PackInstall,
                                  Cmd::PackRemove,
                                  Cmd::PackEnable,
-                                 Cmd::PackDisable>;
+                                 Cmd::PackDisable,
+                                 Cmd::WorldList,
+                                 Cmd::WorldInfo,
+                                 Cmd::WorldCopy,
+                                 Cmd::WorldRename,
+                                 Cmd::WorldDelete,
+                                 Cmd::WorldImport>;
 struct Command : CommandBase {
     using CommandBase::CommandBase;
 };
@@ -274,7 +327,10 @@ inline bool isHeadlessCommand(const Command& cmd)
            std::holds_alternative<Cmd::PackList>(cmd) || std::holds_alternative<Cmd::PackSearch>(cmd) ||
            std::holds_alternative<Cmd::PackInfo>(cmd) || std::holds_alternative<Cmd::PackInstall>(cmd) ||
            std::holds_alternative<Cmd::PackRemove>(cmd) || std::holds_alternative<Cmd::PackEnable>(cmd) ||
-           std::holds_alternative<Cmd::PackDisable>(cmd);
+           std::holds_alternative<Cmd::PackDisable>(cmd) || std::holds_alternative<Cmd::WorldList>(cmd) ||
+           std::holds_alternative<Cmd::WorldInfo>(cmd) || std::holds_alternative<Cmd::WorldCopy>(cmd) ||
+           std::holds_alternative<Cmd::WorldRename>(cmd) || std::holds_alternative<Cmd::WorldDelete>(cmd) ||
+           std::holds_alternative<Cmd::WorldImport>(cmd);
 }
 
 /// @brief true when there is at least one command and all of them are headless

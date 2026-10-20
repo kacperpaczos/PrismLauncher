@@ -298,6 +298,93 @@ class ApplicationMessageTest : public QObject {
         }
     }
 
+    void test_worldList()
+    {
+        const Cli::Cmd::WorldList cmd{
+            .instance = QStringLiteral("My Instance"),
+            .withSize = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldInfo()
+    {
+        const Cli::Cmd::WorldInfo cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .withSize = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldCopy()
+    {
+        const Cli::Cmd::WorldCopy withoutName{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+        };
+        const auto decoded = roundTrip(withoutName);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutName);
+
+        const Cli::Cmd::WorldCopy withName{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .name = QStringLiteral("Copy of the world"),
+        };
+        const auto decodedNamed = roundTrip(withName);
+        QVERIFY(decodedNamed.has_value());
+        QVERIFY(*decodedNamed == withName);
+    }
+
+    void test_worldRename()
+    {
+        const Cli::Cmd::WorldRename cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .name = QStringLiteral("Renamed"),
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldDelete()
+    {
+        const Cli::Cmd::WorldDelete cmd{
+            .instance = QStringLiteral("My Instance"),
+            .target = QStringLiteral("New World"),
+            .permanent = true,
+        };
+        const auto decoded = roundTrip(cmd);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == cmd);
+    }
+
+    void test_worldImport()
+    {
+        const Cli::Cmd::WorldImport withoutName{
+            .instance = QStringLiteral("My Instance"),
+            .path = QStringLiteral("/tmp/world.zip"),
+        };
+        const auto decoded = roundTrip(withoutName);
+        QVERIFY(decoded.has_value());
+        QVERIFY(*decoded == withoutName);
+
+        const Cli::Cmd::WorldImport withName{
+            .instance = QStringLiteral("My Instance"),
+            .path = QStringLiteral("/tmp/world.zip"),
+            .name = QStringLiteral("Imported"),
+        };
+        const auto decodedNamed = roundTrip(withName);
+        QVERIFY(decodedNamed.has_value());
+        QVERIFY(*decodedNamed == withName);
+    }
+
     void test_targetList_newlineIsASeparator()
     {
         // Known limitation of the IPC encoding: target lists are joined with

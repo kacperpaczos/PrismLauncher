@@ -197,6 +197,7 @@
 #include "cli/ModCommands.h"
 #include "cli/Output.h"
 #include "cli/PackCommands.h"
+#include "cli/WorldCommands.h"
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -1295,6 +1296,7 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
     // dispatch.
     Cli::ModContext modContext{ *this };
     Cli::PackContext packContext{ *this };
+    Cli::WorldContext worldContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1308,6 +1310,8 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         Cli::ModContext& modContext;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         Cli::PackContext& packContext;
+        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
+        Cli::WorldContext& worldContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1421,12 +1425,21 @@ void Application::processCommands(const std::vector<Cli::Command>& cmds)
         void operator()(const Cli::Cmd::PackRemove& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
         void operator()(const Cli::Cmd::PackEnable& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
         void operator()(const Cli::Cmd::PackDisable& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        // headless world commands - each prints its own JSON envelope and reports
+        // an exit code; the first failure aborts the rest of the batch.
+        void operator()(const Cli::Cmd::WorldList& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldInfo& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldCopy& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldRename& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldDelete& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldImport& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
     } visitor{ .app = this,
                .toProcessURIs = toProcessURIs,
                .exitCode = headlessExitCode,
                .stop = stopProcessing,
                .modContext = modContext,
-               .packContext = packContext };
+               .packContext = packContext,
+               .worldContext = worldContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

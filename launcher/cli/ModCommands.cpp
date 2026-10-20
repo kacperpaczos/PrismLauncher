@@ -105,22 +105,6 @@ ExitCode openModModel(MinecraftInstance* instance, const QString& instanceId, Mo
 }
 
 /**
- * A mutating command refuses to work on a running instance. The hint tells
- * the user how the command can be forced.
- */
-ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint = {})
-{
-    if (!instance->isRunning()) {
-        return ExitCode::OK;
-    }
-    auto message = QStringLiteral("The instance '%1' is running, refusing to %2").arg(instanceId, action);
-    if (!hint.isEmpty()) {
-        message += QStringLiteral(" (%1)").arg(hint);
-    }
-    return outputError(QStringLiteral("instance_running"), message, ExitCode::Conflict);
-}
-
-/**
  * A mod that is being (or has been) downloaded.
  */
 struct DownloadEntry {

@@ -195,6 +195,36 @@ static char* toString(const Args& args)
             return QStringLiteral("PackDisable{ group: \"%1\", targets: [%2], instance: \"%3\" }")
                 .arg(packGroupForTest(packDisable.group), joinForTest(packDisable.targets), packDisable.instance);
         }
+        QString operator()(const WorldList& worldList)
+        {
+            return QStringLiteral("WorldList{ instance: \"%1\", withSize: %2 }")
+                .arg(worldList.instance, QString::number(worldList.withSize));
+        }
+        QString operator()(const WorldInfo& worldInfo)
+        {
+            return QStringLiteral("WorldInfo{ instance: \"%1\", target: \"%2\", withSize: %3 }")
+                .arg(worldInfo.instance, worldInfo.target, QString::number(worldInfo.withSize));
+        }
+        QString operator()(const WorldCopy& worldCopy)
+        {
+            return QStringLiteral("WorldCopy{ instance: \"%1\", target: \"%2\", name: \"%3\" }")
+                .arg(worldCopy.instance, worldCopy.target, worldCopy.name.value_or(QString()));
+        }
+        QString operator()(const WorldRename& worldRename)
+        {
+            return QStringLiteral("WorldRename{ instance: \"%1\", target: \"%2\", name: \"%3\" }")
+                .arg(worldRename.instance, worldRename.target, worldRename.name);
+        }
+        QString operator()(const WorldDelete& worldDelete)
+        {
+            return QStringLiteral("WorldDelete{ instance: \"%1\", target: \"%2\", permanent: %3 }")
+                .arg(worldDelete.instance, worldDelete.target, QString::number(worldDelete.permanent));
+        }
+        QString operator()(const WorldImport& worldImport)
+        {
+            return QStringLiteral("WorldImport{ instance: \"%1\", path: \"%2\", name: \"%3\" }")
+                .arg(worldImport.instance, worldImport.path, worldImport.name.value_or(QString()));
+        }
     } cmdVisitor;
 
     QStringList cmds{};

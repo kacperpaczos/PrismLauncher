@@ -140,6 +140,27 @@ MinecraftInstance* resolveInstance(Application& app, const QString& id)
     return instances->getInstanceById(id);
 }
 
+ExitCode resolveInstance(Application& app, const QString& id, MinecraftInstance*& instance)
+{
+    instance = resolveInstance(app, id);
+    if (!instance) {
+        return outputError(QStringLiteral("instance_not_found"), QStringLiteral("No instance with the id '%1' was found").arg(id), ExitCode::NotFound);
+    }
+    return ExitCode::OK;
+}
+
+ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint)
+{
+    if (!instance->isRunning()) {
+        return ExitCode::OK;
+    }
+    auto message = QStringLiteral("The instance '%1' is running, refusing to %2").arg(instanceId, action);
+    if (!hint.isEmpty()) {
+        message += QStringLiteral(" (%1)").arg(hint);
+    }
+    return outputError(QStringLiteral("instance_running"), message, ExitCode::Conflict);
+}
+
 bool loadComponentProfile(MinecraftInstance* instance)
 {
     auto* profile = instance->getPackProfile();

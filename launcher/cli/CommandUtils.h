@@ -35,6 +35,7 @@
 #include <QString>
 
 #include "Result.h"
+#include "cli/Output.h"
 #include "modplatform/ModIndex.h"
 #include "modplatform/ResourceType.h"
 
@@ -75,6 +76,26 @@ QJsonObject resourceToJson(const Resource* resource, bool withLockUpdate);
 ///
 /// Returns nullptr when it does not exist.
 MinecraftInstance* resolveInstance(Application& app, const QString& id);
+
+/**
+ * @brief look up the instance of a command
+ *
+ * The error is reported and the exit code is returned when the instance does
+ * not exist.
+ */
+ExitCode resolveInstance(Application& app, const QString& id, MinecraftInstance*& instance);
+
+/**
+ * @brief refuse a mutating command on a running instance
+ *
+ * The check is in-process: a separate CLI process cannot see that an instance
+ * is running, so it only guards the commands that are dispatched inside a
+ * running launcher.
+ *
+ * @param action  what the command was about to do ("copy a world", ...)
+ * @param hint    an additional hint on how to force the command
+ */
+ExitCode checkInstanceRunning(MinecraftInstance* instance, const QString& instanceId, const QString& action, const QString& hint = {});
 
 /**
  * @brief make sure the component profile of the instance is loaded

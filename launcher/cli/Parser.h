@@ -167,10 +167,52 @@ struct PackCli {
     void flush(Args& args) const;
 };
 
+/// `world` subcommand group. The options are bound to plain members here and
+/// turned into `Cmd::World*` commands by `flush()` after a successful parse -
+/// this keeps the CLI11 declarations free of ordering assumptions.
+struct WorldCli {
+    CLI::App* world{};
+
+    // world list
+    std::string listInstance;
+    bool listWithSize = false;
+
+    // world info
+    std::string infoTarget;
+    std::string infoInstance;
+    bool infoWithSize = false;
+
+    // world copy
+    std::string copyTarget;
+    std::string copyInstance;
+    CLI::Option* copyName{};
+    std::string copyNameValue;
+
+    // world rename
+    std::string renameTarget;
+    std::string renameInstance;
+    std::string renameName;
+
+    // world delete
+    std::string deleteTarget;
+    std::string deleteInstance;
+    bool deletePermanent = false;
+
+    // world import
+    std::string importPath;
+    std::string importInstance;
+    CLI::Option* importName{};
+    std::string importNameValue;
+
+    void addWorldArgs(CLI::App& app);
+    void flush(Args& args) const;
+};
+
 struct Cli {
     LegacyCli legacyCli{};
     ModCli modCli{};
     PackCli packCli{};
+    WorldCli worldCli{};
 
     void attach(CLI::App& app, Args& args);
 };

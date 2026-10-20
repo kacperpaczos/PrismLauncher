@@ -35,6 +35,7 @@ Cli::Args parseOk(std::vector<std::string> argv)
     app.parse(argv);
     cli.modCli.flush(args);
     cli.packCli.flush(args);
+    cli.worldCli.flush(args);
     return args;
 }
 
@@ -575,6 +576,113 @@ class CliParserTest : public QObject {
             QCOMPARE(cmd.group, group);
             QCOMPARE(cmd.instance, instance);
         }
+    }
+
+    void test_worldList()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "list", "-i", "X" });
+        QCOMPARE(args.commands.size(), std::size_t{ 1 });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.withSize, false);
+    }
+
+    void test_worldList_withSize()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "list", "-i", "X", "--size", "--json" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldList>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.withSize, true);
+    }
+
+    void test_worldInfo()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "info", "My World", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldInfo>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.withSize, false);
+    }
+
+    void test_worldCopy()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "copy", "My World", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldCopy>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.name.has_value(), false);
+    }
+
+    void test_worldCopy_withName()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "copy", "My World", "-i", "X", "--name", "Copy" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldCopy>(args);
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.name.has_value(), true);
+        QCOMPARE(cmd.name.value(), QString("Copy"));
+    }
+
+    void test_worldRename_requiresName()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "rename", "My World", "-i", "X", "--name", "New" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldRename>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.name, QString("New"));
+
+        // the name of a rename is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "rename", "My World", "-i", "X" }), true);
+    }
+
+    void test_worldDelete()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "delete", "My World", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldDelete>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.target, QString("My World"));
+        QCOMPARE(cmd.permanent, false);
+
+        const auto permanent = parseOk({ "prismlauncher", "world", "delete", "My World", "-i", "X", "--permanent" });
+        QCOMPARE(onlyCommand<Cli::Cmd::WorldDelete>(permanent).permanent, true);
+    }
+
+    void test_worldImport()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "import", "/tmp/world.zip", "-i", "X" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldImport>(args);
+        QCOMPARE(cmd.instance, QString("X"));
+        QCOMPARE(cmd.path, QString("/tmp/world.zip"));
+        QCOMPARE(cmd.name.has_value(), false);
+    }
+
+    void test_worldImport_withName()
+    {
+        const auto args = parseOk({ "prismlauncher", "world", "import", "/tmp/world.zip", "-i", "X", "--name", "Imported" });
+        const auto& cmd = onlyCommand<Cli::Cmd::WorldImport>(args);
+        QCOMPARE(cmd.path, QString("/tmp/world.zip"));
+        QCOMPARE(cmd.name.has_value(), true);
+        QCOMPARE(cmd.name.value(), QString("Imported"));
+    }
+
+    void test_worldMissingRequiredArguments()
+    {
+        // the instance is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "list" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "info", "My World" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "copy", "My World" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "delete", "My World" }), true);
+        // the target is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "info", "-i", "X" }), true);
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "copy", "-i", "X" }), true);
+        // the path of an import is required
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "import", "-i", "X" }), true);
+    }
+
+    void test_worldRejectsStrayPositional()
+    {
+        // a stray positional must not end up in the top level `uri` import
+        // option.
+        QCOMPARE(parseThrows({ "prismlauncher", "world", "list", "-i", "X", "stray" }), true);
     }
 
     void test_allCommandsHeadless()

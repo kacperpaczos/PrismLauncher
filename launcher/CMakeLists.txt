@@ -809,6 +809,8 @@ SET(LAUNCHER_SOURCES
     cli/ModCommands.cpp
     cli/PackCommands.h
     cli/PackCommands.cpp
+    cli/WorldCommands.h
+    cli/WorldCommands.cpp
     cli/CommandUtils.h
     cli/CommandUtils.cpp
 
