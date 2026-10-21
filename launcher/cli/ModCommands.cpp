@@ -22,6 +22,7 @@
 #include "cli/ModCommands.h"
 
 #include <algorithm>
+#include <expected>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -43,6 +44,7 @@
 #include "ResourceDownloadTask.h"
 #include "Version.h"
 #include "cli/CommandUtils.h"
+#include "cli/Output.h"
 #include "cli/TaskRunner.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
@@ -874,9 +876,10 @@ struct ModUpdateReport {
 
 /// Resolves the mods an update applies to - every mod (`--all`) or the mods
 /// the targets point at. Targets that match nothing are recorded in the
-/// report. Returns nothing when the resolution failed and the command has to
-/// stop (the error is reported inside).
-std::optional<QList<Resource*>> resolveUpdateTargets(ModFolderModel* model, const Cmd::ModUpdate& cmd, ModUpdateReport& report)
+/// report. The error is returned when the resolution failed and the command
+/// has to stop - it is written by the orchestrator, so that exactly one
+/// envelope is produced.
+std::expected<QList<Resource*>, CliError> resolveUpdateTargets(ModFolderModel* model, const Cmd::ModUpdate& cmd, ModUpdateReport& report)
 {
     if (cmd.all) {
         return model->allResources();
@@ -887,20 +890,18 @@ std::optional<QList<Resource*>> resolveUpdateTargets(ModFolderModel* model, cons
         QJsonObject out;
         out.insert(QStringLiteral("candidates"), resolved.candidates);
         out.insert(QStringLiteral("failed"), resolved.failed);
-        outputError(QStringLiteral("ambiguous_target"),
-                    QStringLiteral("Some targets matched more than one mod"),
-                    ExitCode::Ambiguous,
-                    out);
-        return std::nullopt;
+        return std::unexpected(CliError{ .code = ExitCode::Ambiguous,
+                                         .error = QStringLiteral("ambiguous_target"),
+                                         .message = QStringLiteral("Some targets matched more than one mod"),
+                                         .details = out });
     }
     if (resolved.resources.isEmpty()) {
         QJsonObject out;
         out.insert(QStringLiteral("failed"), resolved.failed);
-        outputError(QStringLiteral("not_found"),
-                    QStringLiteral("None of the targets matched a mod"),
-                    ExitCode::NotFound,
-                    out);
-        return std::nullopt;
+        return std::unexpected(CliError{ .code = ExitCode::NotFound,
+                                         .error = QStringLiteral("not_found"),
+                                         .message = QStringLiteral("None of the targets matched a mod"),
+                                         .details = out });
     }
 
     // The targets that did not match any mod are reported as failed.
@@ -940,8 +941,11 @@ QList<Resource*> partitionUpdatable(const QList<Resource*>& candidates, bool for
 /// for updates. The provider is taken from the managed pack, defaulting to
 /// Modrinth (there is no interactive provider chooser in a headless run).
 /// Mods that end up without metadata are recorded in the report, the rest is
-/// returned as checkable.
-std::optional<QList<Resource*>> ensureUpdateMetadata(ModFolderModel* model, const QList<Resource*>& updatable, ModUpdateReport& report)
+/// returned as checkable. The error is returned when the metadata could not
+/// be generated - it is written by the orchestrator.
+std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* model,
+                                                                const QList<Resource*>& updatable,
+                                                                ModUpdateReport& report)
 {
     QList<Resource*> withoutMetadata;
     for (auto* resource : updatable) {
@@ -965,11 +969,10 @@ std::optional<QList<Resource*>> ensureUpdateMetadata(ModFolderModel* model, cons
             QJsonObject out;
             out.insert(QStringLiteral("failed"), report.failed);
             out.insert(QStringLiteral("reason"), result.error());
-            outputError(QStringLiteral("metadata_failed"),
-                        QStringLiteral("Could not generate the mod metadata: %1").arg(result.error()),
-                        ExitCode::Network,
-                        out);
-            return std::nullopt;
+            return std::unexpected(CliError{ .code = ExitCode::Network,
+                                             .error = QStringLiteral("metadata_failed"),
+                                             .message = QStringLiteral("Could not generate the mod metadata: %1").arg(result.error()),
+                                             .details = out });
         }
     }
 
@@ -992,13 +995,14 @@ std::optional<QList<Resource*>> ensureUpdateMetadata(ModFolderModel* model, cons
 /// Checks the mods for updates and collects the downloads of the mods that
 /// have a newer version. The dependencies are resolved (and reported), but
 /// they are not downloaded - the update only replaces the mods that have a
-/// newer version.
-QList<shared_qobject_ptr<ResourceDownloadTask>> checkUpdatableMods(MinecraftInstance* instance,
-                                                                   ModFolderModel* model,
-                                                                   const QString& mcVersionString,
-                                                                   QList<Resource*>& checkable,
-                                                                   const Cmd::ModUpdate& cmd,
-                                                                   ModUpdateReport& report)
+/// newer version. The error is returned when the check itself failed - it is
+/// written by the orchestrator.
+std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUpdatableMods(MinecraftInstance* instance,
+                                                                                             ModFolderModel* model,
+                                                                                             const QString& mcVersionString,
+                                                                                             QList<Resource*>& checkable,
+                                                                                             const Cmd::ModUpdate& cmd,
+                                                                                             ModUpdateReport& report)
 {
     QList<shared_qobject_ptr<ResourceDownloadTask>> updateDownloads;
     if (checkable.isEmpty()) {
@@ -1038,12 +1042,11 @@ QList<shared_qobject_ptr<ResourceDownloadTask>> checkUpdatableMods(MinecraftInst
         QJsonObject out;
         out.insert(QStringLiteral("failed"), report.failed);
         out.insert(QStringLiteral("reason"), result.error());
-        outputError(QStringLiteral("check_failed"),
-                    QStringLiteral("Could not check for updates: %1").arg(result.error()),
-                    ExitCode::Network,
-                    out);
         report.hasCheckFailures = true;
-        return updateDownloads;
+        return std::unexpected(CliError{ .code = ExitCode::Network,
+                                         .error = QStringLiteral("check_failed"),
+                                         .message = QStringLiteral("Could not check for updates: %1").arg(result.error()),
+                                         .details = out });
     }
 
     auto updates = checkTask->getUpdates();
@@ -1110,12 +1113,12 @@ QList<shared_qobject_ptr<ResourceDownloadTask>> checkUpdatableMods(MinecraftInst
 }
 
 /// Downloads the updates (unless it is a dry run) and waits for the model to
-/// settle. Returns nothing when the downloads failed and the command has to
-/// stop (the error is reported inside).
-std::optional<bool> applyUpdates(ModFolderModel* model,
-                                 const QList<shared_qobject_ptr<ResourceDownloadTask>>& updateDownloads,
-                                 const Cmd::ModUpdate& cmd,
-                                 const ModUpdateReport& report)
+/// settle. The error is returned when the downloads failed and the command
+/// has to stop - it is written by the orchestrator.
+std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
+                                           const QList<shared_qobject_ptr<ResourceDownloadTask>>& updateDownloads,
+                                           const Cmd::ModUpdate& cmd,
+                                           const ModUpdateReport& report)
 {
     if (cmd.dryRun || updateDownloads.isEmpty()) {
         return true;
@@ -1131,11 +1134,10 @@ std::optional<bool> applyUpdates(ModFolderModel* model,
         out.insert(QStringLiteral("updated"), report.updated);
         out.insert(QStringLiteral("failed"), report.failed);
         out.insert(QStringLiteral("reason"), result.error());
-        outputError(QStringLiteral("download_failed"),
-                    QStringLiteral("Could not download the updates: %1").arg(result.error()),
-                    ExitCode::Network,
-                    out);
-        return {};
+        return std::unexpected(CliError{ .code = ExitCode::Network,
+                                         .error = QStringLiteral("download_failed"),
+                                         .message = QStringLiteral("Could not download the updates: %1").arg(result.error()),
+                                         .details = out });
     }
     waitForModel(model);
     return true;
@@ -1178,19 +1180,24 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModUpdate& cmd)
 
     ModUpdateReport report;
 
+    // The phases of the command return their error instead of writing it, so
+    // that exactly one envelope is written for the command.
     auto candidates = resolveUpdateTargets(model, cmd, report);
     if (!candidates) {
-        return ExitCode::Generic;
+        return reportError(candidates.error());
     }
     auto updatable = partitionUpdatable(candidates.value(), cmd.force, report);
     auto checkable = ensureUpdateMetadata(model, updatable, report);
     if (!checkable) {
-        return ExitCode::Network;
+        return reportError(checkable.error());
     }
     auto updateDownloads = checkUpdatableMods(instance, model, mcVersionString, checkable.value(), cmd, report);
-    auto downloaded = applyUpdates(model, updateDownloads, cmd, report);
+    if (!updateDownloads) {
+        return reportError(updateDownloads.error());
+    }
+    auto downloaded = applyUpdates(model, updateDownloads.value(), cmd, report);
     if (!downloaded) {
-        return ExitCode::Network;
+        return reportError(downloaded.error());
     }
 
     QJsonObject out;

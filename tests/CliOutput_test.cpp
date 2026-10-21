@@ -147,6 +147,33 @@ class CliOutputTest : public QObject {
         QCOMPARE(root.value("error").toObject().value("message").toString(), message);
     }
 
+    void test_reportError_writesTheEnvelopeOfTheError()
+    {
+        Cli::ExitCode result = Cli::ExitCode::OK;
+        const QByteArray raw = captureStdout([&result] {
+            QJsonObject details;
+            details.insert("failed", QJsonArray{ QJsonObject{ { "target", "nope" } } });
+            result = Cli::reportError(Cli::CliError{ .code = Cli::ExitCode::Ambiguous,
+                                                   .error = "ambiguous_target",
+                                                   .message = "Some targets matched more than one mod",
+                                                   .details = details });
+        });
+
+        // The exit code of the error is kept - the orchestrator of a command
+        // writes the error exactly once.
+        QCOMPARE(result, Cli::ExitCode::Ambiguous);
+        QCOMPARE(static_cast<int>(Cli::ExitCode::Ambiguous), 5);
+
+        bool ok = false;
+        const QJsonObject root = parseObject(raw, &ok);
+        QVERIFY(ok);
+        QCOMPARE(root.value("ok").toBool(), false);
+        const QJsonObject error = root.value("error").toObject();
+        QCOMPARE(error.value("code").toString(), QString("ambiguous_target"));
+        QCOMPARE(error.value("message").toString(), QString("Some targets matched more than one mod"));
+        QCOMPARE(root.value("failed").toArray().size(), 1);
+    }
+
     void test_outputSink_captureDocuments()
     {
         const QByteArray raw = captureStdout([] {

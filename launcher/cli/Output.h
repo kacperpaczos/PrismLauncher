@@ -95,6 +95,27 @@ ExitCode outputError(const QString& code, const QString& message, ExitCode exitC
 QJsonObject errorEnvelope(const QString& code, const QString& message);
 
 /**
+ * @brief An error of a command that is reported by the orchestrator
+ *
+ * The phases of a command return the error instead of writing it, so that
+ * exactly one envelope is written for a command - the phase that failed
+ * does not write an envelope of its own.
+ */
+struct CliError {
+    /// The exit code of the command.
+    ExitCode code = ExitCode::Generic;
+    /// The machine readable code of the error (the `code` of the envelope).
+    QString error;
+    /// The human readable message of the error (the `message` of the envelope).
+    QString message;
+    /// The additional top level fields of the envelope.
+    QJsonObject details;
+};
+
+/// Write the error envelope of a command error and return its exit code.
+ExitCode reportError(const CliError& error);
+
+/**
  * @brief Captures the output of the commands that run in its scope
  *
  * While the capture is alive the output is not written to the standard output

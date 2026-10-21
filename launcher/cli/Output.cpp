@@ -141,6 +141,11 @@ QJsonObject errorEnvelope(const QString& code, const QString& message)
     return envelope;
 }
 
+ExitCode reportError(const CliError& error)
+{
+    return outputError(error.error, error.message, error.code, error.details);
+}
+
 namespace {
 
 /// Upper bound for the text captured during one command - keeps `log read`
