@@ -106,6 +106,39 @@ struct ProcessResult {
     QByteArray out;
 };
 
+/**
+ * Creates a data directory with a fixture instance in it.
+ *
+ * The settings of an instance are stored in `instance.cfg`, so a fixture
+ * instance is enough to check the schema of the commands.
+ */
+bool makeFixtureInstance(QTemporaryDir& dir)
+{
+    const auto instanceDir = dir.filePath(QStringLiteral("instances/spike-test"));
+    if (!QDir().mkpath(instanceDir + QStringLiteral("/minecraft"))) {
+        return false;
+    }
+
+    QFile config(instanceDir + QStringLiteral("/instance.cfg"));
+    if (!config.open(QIODevice::WriteOnly)) {
+        return false;
+    }
+    config.write("[General]\nConfigVersion=1.3\nInstanceType=OneSix\nname=spike-test\niconKey=default\n"
+                 "uuid=11111111-2222-3333-4444-555555555555\n");
+    config.close();
+    return true;
+}
+
+/// The `code` of the error of an error envelope.
+QString errorCode(const QByteArray& out)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(out);
+    if (!doc.isObject()) {
+        return {};
+    }
+    return doc.object().value("error").toObject().value("code").toString();
+}
+
 ProcessResult runLauncher(const QStringList& args)
 {
     QProcess proc;
@@ -771,6 +804,125 @@ class CliParserTest : public QObject {
         QCOMPARE(unsetSettings.value("source").toString(), QStringLiteral("default"));
     }
 
+    void test_settingsSet_rejectsNotWritableKeys()
+    {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+
+        // The settings the launcher manages itself cannot be written with the
+        // raw settings commands.
+        const QStringList keys = {
+            "uuid",
+            "name",
+            "notes",
+            "instanceType",
+            "InstanceType",
+            "lastLaunchTime",
+            "totalTimePlayed",
+            "lastTimePlayed",
+            "ManagedPack",
+            "ManagedPackType",
+        };
+        for (const auto& key : keys) {
+            QTemporaryDir dir;
+            QVERIFY(dir.isValid());
+            QVERIFY(makeFixtureInstance(dir));
+
+            const auto result = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", key + QStringLiteral("=value") });
+            QCOMPARE(result.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+            QCOMPARE(errorCode(result.out), QStringLiteral("key_not_writable"));
+
+            // the value is not written to the file of the instance
+            QFile written(dir.filePath(QStringLiteral("instances/spike-test/instance.cfg")));
+            QVERIFY(written.open(QIODevice::ReadOnly));
+            const auto content = QString::fromUtf8(written.readAll());
+            QVERIFY2(!content.contains(QStringLiteral("=value")), qPrintable(content));
+        }
+    }
+
+    void test_settingsUnset_rejectsNotWritableKeys()
+    {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+
+        const QStringList keys = {
+            "uuid",
+            "name",
+            "notes",
+            "instanceType",
+            "lastLaunchTime",
+            "totalTimePlayed",
+            "lastTimePlayed",
+            "ManagedPackType",
+        };
+        for (const auto& key : keys) {
+            QTemporaryDir dir;
+            QVERIFY(dir.isValid());
+            QVERIFY(makeFixtureInstance(dir));
+
+            const auto result = runLauncher({ "-d", dir.path(), "settings", "unset", "spike-test", key });
+            QCOMPARE(result.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+            QCOMPARE(errorCode(result.out), QStringLiteral("key_not_writable"));
+        }
+    }
+
+    void test_settingsSet_rejectsNotWritableKeys_tellsTheAlternative()
+    {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(makeFixtureInstance(dir));
+
+        // the name of the instance is changed with `instance rename`
+        const auto name = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "name=other" });
+        QCOMPARE(name.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+        QVERIFY2(name.out.contains("instance rename"), name.out.constData());
+
+        // the notes of the instance are changed with `notes set`
+        const auto notes = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "notes=other" });
+        QCOMPARE(notes.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+        QVERIFY2(notes.out.contains("notes set"), notes.out.constData());
+    }
+
+    void test_settingsSet_validatesTheValues()
+    {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(makeFixtureInstance(dir));
+
+        // the memory of the instance has to be bigger than 16 MB
+        const auto smallMemory = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "memory.min=16" });
+        QCOMPARE(smallMemory.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+        const auto smallMaxMemory = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "memory.max=16" });
+        QCOMPARE(smallMaxMemory.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        // the window of the instance has to be at least a pixel big
+        const auto smallWindow = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "window.width=0" });
+        QCOMPARE(smallWindow.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+        const auto smallHeight = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "window.height=0" });
+        QCOMPARE(smallHeight.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        // negative values are rejected
+        const auto negative = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "memory.max=-1" });
+        QCOMPARE(negative.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        // the environment of the instance has to be a JSON object
+        const auto badEnv = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "env=notjson" });
+        QCOMPARE(badEnv.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+        const auto arrayEnv = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "env=[\"A\"]" });
+        QCOMPARE(arrayEnv.exitCode, static_cast<int>(Cli::ExitCode::Usage));
+
+        // a JSON object is accepted
+        const auto goodEnv = runLauncher({ "-d", dir.path(), "settings", "set", "spike-test", "env={\"A\":\"B\"}" });
+        QCOMPARE(goodEnv.exitCode, static_cast<int>(Cli::ExitCode::OK));
+
+        const auto get = runLauncher({ "-d", dir.path(), "settings", "get", "spike-test", "env" });
+        QCOMPARE(get.exitCode, static_cast<int>(Cli::ExitCode::OK));
+        const QJsonDocument doc = QJsonDocument::fromJson(get.out);
+        const QJsonObject env = doc.object().value("settings").toArray().at(0).toObject().value("value").toObject();
+        QCOMPARE(env.value("A").toString(), QStringLiteral("B"));
+    }
 
     void test_packList()
     {

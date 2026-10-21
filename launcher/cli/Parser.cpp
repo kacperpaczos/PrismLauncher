@@ -722,7 +722,12 @@ void SettingsCli::addSettingsArgs(CLI::App& app)
 
     {
         // settings set <id> <key>=<value>...
-        auto* set = settings->add_subcommand("set", "Change the settings of an instance.");
+        auto* set = settings->add_subcommand(
+            "set",
+            "Change the settings of an instance. The settings that the launcher manages itself (the name of the instance, its uuid, the type of "
+            "the instance, the play time and the information of a managed pack) cannot be changed here - use 'instance rename' or 'notes set' "
+            "instead. Unsetting one member of a group of settings resets the flag of the whole group, so the instance falls back to the global "
+            "values of all of them.");
         set->add_option("id", setId, "Instance ID.")->option_text("id")->required();
         set->add_option("values", setValues, "The settings to change, as `key=value` pairs.")
             ->option_text("key=value")
@@ -735,7 +740,10 @@ void SettingsCli::addSettingsArgs(CLI::App& app)
 
     {
         // settings unset <id> <key>...
-        auto* unset = settings->add_subcommand("unset", "Reset the settings of an instance to the global ones.");
+        auto* unset = settings->add_subcommand(
+            "unset",
+            "Reset the settings of an instance to the global ones. Unsetting one member of a group of settings resets the flag of the whole "
+            "group, so the instance falls back to the global values of all of them.");
         unset->add_option("id", unsetId, "Instance ID.")->option_text("id")->required();
         unset->add_option("keys", unsetKeys, "The setting keys to reset.")
             ->option_text("key")

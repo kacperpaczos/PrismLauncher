@@ -631,7 +631,14 @@ min>max RAM), 3 not-found (instancja, wersja MC, wersja loadera, ikona, loader w
 - **`settings unset` resetuje też flagę grupy.** Brief: „`unset` = `settings()->reset(key)` (+ gate reset)".
   Reset flagi oznacza, że cała grupa (np. `OverrideMemory`) wraca do wartości globalnych — nie
   tylko resetowany klucz. Resetowanie samej wartości nie dałoby efektu, bo `OverrideSetting::get()`
-  i tak zwraca wartość globalną, gdy flaga jest wyłączona.
+  i tak zwraca wartość globalną, gdy flaga jest wyłączona. Skutek ten jest opisany w `--help`
+  komendy `settings set` (i `settings unset`).
+- **Prawa do zapisu ustawień są jawne.** `settings set` i `settings unset` odrzucają (exit 2, kod
+  błędu `key_not_writable`) klucze, którymi zarządza sam launcher: `uuid`, `InstanceType`, `name`
+  (jest `instance rename`), `notes` (jest `notes set`), `lastLaunchTime`, `totalTimePlayed`,
+  `lastTimePlayed` oraz wszystkie `ManagedPack*`. Wartości są walidowane: liczby nie mogą być
+  ujemne, RAM musi być większy niż 16 MB, okno co najmniej 1 px, a `env` musi być obiektem JSON
+  (exit 2, kod `invalid_value`).
 - **Launcher zapisuje tylko wartości, które się zmieniły** (`Setting::set` emituje sygnał tylko
   przy zmianie). Ustawienie wartości równej globalnej nie zapisuje się więc w `instance.cfg` —
   dokładnie tak, jak w widoku ustawień GUI. Wartość i tak jest efektywna, ale przy późniejszej

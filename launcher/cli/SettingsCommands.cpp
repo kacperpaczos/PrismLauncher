@@ -30,6 +30,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QJsonValue>
 #include <QVariant>
 #include <QVariantMap>
@@ -203,6 +204,51 @@ QStringList knownKeys()
     return keys;
 }
 
+/// The ids of the settings that must not be written through the raw settings
+/// commands. They are managed by the launcher itself or by another command.
+const QStringList& blockedSettingIds()
+{
+    static const QStringList ids = {
+        // The identity of the instance - the launcher writes it itself.
+        QStringLiteral("uuid"),
+        QStringLiteral("InstanceType"),
+        // The name and the notes have a command of their own.
+        QStringLiteral("name"),
+        QStringLiteral("notes"),
+        // The play time of the instance - the launcher writes it itself.
+        QStringLiteral("lastLaunchTime"),
+        QStringLiteral("totalTimePlayed"),
+        QStringLiteral("lastTimePlayed"),
+    };
+    return ids;
+}
+
+/// The prefix of the settings of a managed pack - the launcher writes them
+/// itself, when the instance is created from a pack.
+const QString managedPackPrefix = QStringLiteral("ManagedPack");
+
+/// The message of the error of a write of a setting that may not be written.
+QString notWritableMessage(const QString& id, SettingsWriteAction action)
+{
+    const auto command = action == SettingsWriteAction::Set ? QStringLiteral("settings set") : QStringLiteral("settings unset");
+    const auto verb = action == SettingsWriteAction::Set ? QStringLiteral("changed") : QStringLiteral("reset");
+    auto hint = QStringLiteral(" - it is managed by the launcher");
+    if (action == SettingsWriteAction::Set) {
+        if (id == QLatin1String("name")) {
+            hint = QStringLiteral(" - use 'instance rename' instead");
+        } else if (id == QLatin1String("notes")) {
+            hint = QStringLiteral(" - use 'notes set' instead");
+        }
+    }
+    return QStringLiteral("The setting '%1' cannot be %2 with '%3'%4.").arg(id, verb, command, hint);
+}
+
+/// The error of a value that is not valid for the setting.
+SettingsWriteError invalidValue(const QString& message)
+{
+    return SettingsWriteError{ QStringLiteral("invalid_value"), message };
+}
+
 /// The value of a setting as JSON.
 QJsonValue valueToJson(const QVariant& value, SettingKind kind)
 {
@@ -313,6 +359,97 @@ QJsonObject describeEnvVariable(SettingsObject* settings, const QString& name)
 
 }  // namespace
 
+QStringList notWritableSettingsIds()
+{
+    return blockedSettingIds();
+}
+
+bool isWritableSettingsId(const QString& id)
+{
+    if (id.startsWith(managedPackPrefix)) {
+        // The settings of a managed pack are written by the launcher.
+        return false;
+    }
+    return !blockedSettingIds().contains(id);
+}
+
+std::optional<SettingsWriteError> checkSettingsKeyWritable(const QString& key, SettingsWriteAction action)
+{
+    // The environment variables are not settings of the schema - they are
+    // written as a part of the `Env` setting.
+    if (key.startsWith(QLatin1String("env."))) {
+        return std::nullopt;
+    }
+
+    const auto* entry = findSetting(key);
+    if (entry != nullptr) {
+        const auto id = QString::fromLatin1(entry->id);
+        if (!isWritableSettingsId(id)) {
+            return SettingsWriteError{ QStringLiteral("key_not_writable"), notWritableMessage(id, action) };
+        }
+        return std::nullopt;
+    }
+
+    // A key that is not in the schema of the CLI can still be a setting of the
+    // launcher that must not be written (the play time of the instance, the
+    // information of a managed pack, ...).
+    if (!isWritableSettingsId(key)) {
+        return SettingsWriteError{ QStringLiteral("key_not_writable"), notWritableMessage(key, action) };
+    }
+    return std::nullopt;
+}
+
+std::optional<SettingsWriteError> checkSettingsValue(const QString& key, const QString& value)
+{
+    const auto* entry = findSetting(key);
+    if (entry == nullptr) {
+        // The key itself is checked by the caller.
+        return std::nullopt;
+    }
+
+    switch (entry->kind) {
+    case SettingKind::Bool: {
+        const auto lowered = value.toLower();
+        if (lowered == "true" || lowered == "1" || lowered == "yes" || lowered == "on" || lowered == "false" || lowered == "0" ||
+            lowered == "no" || lowered == "off") {
+            return std::nullopt;
+        }
+        return invalidValue(QStringLiteral("'%1' is not a boolean").arg(value));
+    }
+    case SettingKind::Int: {
+        bool ok = false;
+        const auto number = value.toInt(&ok);
+        if (!ok) {
+            return invalidValue(QStringLiteral("'%1' is not a number").arg(value));
+        }
+        if (number < 0) {
+            return invalidValue(QStringLiteral("The value of '%1' cannot be negative").arg(key));
+        }
+        if ((key == QLatin1String("memory.min") || key == QLatin1String("memory.max")) && number <= 16) {
+            // The launcher cannot start the game with less than 16 MB.
+            return invalidValue(QStringLiteral("The value of '%1' has to be bigger than 16 (MB)").arg(key));
+        }
+        if ((key == QLatin1String("window.width") || key == QLatin1String("window.height")) && number < 1) {
+            return invalidValue(QStringLiteral("The value of '%1' has to be at least 1").arg(key));
+        }
+        return std::nullopt;
+    }
+    case SettingKind::Env: {
+        // The environment variables of an instance are stored as a JSON object
+        // in a string.
+        QJsonParseError error{};
+        const auto document = QJsonDocument::fromJson(value.toUtf8(), &error);
+        if (error.error != QJsonParseError::NoError || !document.isObject()) {
+            return invalidValue(QStringLiteral("The value of '%1' has to be a JSON object").arg(key));
+        }
+        return std::nullopt;
+    }
+    case SettingKind::String:
+    default:
+        return std::nullopt;
+    }
+}
+
 ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsList& cmd)
 {
     MinecraftInstance* instance = nullptr;
@@ -411,6 +548,13 @@ ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsSet& cmd)
             envChanged = true;
             continue;
         }
+        // The settings the launcher manages itself are not writable - they
+        // have a command of their own. The check comes before the lookup of
+        // the key, because some of those settings are not part of the schema
+        // of the CLI.
+        if (const auto error = checkSettingsKeyWritable(key, SettingsWriteAction::Set)) {
+            return outputError(error->code, error->message, ExitCode::Usage);
+        }
         const auto* entry = findSetting(key);
         if (!entry) {
             QJsonObject details;
@@ -419,6 +563,10 @@ ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsSet& cmd)
                                QStringLiteral("There is no setting with the key '%1'").arg(key),
                                ExitCode::Usage,
                                details);
+        }
+        // The value has to be valid for the setting.
+        if (const auto error = checkSettingsValue(key, value)) {
+            return outputError(error->code, error->message, ExitCode::Usage);
         }
         auto converted = convertValue(*entry, value);
         if (!converted) {
@@ -506,6 +654,11 @@ ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsUnset& cmd)
     for (const auto& key : cmd.keys) {
         if (key.startsWith(QStringLiteral("env."))) {
             continue;
+        }
+        // The settings the launcher manages itself cannot be reset either -
+        // the launcher writes them itself.
+        if (const auto error = checkSettingsKeyWritable(key, SettingsWriteAction::Unset)) {
+            return outputError(error->code, error->message, ExitCode::Usage);
         }
         if (!findSetting(key)) {
             QJsonObject details;
