@@ -31,15 +31,8 @@ class Application;
 
 namespace Cli {
 
-/// Context handed to every screenshot command runner. It carries the
-/// application (instances, settings, network, ...) without pulling
-/// Application.h into this header. Construct it once per process/dispatch.
-struct ScreenshotContext {
-    Application& app;
-};
-
-ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotList& cmd);
-ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotUpload& cmd);
-ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotCopy& cmd);
+ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotList& cmd);
+ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotUpload& cmd);
+ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotCopy& cmd);
 
 }  // namespace Cli

@@ -90,13 +90,13 @@ std::vector<QString> versionsForMinecraft(Meta::VersionList* list, const QString
  * Load the version list of a component. Returns nullptr when the list could
  * not be loaded.
  */
-Meta::VersionList* loadVersionList(ModContext& ctx, const QString& uid, bool* networkFailed = nullptr);
+Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool* networkFailed = nullptr);
 
 /**
  * The version of a mod loader that is used by a new instance. `latest` picks
  * the newest version that supports the given Minecraft version.
  */
-Result<QString, QString> resolveLoaderVersion(ModContext& ctx,
+Result<QString, QString> resolveLoaderVersion(CommandContext& ctx,
                                               const QString& loaderUid,
                                               const QString& wanted,
                                               const QString& mcVersion,

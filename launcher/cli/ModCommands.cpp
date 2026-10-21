@@ -260,7 +260,7 @@ QHash<Mod*, QStringList> collectAffectedMods(ModFolderModel* model, const QList<
 /**
  * Shared implementation of `mod enable` and `mod disable`.
  */
-ExitCode runEnableDisable(ModContext& ctx,
+ExitCode runEnableDisable(CommandContext& ctx,
                           const std::vector<QString>& targets,
                           const QString& instanceId,
                           bool recursive,
@@ -367,7 +367,7 @@ ExitCode runEnableDisable(ModContext& ctx,
 
 }  // namespace
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -395,7 +395,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd)
 {
     ResourceAPI::SearchArgs args;
     args.type = ModPlatform::ResourceType::Mod;
@@ -430,7 +430,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd)
 {
     auto project = fetchProject(cmd.project);
     if (!project) {
@@ -535,7 +535,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -753,7 +753,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -850,12 +850,12 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModEnable& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModEnable& cmd)
 {
     return runEnableDisable(ctx, cmd.targets, cmd.instance, cmd.recursive, EnableAction::ENABLE);
 }
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModDisable& cmd)
 {
     return runEnableDisable(ctx, cmd.targets, cmd.instance, cmd.recursive, EnableAction::DISABLE);
 }
@@ -1137,7 +1137,7 @@ std::optional<bool> applyUpdates(ModFolderModel* model,
 }
 
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModUpdate& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {

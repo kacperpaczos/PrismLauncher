@@ -31,19 +31,12 @@ class Application;
 
 namespace Cli {
 
-/// Context handed to every pack command runner. It carries the application
-/// (instances, settings, network, ...) without pulling Application.h into this
-/// header. Construct it once per process/dispatch.
-struct PackContext {
-    Application& app;
-};
-
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackList& cmd);
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackSearch& cmd);
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackInfo& cmd);
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackInstall& cmd);
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackRemove& cmd);
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackEnable& cmd);
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackDisable& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackList& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackSearch& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInfo& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInstall& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackRemove& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackEnable& cmd);
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackDisable& cmd);
 
 }  // namespace Cli

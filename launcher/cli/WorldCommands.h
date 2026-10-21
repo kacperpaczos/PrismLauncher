@@ -31,18 +31,11 @@ class Application;
 
 namespace Cli {
 
-/// Context handed to every world command runner. It carries the application
-/// (instances, settings, network, ...) without pulling Application.h into this
-/// header. Construct it once per process/dispatch.
-struct WorldContext {
-    Application& app;
-};
-
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldList& cmd);
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldInfo& cmd);
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldCopy& cmd);
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldRename& cmd);
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldDelete& cmd);
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldImport& cmd);
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldList& cmd);
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldInfo& cmd);
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldCopy& cmd);
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldRename& cmd);
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldDelete& cmd);
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldImport& cmd);
 
 }  // namespace Cli

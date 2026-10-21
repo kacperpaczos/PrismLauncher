@@ -94,7 +94,7 @@ Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd, bool allowStdin
 
 }  // namespace
 
-ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesShow& cmd)
+ExitCode runNotesCommand(CommandContext& ctx, const Cmd::NotesShow& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -110,7 +110,7 @@ ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesShow& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesSet& cmd)
+ExitCode runNotesCommand(CommandContext& ctx, const Cmd::NotesSet& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {

@@ -124,7 +124,7 @@ bool matchesType(const Meta::Version::Ptr& version, const QString& type)
 
 }  // namespace
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionShow& cmd)
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionShow& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -157,7 +157,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionShow& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionListAvailable& cmd)
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionListAvailable& cmd)
 {
     QJsonObject out;
 
@@ -231,7 +231,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionListAvailable& cmd
     return ExitCode::OK;
 }
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionChangeMc& cmd)
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionChangeMc& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -297,7 +297,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionChangeMc& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionInstallLoader& cmd)
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionInstallLoader& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -398,7 +398,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionInstallLoader& cmd
     return ExitCode::OK;
 }
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionRemoveLoader& cmd)
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionRemoveLoader& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -459,7 +459,7 @@ ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionRemoveLoader& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionReinstall& cmd)
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionReinstall& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {

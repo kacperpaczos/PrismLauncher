@@ -313,7 +313,7 @@ QJsonObject describeEnvVariable(SettingsObject* settings, const QString& name)
 
 }  // namespace
 
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd)
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -352,7 +352,7 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd)
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsGet& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -387,7 +387,7 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd)
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsSet& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -494,7 +494,7 @@ ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsUnset& cmd)
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsUnset& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {

@@ -220,7 +220,7 @@ QString levelNameOf(const QString& folder)
 
 }  // namespace
 
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldList& cmd)
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -241,7 +241,7 @@ ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldInfo& cmd)
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldInfo& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -261,7 +261,7 @@ ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldInfo& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldCopy& cmd)
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldCopy& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -305,7 +305,7 @@ ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldCopy& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldRename& cmd)
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldRename& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -361,7 +361,7 @@ ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldRename& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldDelete& cmd)
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldDelete& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -410,7 +410,7 @@ ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldDelete& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runWorldCommand(WorldContext& ctx, const Cmd::WorldImport& cmd)
+ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldImport& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {

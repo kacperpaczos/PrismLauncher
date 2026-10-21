@@ -31,14 +31,7 @@ class Application;
 
 namespace Cli {
 
-/// Context handed to every notes command runner. It carries the application
-/// (instances, settings, network, ...) without pulling Application.h into this
-/// header. Construct it once per process/dispatch.
-struct NotesContext {
-    Application& app;
-};
-
-ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesShow& cmd);
-ExitCode runNotesCommand(NotesContext& ctx, const Cmd::NotesSet& cmd);
+ExitCode runNotesCommand(CommandContext& ctx, const Cmd::NotesShow& cmd);
+ExitCode runNotesCommand(CommandContext& ctx, const Cmd::NotesSet& cmd);
 
 }  // namespace Cli

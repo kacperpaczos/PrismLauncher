@@ -235,7 +235,7 @@ QString pasteServiceNames()
 
 }  // namespace
 
-ExitCode runLogCommand(LogContext& ctx, const Cmd::LogList& cmd)
+ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -252,7 +252,7 @@ ExitCode runLogCommand(LogContext& ctx, const Cmd::LogList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runLogCommand(LogContext& ctx, const Cmd::LogRead& cmd)
+ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogRead& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -330,7 +330,7 @@ ExitCode runLogCommand(LogContext& ctx, const Cmd::LogRead& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runLogCommand(LogContext& ctx, const Cmd::LogUpload& cmd)
+ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogUpload& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {

@@ -31,15 +31,8 @@ class Application;
 
 namespace Cli {
 
-/// Context handed to every log command runner. It carries the application
-/// (instances, settings, network, ...) without pulling Application.h into this
-/// header. Construct it once per process/dispatch.
-struct LogContext {
-    Application& app;
-};
-
-ExitCode runLogCommand(LogContext& ctx, const Cmd::LogList& cmd);
-ExitCode runLogCommand(LogContext& ctx, const Cmd::LogRead& cmd);
-ExitCode runLogCommand(LogContext& ctx, const Cmd::LogUpload& cmd);
+ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogList& cmd);
+ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogRead& cmd);
+ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogUpload& cmd);
 
 }  // namespace Cli

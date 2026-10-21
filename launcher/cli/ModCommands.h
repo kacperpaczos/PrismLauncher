@@ -29,13 +29,13 @@
 
 namespace Cli {
 
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModList& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModSearch& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModInfo& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModInstall& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModRemove& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModEnable& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd);
-ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModList& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModEnable& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModDisable& cmd);
+ExitCode runModCommand(CommandContext& ctx, const Cmd::ModUpdate& cmd);
 
 }  // namespace Cli

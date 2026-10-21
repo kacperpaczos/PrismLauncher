@@ -1335,16 +1335,8 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
                       "pure headless runs; continuing with the remaining commands.";
     }
 
-    // Application context for the mod and pack command runners; built once per
-    // dispatch.
-    Cli::ModContext modContext{ *this };
-    Cli::PackContext packContext{ *this };
-    Cli::WorldContext worldContext{ *this };
-    Cli::ServerContext serverContext{ *this };
-    Cli::LogContext logContext{ *this };
-    Cli::ScreenshotContext screenshotContext{ *this };
-    Cli::NotesContext notesContext{ *this };
-    Cli::StatusContext statusContext{ *this };
+    // Application context for the command runners; built once per dispatch.
+    Cli::CommandContext commandContext{ *this };
 
     struct CommandVisitor {
         Application* app;
@@ -1355,21 +1347,7 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
         bool& stop;
         // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::ModContext& modContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::PackContext& packContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::WorldContext& worldContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::ServerContext& serverContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::LogContext& logContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::ScreenshotContext& screenshotContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::NotesContext& notesContext;
-        // NOLINTNEXTLINE(cppcoreguidelines-avoid-const-or-ref-data-members)
-        Cli::StatusContext& statusContext;
+        Cli::CommandContext& commandContext;
 
         // record the result of a headless command; the first failure stops the batch
         void recordResult(Cli::ExitCode code)
@@ -1466,80 +1444,73 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
         }
         // headless mod commands - each prints its own JSON envelope and reports
         // an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::ModList& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModSearch& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModInfo& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModInstall& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModRemove& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceList& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceInfo& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceCreate& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceDuplicate& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceRename& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceDelete& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::InstanceIconSet& cmd) { recordResult(Cli::runInstanceCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::SettingsList& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::SettingsGet& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::SettingsSet& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::SettingsUnset& cmd) { recordResult(Cli::runSettingsCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::VersionShow& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::VersionListAvailable& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::VersionChangeMc& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::VersionInstallLoader& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::VersionRemoveLoader& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
-        void operator()(const Cli::Cmd::VersionReinstall& cmd) { recordResult(Cli::runVersionCommand(modContext, cmd)); }
+        void operator()(const Cli::Cmd::ModList& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModSearch& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModInfo& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModInstall& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModRemove& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModEnable& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModDisable& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ModUpdate& cmd) { recordResult(Cli::runModCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceList& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceInfo& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceCreate& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceDuplicate& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceRename& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceDelete& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::InstanceIconSet& cmd) { recordResult(Cli::runInstanceCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsList& cmd) { recordResult(Cli::runSettingsCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsGet& cmd) { recordResult(Cli::runSettingsCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsSet& cmd) { recordResult(Cli::runSettingsCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::SettingsUnset& cmd) { recordResult(Cli::runSettingsCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionShow& cmd) { recordResult(Cli::runVersionCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionListAvailable& cmd) { recordResult(Cli::runVersionCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionChangeMc& cmd) { recordResult(Cli::runVersionCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionInstallLoader& cmd) { recordResult(Cli::runVersionCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionRemoveLoader& cmd) { recordResult(Cli::runVersionCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::VersionReinstall& cmd) { recordResult(Cli::runVersionCommand(commandContext, cmd)); }
         // headless pack commands - each prints its own JSON envelope and reports
         // an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::PackList& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
-        void operator()(const Cli::Cmd::PackSearch& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
-        void operator()(const Cli::Cmd::PackInfo& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
-        void operator()(const Cli::Cmd::PackInstall& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
-        void operator()(const Cli::Cmd::PackRemove& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
-        void operator()(const Cli::Cmd::PackEnable& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
-        void operator()(const Cli::Cmd::PackDisable& cmd) { recordResult(Cli::runPackCommand(packContext, cmd)); }
+        void operator()(const Cli::Cmd::PackList& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::PackSearch& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::PackInfo& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::PackInstall& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::PackRemove& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::PackEnable& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::PackDisable& cmd) { recordResult(Cli::runPackCommand(commandContext, cmd)); }
         // headless world commands - each prints its own JSON envelope and reports
         // an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::WorldList& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
-        void operator()(const Cli::Cmd::WorldInfo& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
-        void operator()(const Cli::Cmd::WorldCopy& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
-        void operator()(const Cli::Cmd::WorldRename& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
-        void operator()(const Cli::Cmd::WorldDelete& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
-        void operator()(const Cli::Cmd::WorldImport& cmd) { recordResult(Cli::runWorldCommand(worldContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldList& cmd) { recordResult(Cli::runWorldCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldInfo& cmd) { recordResult(Cli::runWorldCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldCopy& cmd) { recordResult(Cli::runWorldCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldRename& cmd) { recordResult(Cli::runWorldCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldDelete& cmd) { recordResult(Cli::runWorldCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::WorldImport& cmd) { recordResult(Cli::runWorldCommand(commandContext, cmd)); }
         // headless server commands - each prints its own JSON envelope and reports
         // an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::ServerList& cmd) { recordResult(Cli::runServerCommand(serverContext, cmd)); }
-        void operator()(const Cli::Cmd::ServerAdd& cmd) { recordResult(Cli::runServerCommand(serverContext, cmd)); }
-        void operator()(const Cli::Cmd::ServerRemove& cmd) { recordResult(Cli::runServerCommand(serverContext, cmd)); }
+        void operator()(const Cli::Cmd::ServerList& cmd) { recordResult(Cli::runServerCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ServerAdd& cmd) { recordResult(Cli::runServerCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ServerRemove& cmd) { recordResult(Cli::runServerCommand(commandContext, cmd)); }
         // headless log commands - each prints its own JSON envelope and reports
         // an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::LogList& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
-        void operator()(const Cli::Cmd::LogRead& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
-        void operator()(const Cli::Cmd::LogUpload& cmd) { recordResult(Cli::runLogCommand(logContext, cmd)); }
+        void operator()(const Cli::Cmd::LogList& cmd) { recordResult(Cli::runLogCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::LogRead& cmd) { recordResult(Cli::runLogCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::LogUpload& cmd) { recordResult(Cli::runLogCommand(commandContext, cmd)); }
         // headless screenshot commands - each prints its own JSON envelope and
         // reports an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::ScreenshotList& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
-        void operator()(const Cli::Cmd::ScreenshotUpload& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
-        void operator()(const Cli::Cmd::ScreenshotCopy& cmd) { recordResult(Cli::runScreenshotCommand(screenshotContext, cmd)); }
+        void operator()(const Cli::Cmd::ScreenshotList& cmd) { recordResult(Cli::runScreenshotCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ScreenshotUpload& cmd) { recordResult(Cli::runScreenshotCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::ScreenshotCopy& cmd) { recordResult(Cli::runScreenshotCommand(commandContext, cmd)); }
         // headless notes commands - each prints its own JSON envelope and
         // reports an exit code; the first failure aborts the rest of the batch.
-        void operator()(const Cli::Cmd::NotesShow& cmd) { recordResult(Cli::runNotesCommand(notesContext, cmd)); }
-        void operator()(const Cli::Cmd::NotesSet& cmd) { recordResult(Cli::runNotesCommand(notesContext, cmd)); }
-        void operator()(const Cli::Cmd::Status& cmd) { recordResult(Cli::runStatusCommand(statusContext, cmd)); }
+        void operator()(const Cli::Cmd::NotesShow& cmd) { recordResult(Cli::runNotesCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::NotesSet& cmd) { recordResult(Cli::runNotesCommand(commandContext, cmd)); }
+        void operator()(const Cli::Cmd::Status& cmd) { recordResult(Cli::runStatusCommand(commandContext, cmd)); }
     } visitor{ .app = this,
                .toProcessURIs = toProcessURIs,
                .exitCode = headlessExitCode,
                .stop = stopProcessing,
-               .modContext = modContext,
-               .packContext = packContext,
-               .worldContext = worldContext,
-               .serverContext = serverContext,
-               .logContext = logContext,
-               .screenshotContext = screenshotContext,
-               .notesContext = notesContext,
-               .statusContext = statusContext };
+               .commandContext = commandContext };
 
     for (const auto& cmd : cmds) {
         std::visit(visitor, cmd);

@@ -31,15 +31,8 @@ class Application;
 
 namespace Cli {
 
-/// Context handed to every server command runner. It carries the application
-/// (instances, settings, network, ...) without pulling Application.h into this
-/// header. Construct it once per process/dispatch.
-struct ServerContext {
-    Application& app;
-};
-
-ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerList& cmd);
-ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerAdd& cmd);
-ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerRemove& cmd);
+ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerList& cmd);
+ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerAdd& cmd);
+ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerRemove& cmd);
 
 }  // namespace Cli

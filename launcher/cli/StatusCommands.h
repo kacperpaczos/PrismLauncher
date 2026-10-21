@@ -34,10 +34,6 @@ namespace Cli {
 /// Context handed to the status command runner. It carries the application
 /// (instances, accounts, settings, ...) without pulling Application.h into
 /// this header. Construct it once per process/dispatch.
-struct StatusContext {
-    Application& app;
-};
-
-ExitCode runStatusCommand(StatusContext& ctx, const Cmd::Status& cmd);
+ExitCode runStatusCommand(CommandContext& ctx, const Cmd::Status& cmd);
 
 }  // namespace Cli

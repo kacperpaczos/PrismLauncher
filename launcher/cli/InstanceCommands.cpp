@@ -69,7 +69,7 @@ constexpr int g_DownloadTimeoutMs = 900000;
  * The icon key of a new instance. A path of an image file is installed into
  * the icon directory of the launcher, everything else is used as it is.
  */
-QString resolveIconKey(ModContext& ctx, const QString& icon, QString* installedFrom)
+QString resolveIconKey(CommandContext& ctx, const QString& icon, QString* installedFrom)
 {
     auto* icons = ctx.app.icons();
     if (!icons) {
@@ -104,7 +104,7 @@ QString resolveIconKey(ModContext& ctx, const QString& icon, QString* installedF
  * here: the components of the instance have to be resolved and the jar of
  * the Minecraft version has to be downloaded.
  */
-ExitCode verifyInstanceFiles(ModContext& ctx, MinecraftInstance* instance)
+ExitCode verifyInstanceFiles(CommandContext& ctx, MinecraftInstance* instance)
 {
     auto* profile = instance->getPackProfile();
     if (!profile) {
@@ -153,7 +153,7 @@ ExitCode verifyInstanceFiles(ModContext& ctx, MinecraftInstance* instance)
 /**
  * Download the files of an instance and check that the instance loads.
  */
-ExitCode downloadInstanceFiles(ModContext& ctx, MinecraftInstance* instance, ExitCode failureCode)
+ExitCode downloadInstanceFiles(CommandContext& ctx, MinecraftInstance* instance, ExitCode failureCode)
 {
     auto task = makeShared<SequentialTask>(QStringLiteral("Download the files of the instance"));
     task->addTask(makeShared<MinecraftLoadAndCheck>(instance, Net::Mode::Online));
@@ -183,14 +183,14 @@ ExitCode downloadInstanceFiles(ModContext& ctx, MinecraftInstance* instance, Exi
  * The instance that a creation task committed. The id of a new instance is
  * the (sanitized) name of the instance, so it can be computed upfront.
  */
-QString expectedInstanceId(ModContext& ctx, const QString& name)
+QString expectedInstanceId(CommandContext& ctx, const QString& name)
 {
     return FS::DirNameFromString(name, ctx.app.instances()->instanceDirs());
 }
 
 }  // namespace
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceList& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceList& cmd)
 {
     auto* instances = ctx.app.instances();
     if (!instances) {
@@ -214,7 +214,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceInfo& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceInfo& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -254,7 +254,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceInfo& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
 {
     auto* instances = ctx.app.instances();
     if (!instances) {
@@ -412,7 +412,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceCreate& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceDuplicate& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -491,7 +491,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDuplicate& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceRename& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -555,7 +555,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceRename& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceDelete& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {
@@ -591,7 +591,7 @@ ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceDelete& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runInstanceCommand(ModContext& ctx, const Cmd::InstanceIconSet& cmd)
+ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceIconSet& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.id, instance); code != ExitCode::OK) {

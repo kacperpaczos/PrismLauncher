@@ -35,7 +35,7 @@
 
 namespace Cli {
 
-ExitCode runStatusCommand(StatusContext& ctx, const Cmd::Status& cmd)
+ExitCode runStatusCommand(CommandContext& ctx, const Cmd::Status& cmd)
 {
     QJsonArray instances;
     if (auto* list = ctx.app.instances()) {

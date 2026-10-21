@@ -94,7 +94,7 @@ QJsonObject uploadedToJson(const ScreenShot::Ptr& screenshot)
 
 }  // namespace
 
-ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotList& cmd)
+ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -114,7 +114,7 @@ ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotList&
     return ExitCode::OK;
 }
 
-ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotUpload& cmd)
+ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotUpload& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -195,7 +195,7 @@ ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotUploa
     return ExitCode::OK;
 }
 
-ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotCopy& cmd)
+ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotCopy& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {

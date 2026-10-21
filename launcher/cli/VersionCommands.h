@@ -29,11 +29,11 @@
 
 namespace Cli {
 
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionShow& cmd);
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionListAvailable& cmd);
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionChangeMc& cmd);
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionInstallLoader& cmd);
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionRemoveLoader& cmd);
-ExitCode runVersionCommand(ModContext& ctx, const Cmd::VersionReinstall& cmd);
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionShow& cmd);
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionListAvailable& cmd);
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionChangeMc& cmd);
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionInstallLoader& cmd);
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionRemoveLoader& cmd);
+ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionReinstall& cmd);
 
 }  // namespace Cli

@@ -130,7 +130,7 @@ std::vector<QString> versionsForMinecraft(Meta::VersionList* list, const QString
     return versions;
 }
 
-Meta::VersionList* loadVersionList(ModContext& ctx, const QString& uid, bool* networkFailed)
+Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool* networkFailed)
 {
     auto* index = ctx.app.metadataIndex();
     auto list = index->get(uid);
@@ -153,7 +153,7 @@ Meta::VersionList* loadVersionList(ModContext& ctx, const QString& uid, bool* ne
     return list.get();
 }
 
-Result<QString, QString> resolveLoaderVersion(ModContext& ctx,
+Result<QString, QString> resolveLoaderVersion(CommandContext& ctx,
                                               const QString& loaderUid,
                                               const QString& wanted,
                                               const QString& mcVersion,

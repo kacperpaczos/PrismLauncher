@@ -144,7 +144,7 @@ QJsonObject packToJson(const Resource* resource, Cmd::PackGroup group)
  * Resolve the instance of a pack command. The error is reported and the exit
  * code is returned when the instance does not exist.
  */
-ExitCode resolvePackInstance(PackContext& ctx, const QString& instanceId, MinecraftInstance*& instance)
+ExitCode resolvePackInstance(CommandContext& ctx, const QString& instanceId, MinecraftInstance*& instance)
 {
     if (auto code = resolveInstance(ctx.app, instanceId, instance); code != ExitCode::OK) {
         return code;
@@ -242,7 +242,7 @@ int rowOfResource(ResourceFolderModel* model, const Resource* resource)
 /**
  * Shared implementation of `enable` and `disable`.
  */
-ExitCode runEnableDisable(PackContext& ctx,
+ExitCode runEnableDisable(CommandContext& ctx,
                           Cmd::PackGroup group,
                           const std::vector<QString>& targets,
                           const QString& instanceId,
@@ -323,7 +323,7 @@ ExitCode runEnableDisable(PackContext& ctx,
 
 }  // namespace
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackList& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolvePackInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
@@ -351,7 +351,7 @@ ExitCode runPackCommand(PackContext& ctx, const Cmd::PackList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackSearch& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackSearch& cmd)
 {
     ResourceAPI::SearchArgs args;
     args.type = packKind(cmd.group).modrinthType;
@@ -376,7 +376,7 @@ ExitCode runPackCommand(PackContext& ctx, const Cmd::PackSearch& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackInfo& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInfo& cmd)
 {
     auto project = fetchProject(cmd.project);
     if (!project) {
@@ -466,7 +466,7 @@ ExitCode runPackCommand(PackContext& ctx, const Cmd::PackInfo& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackInstall& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInstall& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolvePackInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
@@ -616,7 +616,7 @@ ExitCode runPackCommand(PackContext& ctx, const Cmd::PackInstall& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackRemove& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackRemove& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolvePackInstance(ctx, cmd.instance, instance); code != ExitCode::OK) {
@@ -716,12 +716,12 @@ ExitCode runPackCommand(PackContext& ctx, const Cmd::PackRemove& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackEnable& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackEnable& cmd)
 {
     return runEnableDisable(ctx, cmd.group, cmd.targets, cmd.instance, EnableAction::ENABLE);
 }
 
-ExitCode runPackCommand(PackContext& ctx, const Cmd::PackDisable& cmd)
+ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackDisable& cmd)
 {
     return runEnableDisable(ctx, cmd.group, cmd.targets, cmd.instance, EnableAction::DISABLE);
 }

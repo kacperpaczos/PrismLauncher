@@ -29,9 +29,9 @@
 
 namespace Cli {
 
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsList& cmd);
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsGet& cmd);
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsSet& cmd);
-ExitCode runSettingsCommand(ModContext& ctx, const Cmd::SettingsUnset& cmd);
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsList& cmd);
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsGet& cmd);
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsSet& cmd);
+ExitCode runSettingsCommand(CommandContext& ctx, const Cmd::SettingsUnset& cmd);
 
 }  // namespace Cli

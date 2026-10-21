@@ -128,7 +128,7 @@ ExitCode saveServers(ServersDat& dat)
 
 }  // namespace
 
-ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerList& cmd)
+ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerList& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -159,7 +159,7 @@ ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerList& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerAdd& cmd)
+ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerAdd& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
@@ -189,7 +189,7 @@ ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerAdd& cmd)
     return ExitCode::OK;
 }
 
-ExitCode runServerCommand(ServerContext& ctx, const Cmd::ServerRemove& cmd)
+ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerRemove& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
