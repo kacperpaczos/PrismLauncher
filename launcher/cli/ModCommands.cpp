@@ -956,6 +956,11 @@ std::optional<QList<Resource*>> ensureUpdateMetadata(ModFolderModel* model, cons
         if (auto hashingTask = metadataTask->getHashingTask()) {
             sequence->addTask(hashingTask);
         }
+        // The metadata task itself has to be part of the sequence - it is the
+        // task that asks the provider for the metadata. Without it the
+        // hashing task would run and nothing else (the same way the GUI does
+        // it, see `ResourceUpdateDialog`).
+        sequence->addTask(metadataTask);
         if (auto result = runTaskSync(sequence, g_NetworkTimeoutMs); !result) {
             QJsonObject out;
             out.insert(QStringLiteral("failed"), report.failed);
