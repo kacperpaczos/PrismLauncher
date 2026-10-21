@@ -286,13 +286,21 @@ ExitCode runEnableDisable(CommandContext& ctx,
     for (auto* resource : resolved.resources) {
         const bool wantEnabled = action == EnableAction::ENABLE;
         if (resource->enabled() == wantEnabled) {
-            // The pack is already in the wanted state - nothing to do.
+            // The pack is already in the wanted state - nothing to do. The
+            // entry is only informational, it does not make the command fail.
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::AlreadyAbsent));
+            entry.insert(QStringLiteral("reason"),
+                         QStringLiteral("the %1 is already %2").arg(packNoun(group), wantEnabled ? "enabled" : "disabled"));
+            failed.append(entry);
             continue;
         }
         const int row = rowOfResource(model, resource);
         if (row < 0 || !model->setResourceEnabled({ model->index(row, 0) }, action)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
             entry.insert(QStringLiteral("reason"), QStringLiteral("the %1 could not be %2").arg(packNoun(group), wantEnabled ? "enabled" : "disabled"));
             failed.append(entry);
             continue;
@@ -303,19 +311,10 @@ ExitCode runEnableDisable(CommandContext& ctx,
     QJsonObject out;
     out.insert(QStringLiteral("changed"), changed);
     out.insert(QStringLiteral("failed"), failed);
-    if (changed.isEmpty() && !failed.isEmpty()) {
-        return outputError(QStringLiteral("change_failed"),
-                           QStringLiteral("None of the %1s could be changed").arg(packNoun(group)),
-                           ExitCode::Generic,
-                           out);
-    }
-    if (!resolved.failed.isEmpty()) {
-        // Some of the targets did not match a pack - the packs that were found
-        // are changed anyway, but the command reports the failure.
-        return outputError(QStringLiteral("not_found"),
-                           QStringLiteral("Some of the targets did not match a %1").arg(packNoun(group)),
-                           ExitCode::NotFound,
-                           out);
+    const auto outcome = evaluateFailures(failed, changed.size());
+    if (auto code = reportFailures(outcome, out, packNoun(group), QStringLiteral("None of the %1s could be changed").arg(packNoun(group)));
+        code != ExitCode::OK) {
+        return code;
     }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;
@@ -648,7 +647,6 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackRemove& cmd)
 
     QJsonArray removed;
     QJsonArray failed = resolved.failed;
-    bool lockedRefused = false;
     const auto indexDir = model->indexDir();
     // The model is not updated in between the removals - the resolved list is
     // iterated instead.
@@ -658,10 +656,10 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackRemove& cmd)
         if (resource->lockUpdate() && !cmd.force) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), fileName);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Locked));
             entry.insert(QStringLiteral("reason"),
                          QStringLiteral("the %1 is locked to a specific version (use --force)").arg(packNoun(cmd.group)));
             failed.append(entry);
-            lockedRefused = true;
             continue;
         }
         // The metadata is gone once the pack is destroyed, so it has to be
@@ -671,6 +669,7 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackRemove& cmd)
         if (!resource->destroy(indexDir, false, true)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), fileName);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
             entry.insert(QStringLiteral("reason"), QStringLiteral("the %1 could not be removed").arg(packNoun(cmd.group)));
             failed.append(entry);
             continue;
@@ -685,32 +684,13 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackRemove& cmd)
     QJsonObject out;
     out.insert(QStringLiteral("removed"), removed);
     out.insert(QStringLiteral("failed"), failed);
-    if (removed.isEmpty() && !failed.isEmpty()) {
-        if (resolved.resources.isEmpty()) {
-            return outputError(QStringLiteral("not_found"),
-                               QStringLiteral("None of the targets matched a %1").arg(packNoun(cmd.group)),
-                               ExitCode::NotFound,
-                               out);
-        }
-        if (lockedRefused) {
-            return outputError(QStringLiteral("locked"),
-                               QStringLiteral("The %1 is locked to a specific version (use --force to remove it anyway)")
-                                   .arg(packNoun(cmd.group)),
-                               ExitCode::Conflict,
-                               out);
-        }
-        return outputError(QStringLiteral("remove_failed"),
-                           QStringLiteral("None of the %1s could be removed").arg(packNoun(cmd.group)),
-                           ExitCode::Generic,
-                           out);
-    }
-    if (!resolved.failed.isEmpty()) {
-        // Some of the targets did not match a pack - the packs that were found
-        // are removed anyway, but the command reports the failure.
-        return outputError(QStringLiteral("not_found"),
-                           QStringLiteral("Some of the targets did not match a %1").arg(packNoun(cmd.group)),
-                           ExitCode::NotFound,
-                           out);
+    const auto outcome = evaluateFailures(failed, removed.size());
+    if (auto code = reportFailures(outcome,
+                                   out,
+                                   packNoun(cmd.group),
+                                   QStringLiteral("None of the %1s could be removed").arg(packNoun(cmd.group)));
+        code != ExitCode::OK) {
+        return code;
     }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;

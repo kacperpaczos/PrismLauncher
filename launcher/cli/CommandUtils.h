@@ -153,6 +153,66 @@ struct ResolvedTargets {
 };
 
 /**
+ * @brief the machine readable codes of the failed entries of the commands
+ *
+ * Every entry of the `failed` array of a command carries one of them, so that
+ * a script can tell what went wrong without parsing the message.
+ */
+namespace FailureCode {
+/// The target did not match anything.
+inline constexpr auto NotFound = "not_found";
+/// The target matched more than one thing.
+inline constexpr auto Ambiguous = "ambiguous";
+/// The thing is locked to a specific version.
+inline constexpr auto Locked = "locked";
+/// The thing was already in the wanted state - nothing had to be done.
+inline constexpr auto AlreadyAbsent = "already_absent";
+/// The change could not be written.
+inline constexpr auto Io = "io";
+/// The download of the thing failed.
+inline constexpr auto Download = "download";
+}  // namespace FailureCode
+
+/// @brief the outcome of a command that changed more than one target
+struct FailureOutcome {
+    /// The exit code of the command.
+    ExitCode code = ExitCode::OK;
+    /// The code of the error envelope - empty when the command succeeded.
+    QString error;
+    /// Whether only some of the targets were changed.
+    bool partial = false;
+};
+
+/**
+ * @brief evaluate the failed entries of a command that changed more than one target
+ *
+ * The policy of the commands that change more than one target:
+ *
+ * - all the targets failed: the command reports an error - the exit code is 3
+ *   when all of the failures are `not_found`, 5 when all of them are
+ *   `ambiguous` and 1 otherwise;
+ * - only some of the targets failed: the command reports an error with the
+ *   `partial` field, unless every failure is only informational (the target
+ *   was already in the wanted state) - then the command succeeded.
+ *
+ * @param failed  the entries that failed - each of them carries a `code`
+ * @param changed the number of the targets that were changed
+ */
+FailureOutcome evaluateFailures(const QJsonArray& failed, int changed);
+
+/**
+ * @brief write the envelope of a command that had failed targets
+ *
+ * @param outcome         the outcome of the evaluation of the failures
+ * @param out             the envelope of the command - the `partial` field is
+ *                        added when only some of the targets were changed
+ * @param noun            the word that is used in the messages ("mod",
+ *                        "resource pack", ...)
+ * @param allFailedMessage the message of the envelope when every target failed
+ */
+ExitCode reportFailures(const FailureOutcome& outcome, QJsonObject& out, const QString& noun, const QString& allFailedMessage);
+
+/**
  * @brief resolve the targets of a remove/enable/disable command
  *
  * @param noun  the word that is used in the failure messages ("mod",

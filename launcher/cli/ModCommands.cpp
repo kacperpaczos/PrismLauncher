@@ -327,12 +327,20 @@ ExitCode runEnableDisable(CommandContext& ctx,
     for (auto* resource : resolved.resources) {
         const bool wantEnabled = action == EnableAction::ENABLE;
         if (resource->enabled() == wantEnabled) {
-            // The mod is already in the wanted state - nothing to do.
+            // The mod is already in the wanted state - nothing to do. The
+            // entry is only informational, it does not make the command fail.
+            QJsonObject entry;
+            entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::AlreadyAbsent));
+            entry.insert(QStringLiteral("reason"),
+                         QStringLiteral("the mod is already %1").arg(wantEnabled ? "enabled" : "disabled"));
+            failed.append(entry);
             continue;
         }
         if (!resource->enable(action)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
             entry.insert(QStringLiteral("reason"),
                          QStringLiteral("the mod could not be %1").arg(wantEnabled ? "enabled" : "disabled"));
             failed.append(entry);
@@ -350,19 +358,10 @@ ExitCode runEnableDisable(CommandContext& ctx,
     QJsonObject out;
     out.insert(QStringLiteral("changed"), changed);
     out.insert(QStringLiteral("failed"), failed);
-    if (changed.isEmpty() && !failed.isEmpty()) {
-        return outputError(QStringLiteral("change_failed"),
-                           QStringLiteral("None of the mods could be changed"),
-                           ExitCode::Generic,
-                           out);
-    }
-    if (!resolved.failed.isEmpty()) {
-        // Some of the targets did not match a mod - the mods that were found
-        // are changed anyway, but the command reports the failure.
-        return outputError(QStringLiteral("not_found"),
-                           QStringLiteral("Some of the targets did not match a mod"),
-                           ExitCode::NotFound,
-                           out);
+    const auto outcome = evaluateFailures(failed, changed.size());
+    if (auto code = reportFailures(outcome, out, QStringLiteral("mod"), QStringLiteral("None of the mods could be changed"));
+        code != ExitCode::OK) {
+        return code;
     }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;
@@ -685,6 +684,7 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         QObject::connect(task.get(), &Task::failed, download.get(), [pack, failed](const QString& reason) {
             QJsonObject entry;
             entry.insert(QStringLiteral("slug"), pack->slug);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Download));
             entry.insert(QStringLiteral("reason"), reason);
             failed->append(entry);
         });
@@ -752,6 +752,11 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
     out.insert(QStringLiteral("installed"), installed);
     out.insert(QStringLiteral("dependencies"), dependencyObjects);
     out.insert(QStringLiteral("failed"), *failed);
+    const auto outcome = evaluateFailures(*failed, installed.size());
+    if (auto code = reportFailures(outcome, out, QStringLiteral("mod"), QStringLiteral("None of the mods could be installed"));
+        code != ExitCode::OK) {
+        return code;
+    }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;
 }
@@ -787,7 +792,6 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd)
 
     QJsonArray removed;
     QJsonArray failed = resolved.failed;
-    bool lockedRefused = false;
     const auto indexDir = model->indexDir();
     // The model is not updated in between the removals - the resolved list is
     // iterated instead.
@@ -797,9 +801,9 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd)
         if (resource->lockUpdate() && !cmd.force) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), fileName);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Locked));
             entry.insert(QStringLiteral("reason"), QStringLiteral("the mod is locked to a specific version (use --force)"));
             failed.append(entry);
-            lockedRefused = true;
             continue;
         }
         // The metadata is gone once the mod is destroyed, so it has to be
@@ -809,6 +813,7 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd)
         if (!resource->destroy(indexDir, false, true)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), fileName);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
             entry.insert(QStringLiteral("reason"), QStringLiteral("the mod could not be removed"));
             failed.append(entry);
             continue;
@@ -823,31 +828,10 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd)
     QJsonObject out;
     out.insert(QStringLiteral("removed"), removed);
     out.insert(QStringLiteral("failed"), failed);
-    if (removed.isEmpty() && !failed.isEmpty()) {
-        if (resolved.resources.isEmpty()) {
-            return outputError(QStringLiteral("not_found"),
-                               QStringLiteral("None of the targets matched a mod"),
-                               ExitCode::NotFound,
-                               out);
-        }
-        if (lockedRefused) {
-            return outputError(QStringLiteral("locked"),
-                               QStringLiteral("The mod is locked to a specific version (use --force to remove it anyway)"),
-                               ExitCode::Conflict,
-                               out);
-        }
-        return outputError(QStringLiteral("remove_failed"),
-                           QStringLiteral("None of the mods could be removed"),
-                           ExitCode::Generic,
-                           out);
-    }
-    if (!resolved.failed.isEmpty()) {
-        // Some of the targets did not match a mod - the mods that were found
-        // are removed anyway, but the command reports the failure.
-        return outputError(QStringLiteral("not_found"),
-                           QStringLiteral("Some of the targets did not match a mod"),
-                           ExitCode::NotFound,
-                           out);
+    const auto outcome = evaluateFailures(failed, removed.size());
+    if (auto code = reportFailures(outcome, out, QStringLiteral("mod"), QStringLiteral("None of the mods could be removed"));
+        code != ExitCode::OK) {
+        return code;
     }
     outputJson(QJsonDocument(out));
     return ExitCode::OK;

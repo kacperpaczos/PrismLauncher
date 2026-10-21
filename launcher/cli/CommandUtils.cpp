@@ -21,6 +21,8 @@
 
 #include "cli/CommandUtils.h"
 
+#include <algorithm>
+
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QTimer>
@@ -424,6 +426,7 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
         if (matches.isEmpty()) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), target);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::NotFound));
             entry.insert(QStringLiteral("reason"), QStringLiteral("no %1 matched the target").arg(noun));
             resolved.failed.append(entry);
             continue;
@@ -431,6 +434,7 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
         if (matches.size() > 1) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), target);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Ambiguous));
             QJsonArray candidateNames;
             for (auto* resource : matches) {
                 QJsonObject candidate;
@@ -444,6 +448,9 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
             resolved.candidates.append(entry);
             if (!force) {
                 resolved.ambiguous = true;
+                // The target could not be used - it is a failure as well, so
+                // that the entry carries the code of the failure.
+                resolved.failed.append(entry);
                 continue;
             }
         }
@@ -454,6 +461,89 @@ ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QSt
         }
     }
     return resolved;
+}
+
+FailureOutcome evaluateFailures(const QJsonArray& failed, int changed)
+{
+    FailureOutcome outcome;
+    if (failed.isEmpty()) {
+        return outcome;
+    }
+
+    // The codes of the failures, the worst one first.
+    static const QStringList s_severity{ QString::fromLatin1(FailureCode::Ambiguous),
+                                         QString::fromLatin1(FailureCode::Locked),
+                                         QString::fromLatin1(FailureCode::Io),
+                                         QString::fromLatin1(FailureCode::Download),
+                                         QString::fromLatin1(FailureCode::NotFound) };
+
+    bool allNotFound = true;
+    bool allAmbiguous = true;
+    bool onlyInformational = true;
+    for (const auto& entry : failed) {
+        const auto code = entry.toObject().value(QStringLiteral("code")).toString();
+        allNotFound = allNotFound && code == QLatin1String(FailureCode::NotFound);
+        allAmbiguous = allAmbiguous && code == QLatin1String(FailureCode::Ambiguous);
+        onlyInformational = onlyInformational && code == QLatin1String(FailureCode::AlreadyAbsent);
+    }
+
+    // The worst code of the failures - it is the code of the envelope.
+    QString worst;
+    for (const auto& candidate : s_severity) {
+        const auto found = std::any_of(failed.begin(), failed.end(), [&candidate](const auto& entry) {
+            return entry.toObject().value(QStringLiteral("code")).toString() == candidate;
+        });
+        if (found) {
+            worst = candidate;
+            break;
+        }
+    }
+
+    if (onlyInformational) {
+        // Everything that could be done was done - the command succeeded.
+        return outcome;
+    }
+
+    if (changed == 0) {
+        // Every target failed - the command could not do anything at all.
+        outcome.partial = false;
+        if (allNotFound) {
+            outcome.code = ExitCode::NotFound;
+            outcome.error = QString::fromLatin1(FailureCode::NotFound);
+        } else if (allAmbiguous) {
+            outcome.code = ExitCode::Ambiguous;
+            outcome.error = QStringLiteral("ambiguous_target");
+        } else {
+            outcome.code = ExitCode::Generic;
+            outcome.error = worst;
+        }
+        return outcome;
+    }
+
+    outcome.code = ExitCode::Generic;
+    outcome.error = QStringLiteral("partial_failure");
+    outcome.partial = true;
+    return outcome;
+}
+
+ExitCode reportFailures(const FailureOutcome& outcome, QJsonObject& out, const QString& noun, const QString& allFailedMessage)
+{
+    if (outcome.code == ExitCode::OK) {
+        return ExitCode::OK;
+    }
+
+    QString message;
+    if (outcome.partial) {
+        out.insert(QStringLiteral("partial"), true);
+        message = QStringLiteral("Some of the targets could not be processed");
+    } else if (outcome.error == QLatin1String(FailureCode::NotFound)) {
+        message = QStringLiteral("None of the targets matched a %1").arg(noun);
+    } else if (outcome.error == QLatin1String("ambiguous_target")) {
+        message = QStringLiteral("Some of the targets matched more than one %1").arg(noun);
+    } else {
+        message = allFailedMessage;
+    }
+    return outputError(outcome.error, message, outcome.code, out);
 }
 
 }  // namespace Cli

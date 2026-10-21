@@ -269,6 +269,14 @@ check_json 'd["changed"][0]["enabled"] is False'
 check_json 'd["failed"] == []'
 expect_mod_file '^jei.*\.jar\.disabled$'
 
+step "mod disable (a mod that is already disabled)"
+run_cmd mod disable "${MOD_SLUG}" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'len(d["changed"]) == 0'
+check_json 'len(d["failed"]) == 1'
+check_json 'd["failed"][0]["code"] == "already_absent"'
+
 step "mod list (the disabled mod is hidden by default)"
 run_cmd mod list -i "${INSTANCE_ID}"
 expect_rc 0
@@ -345,6 +353,7 @@ run_cmd mod remove does-not-exist -i "${INSTANCE_ID}"
 expect_rc 3
 check_json 'd["ok"] is False'
 check_json 'd["error"]["code"] == "not_found"'
+check_json 'd["failed"][0]["code"] == "not_found"'
 
 step "mod remove (the dependencies of the first round)"
 run_cmd mod remove mezzconfig fabric-api -i "${INSTANCE_ID}"
@@ -496,16 +505,21 @@ check_json 'any(m["slug"] == "fake" and m["lock_update"] is True for m in d["mod
 
 step "mod remove (a mod that is locked to a version)"
 run_cmd mod remove fake -i "${INSTANCE_ID}"
-expect_rc 4
+expect_rc 1
 check_json 'd["ok"] is False'
 check_json 'd["error"]["code"] == "locked"'
+check_json 'd["failed"][0]["code"] == "locked"'
 expect_file "${MODS_DIR}/fake-mod.jar"
 
-step "mod remove --force (a mod that is locked to a version)"
-run_cmd mod remove fake -i "${INSTANCE_ID}" --force
-expect_rc 0
-check_json 'd["ok"] is True'
+step "mod remove --force (a mod that is locked to a version and a target that does not exist)"
+run_cmd mod remove fake does-not-exist -i "${INSTANCE_ID}" --force
+expect_rc 1
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "partial_failure"'
+check_json 'd["partial"] is True'
 check_json 'len(d["removed"]) == 1'
+check_json 'len(d["failed"]) == 1'
+check_json 'd["failed"][0]["code"] == "not_found"'
 expect_no_file "${MODS_DIR}/fake-mod.jar"
 expect_no_file "${INDEX_DIR}/fake.pw.toml"
 
@@ -543,6 +557,7 @@ check_json 'd["ok"] is False'
 check_json 'd["error"]["code"] == "ambiguous_target"'
 check_json 'len(d["candidates"]) == 1'
 check_json 'len(d["candidates"][0]["candidates"]) == 2'
+check_json 'd["failed"][0]["code"] == "ambiguous"'
 expect_file "${MODS_DIR}/duplicate-a.jar"
 expect_file "${MODS_DIR}/duplicate-b.jar"
 
