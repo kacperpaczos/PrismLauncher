@@ -772,3 +772,43 @@ W trakcie etapu wpadły też porządki poprzednich przebiegów (refaktor `resolv
   (`allowStdin = isHeadlessRun()`); ścieżka headless czyta stdin jak przed Etapem 4.
 - **`ipc_timeout` nie cofa skutków** — jeśli GUI odpowiedzi po limicie, komenda i tak została
   wykonana; klient tylko nie poznał wyniku.
+
+## Codex review round (2026-10-21) — 16 findings, all fixed
+
+An independent review (Codex) of `spike/mod-cli` @ e0e3d1839 produced 16 findings; all are
+fixed on this branch (commits `2a53efde7`..`3a31871eb` + this doc). Build clean (-Werror),
+**35/35 tests**, all smoke scripts green.
+
+### Documented policies (as implemented)
+
+1. **Disabled mod + `mod update`**: the disabled state is PRESERVED — after the update
+   download lands, the new file is renamed back to `.disabled` (`disabledRenames`).
+2. **Partial failures**: every `failed` entry carries a machine `code`
+   (`not_found` | `ambiguous` | `locked` | `io` | `download` | `already_absent`).
+   `evaluateFailures()` computes the outcome: only informational failures (`already_absent`)
+   → success; every target failed → all-`not_found` → exit 3, all-`ambiguous` → exit 5,
+   otherwise exit 1; mixed success/failure → exit 0 but the envelope carries
+   `partial: true` and the per-entry codes.
+3. **IPC busy policy**: while a command batch is executing, a new command arriving over
+   IPC is rejected with `operation_in_progress` (exit 5) instead of running concurrently.
+4. **Non-interactive NetJob policy**: during a CLI operation the launcher sets
+   `NetJob::setDefaultAskRetry(false)` (restored afterwards) — nested jobs created by
+   Prism tasks never open a retry dialog. Upstream discussion point for #6315.
+5. **Path resolution**: paths given by the CLIENT (imports, icons, `notes --file`,
+   `world import`, `screenshot copy` destination) are resolved against the client's
+   working directory, captured before the launcher changes its own directory.
+   `log --file` / `log read --file` stay game-root-relative by design.
+6. **Settings**: the writable key set is explicit — `uuid`, `InstanceType`, `name`,
+   `notes`, play-time fields and `ManagedPack*` are rejected with `key_not_writable`
+   (use the dedicated commands). Memory > 16 MiB, window ≥ 1, `env` must parse as a JSON
+   object map. Unsetting one member of a grouped setting resets the whole group gate —
+   documented in `settings set --help`.
+7. **`servers.dat`**: unknown top-level NBT tags survive a CLI edit (round-trip tested);
+   server mutations refuse to run while the instance is running (in-process check —
+   cross-process state remains a GUI-process limitation, see the W1 note above).
+8. **Raw IPC output**: an empty raw write still produces `"text": ""` marked `raw`; the
+   capture cap counts UTF-8 bytes and the response carries `truncated`.
+
+### Known remaining items (documented, deferred)
+- Update of a pack's mods, CurseForge provider, `world`/`screenshot` over IPC in a
+  running GUI — see the design discussion in #6316.
