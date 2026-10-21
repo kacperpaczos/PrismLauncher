@@ -80,6 +80,15 @@ QJsonObject resourceToJson(const Resource* resource, bool withLockUpdate);
 MinecraftInstance* resolveInstance(Application& app, const QString& id);
 
 /**
+ * @brief whether two paths point at the same file
+ *
+ * The paths are resolved canonically, so that a symlink or a relative path
+ * is compared with the file it points at. The paths of files that do not
+ * exist are compared as absolute paths.
+ */
+bool isSameFile(const QString& a, const QString& b);
+
+/**
  * @brief look up the instance of a command
  *
  * The error is reported and the exit code is returned when the instance does

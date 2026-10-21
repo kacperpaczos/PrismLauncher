@@ -22,6 +22,7 @@
 #include "cli/CommandUtils.h"
 
 #include <QEventLoop>
+#include <QFileInfo>
 #include <QTimer>
 
 #include "Application.h"
@@ -226,6 +227,18 @@ MinecraftInstance* resolveInstance(Application& app, const QString& id)
         return nullptr;
     }
     return instances->getInstanceById(id);
+}
+
+bool isSameFile(const QString& a, const QString& b)
+{
+    const auto canonicalA = QFileInfo(a).canonicalFilePath();
+    const auto canonicalB = QFileInfo(b).canonicalFilePath();
+    if (!canonicalA.isEmpty() && !canonicalB.isEmpty()) {
+        return canonicalA == canonicalB;
+    }
+    // A file that does not exist has no canonical path - the absolute paths
+    // are compared then.
+    return QFileInfo(a).absoluteFilePath() == QFileInfo(b).absoluteFilePath();
 }
 
 ExitCode resolveInstance(Application& app, const QString& id, MinecraftInstance*& instance)

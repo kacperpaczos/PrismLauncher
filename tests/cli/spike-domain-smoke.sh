@@ -532,6 +532,22 @@ run_cmd screenshot copy "shot.png" "${TMP_ROOT}/copy.png" -i "${INSTANCE_ID}" --
 expect_rc 0
 check_json 'd["ok"] is True'
 
+# The copy must never replace the screenshot itself - the screenshot would be
+# gone then.
+step "screenshot copy --force (the destination is the screenshot itself)"
+run_cmd screenshot copy "shot.png" "${GAME_DIR}/screenshots/shot.png" -i "${INSTANCE_ID}" --force
+expect_rc 2
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "copy_failed"'
+expect_file "${GAME_DIR}/screenshots/shot.png"
+
+step "screenshot copy --force (the destination is the folder of the screenshots)"
+run_cmd screenshot copy "shot.png" "${GAME_DIR}/screenshots" -i "${INSTANCE_ID}" --force
+expect_rc 2
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "copy_failed"'
+expect_file "${GAME_DIR}/screenshots/shot.png"
+
 step "screenshot copy (a screenshot that does not exist)"
 run_cmd screenshot copy "nope.png" "${TMP_ROOT}/nope.png" -i "${INSTANCE_ID}"
 expect_rc 3

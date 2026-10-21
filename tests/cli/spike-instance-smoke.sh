@@ -426,6 +426,23 @@ expect_rc 3
 check_json 'd["ok"] is False'
 check_json 'd["error"]["code"] == "icon_not_found"'
 
+step "instance icon set (an image file)"
+printf 'not a real image\n' > "${TMP_ROOT}/spike-icon.png"
+run_cmd instance icon set "${INSTANCE_ID}" "${TMP_ROOT}/spike-icon.png"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["icon_key"] == "spike-icon"'
+expect_file "${DATA_DIR}/icons/spike-icon.png"
+
+# The icon of the launcher itself must not be deleted by the installation of
+# the icon.
+step "instance icon set (the icon of the launcher itself)"
+run_cmd instance icon set "${INSTANCE_ID}" "${DATA_DIR}/icons/spike-icon.png"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["icon_key"] == "spike-icon"'
+expect_file "${DATA_DIR}/icons/spike-icon.png"
+
 step "instance delete"
 run_cmd instance delete spike-renamed --purge
 expect_rc 0

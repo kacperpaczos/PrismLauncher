@@ -21,8 +21,10 @@
 
 #include "cli/ScreenshotCommands.h"
 
+#include <filesystem>
 #include <memory>
 #include <optional>
+#include <system_error>
 
 #include <QDir>
 #include <QFile>
@@ -32,6 +34,7 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
+#include <QTemporaryFile>
 
 #include "Application.h"
 #include "FileSystem.h"
@@ -220,21 +223,57 @@ ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotCopy& cm
     const auto target = destination.isDir() ? FS::PathCombine(destination.absoluteFilePath(), source.fileName())
                                              : destination.absoluteFilePath();
 
+    // The copy must not replace the source - the screenshot would be gone
+    // (the destination is the screenshot itself when the screenshots folder
+    // or the file itself is given).
+    if (isSameFile(source.absoluteFilePath(), target)) {
+        return outputError(QStringLiteral("copy_failed"),
+                           QStringLiteral("The destination '%1' is the screenshot itself").arg(target),
+                           ExitCode::Usage);
+    }
+
     if (QFile::exists(target) && !cmd.force) {
         return outputError(QStringLiteral("file_exists"),
                            QStringLiteral("'%1' already exists - use --force to overwrite it").arg(target),
                            ExitCode::Conflict);
     }
 
-    if (QFile::exists(target) && !QFile::remove(target)) {
+    // The copy is written to a temporary file in the folder of the
+    // destination and then renamed over it - a failed copy never destroys
+    // the file that is already there.
+    const auto targetDir = QFileInfo(target).absolutePath();
+    QTemporaryFile tempFile(QDir(targetDir).filePath(".prism-copy-XXXXXX"));
+    if (!tempFile.open()) {
         return outputError(QStringLiteral("copy_failed"),
-                           QStringLiteral("The existing file '%1' could not be replaced").arg(target),
+                           QStringLiteral("The temporary file in '%1' could not be created").arg(targetDir),
                            ExitCode::Generic);
     }
-    if (!QFile::copy(source.absoluteFilePath(), target)) {
+    const auto tempPath = tempFile.fileName();
+    tempFile.close();
+    // The temporary file is removed again, so that the copy can be written to
+    // it (`QFile::copy` refuses to overwrite).
+    QFile::remove(tempPath);
+
+    if (!QFile::copy(source.absoluteFilePath(), tempPath)) {
+        QFile::remove(tempPath);
         return outputError(QStringLiteral("copy_failed"),
                            QStringLiteral("The screenshot could not be copied to '%1'").arg(target),
                            ExitCode::Generic);
+    }
+
+    // The rename replaces the destination - the old file is only gone when
+    // the new one is there.
+    std::error_code error;
+    std::filesystem::rename(tempPath.toStdString(), target.toStdString(), error);
+    if (error) {
+        // The rename of some platforms does not replace an existing file.
+        QFile::remove(target);
+        if (!QFile::rename(tempPath, target)) {
+            QFile::remove(tempPath);
+            return outputError(QStringLiteral("copy_failed"),
+                               QStringLiteral("The existing file '%1' could not be replaced").arg(target),
+                               ExitCode::Generic);
+        }
     }
 
     QJsonObject out;

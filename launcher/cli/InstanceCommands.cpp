@@ -87,6 +87,15 @@ QString resolveIconKey(CommandContext& ctx, const QString& icon, QString* instal
     const auto key = info.completeBaseName();
     const auto target = key + "." + info.suffix();
     const auto targetPath = FS::PathCombine(icons->getDirectory(), target);
+    if (isSameFile(info.absoluteFilePath(), targetPath)) {
+        // The file is the icon of the launcher already - it is used as it is.
+        // Installing it again would copy it onto itself and the old icon
+        // would be removed before the copy - the source would be gone.
+        if (installedFrom) {
+            *installedFrom = targetPath;
+        }
+        return key;
+    }
     // `QFile::copy` refuses to overwrite, so the old icon is removed first.
     QFile::remove(targetPath);
     icons->installIcon(icon, target);
