@@ -121,7 +121,13 @@ void InstanceTask::scheduleToDelete(QWidget* parent, const QDir& dir, const QStr
     }
     if (path.startsWith("saves/")) {
         if (m_shouldDeleteSaves == ShouldDeleteSaves::NotAsked) {
-            m_shouldDeleteSaves = askIfShouldDeleteSaves(parent);
+            if (m_interactive) {
+                m_shouldDeleteSaves = askIfShouldDeleteSaves(parent);
+            } else {
+                // A headless run cannot answer the question - the saves are
+                // kept, the same way the dialog defaults to "No".
+                m_shouldDeleteSaves = ShouldDeleteSaves::No;
+            }
         }
         if (m_shouldDeleteSaves == ShouldDeleteSaves::No) {
             return;
@@ -163,6 +169,12 @@ void InstanceTask::downloadFiles(MinecraftInstance* inst)
             return;
         }
         if (!task->wasSuccessful()) {
+            if (!m_interactive) {
+                // A headless run cannot show the error - the task fails, so
+                // that the failure is not reported as a success.
+                emitFailed(tr("Could not download game files: %1").arg(task->failReason()));
+                return;
+            }
             CustomMessageBox::selectable(QApplication::activeWindow(), tr("Error"),
                                          tr("Could not download game files: %1").arg(task->failReason()), QMessageBox::Warning)
                 ->show();

@@ -1144,6 +1144,9 @@ bool InstanceList::commitStagedInstance(const QString& path, const InstanceTask&
     }
 
     saveGroupList();
+    // The id of the instance is decided here - it is remembered, so that the
+    // caller does not have to predict it.
+    m_committedInstanceId = instID;
     return true;
 }
 

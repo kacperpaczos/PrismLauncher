@@ -42,6 +42,17 @@ class InstanceTask : public Task {
     bool downloadDuringCreation() const { return m_downloadDuringCreation; }
     void setDownloadDuringCreation(bool download) { m_downloadDuringCreation = download; }
 
+    /**
+     * @brief whether the task may ask the user a question
+     *
+     * A headless run has nobody to answer the dialogs of the launcher, so
+     * the tasks of the CLI turn this off: the defaults are taken and the
+     * warnings are written to the standard error instead of being shown in a
+     * dialog. It is on by default, so that the GUI keeps its behaviour.
+     */
+    bool isInteractive() const { return m_interactive; }
+    void setInteractive(bool interactive) { m_interactive = interactive; }
+
     bool shouldOverride() const { return m_overrideExisting; }
 
     QString originalInstanceID() const { return m_originalInstanceId; };
@@ -70,6 +81,7 @@ class InstanceTask : public Task {
     QString m_targetDir;
     QString m_stagingPath;
     bool m_downloadDuringCreation = true;
+    bool m_interactive = true;
 
     bool m_overrideExisting = false;
     bool m_confirmUpdate = true;

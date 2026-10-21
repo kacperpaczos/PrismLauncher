@@ -139,6 +139,15 @@ class InstanceList : public QAbstractListModel {
      */
     bool commitStagedInstance(const QString& keyPath, const InstanceTask& instanceTask, QString groupName);
 
+    /**
+     * @brief the id of the instance that was committed last
+     *
+     * The id of a new instance is decided when it is committed - a folder
+     * with the same name may exist already - so it cannot be predicted
+     * before the commit.
+     */
+    const QString& committedInstanceId() const { return m_committedInstanceId; }
+
     Qt::DropActions supportedDragActions() const override;
 
     Qt::DropActions supportedDropActions() const override;
@@ -193,6 +202,8 @@ class InstanceList : public QAbstractListModel {
 
     SettingsObject* m_globalSettings;
     QStringList m_instDirs;
+    // The id of the instance that was committed last.
+    QString m_committedInstanceId;
     QHash<InstanceId, QString> m_instanceRootDirMap;
     QString rootDirOf(const InstanceId& id) const;
     QFileSystemWatcher* m_watcher;

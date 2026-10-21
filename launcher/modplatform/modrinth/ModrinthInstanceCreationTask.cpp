@@ -144,14 +144,21 @@ void ModrinthCreationTask::executeTask()
         }
     } else {
         // We don't have an old index file, so we may duplicate stuff!
-        auto* dialog = CustomMessageBox::selectable(m_parent, tr("No index file."),
-                                                    tr("We couldn't find a suitable index file for the older version. This may cause some "
-                                                       "of the files to be duplicated. Do you want to continue?"),
-                                                    QMessageBox::Warning, QMessageBox::Ok | QMessageBox::Cancel);
+        if (m_interactive) {
+            auto* dialog = CustomMessageBox::selectable(m_parent, tr("No index file."),
+                                                        tr("We couldn't find a suitable index file for the older version. This may cause some "
+                                                           "of the files to be duplicated. Do you want to continue?"),
+                                                        QMessageBox::Warning, QMessageBox::Ok | QMessageBox::Cancel);
 
-        if (dialog->exec() == QDialog::DialogCode::Rejected) {
-            emitAborted();
-            return;
+            if (dialog->exec() == QDialog::DialogCode::Rejected) {
+                emitAborted();
+                return;
+            }
+        } else {
+            // A headless run cannot answer the question - the warning is
+            // written to the standard error and the import continues.
+            qWarning() << tr("We couldn't find a suitable index file for the older version. This may cause some of the files to be "
+                             "duplicated.");
         }
     }
 
@@ -170,7 +177,9 @@ void ModrinthCreationTask::createInstance()
     QString parentFolder(FS::PathCombine(m_stagingPath, "mrpack"));
 
     QString indexPath = FS::PathCombine(m_stagingPath, "modrinth.index.json");
-    if (m_files.empty() && !parseManifest(indexPath, m_files, true, true)) {
+    // A headless run cannot answer the question of the optional files - the
+    // defaults are taken then.
+    if (m_files.empty() && !parseManifest(indexPath, m_files, true, m_interactive)) {
         return;
     }
 
@@ -490,6 +499,16 @@ bool ModrinthCreationTask::promptForUntrustedMods()
         return true;
     }
 
+    if (!m_interactive) {
+        // A headless run cannot answer the question - the mods are written to
+        // the standard error and the import continues.
+        qWarning() << tr("The modpack contains files that are not hosted on Modrinth:");
+        for (const auto& mod : untrustedMods) {
+            qWarning() << "  " << mod;
+        }
+        return true;
+    }
+
     UntrustedModsDialog dialog{ untrustedMods, m_parent };
     return dialog.exec() == QDialog::Accepted;
 }
@@ -538,7 +557,15 @@ void ModrinthCreationTask::finishInstall()
         // is preserved, but if we're using the original one, we update the version string.
         // NOTE: This needs to come before the setManagedPack call!
         if (inst->name().contains(inst->getManagedPackVersionName()) && inst->name() != name()) {
-            if (askForChangingInstanceName(m_parent, inst->name(), name()) == InstanceNameChange::ShouldChange) {
+            // A headless run cannot answer the question - the name of the
+            // instance is kept then.
+            bool changeName = true;
+            if (m_interactive) {
+                changeName = askForChangingInstanceName(m_parent, inst->name(), name()) == InstanceNameChange::ShouldChange;
+            } else {
+                changeName = false;
+            }
+            if (changeName) {
                 inst->setName(name());
             }
         }

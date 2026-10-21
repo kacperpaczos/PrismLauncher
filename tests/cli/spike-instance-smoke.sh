@@ -495,6 +495,54 @@ run_cmd instance delete spike-created --purge
 expect_rc 0
 check_json 'd["ok"] is True'
 
+# The import of a pack must not ask anything - a headless run has nobody to
+# answer the dialogs of the launcher.
+step "instance create --from (the import of a pack)"
+mkdir -p "${TMP_ROOT}/pack"
+cat > "${TMP_ROOT}/pack/instance.cfg" <<EOF
+[General]
+ConfigVersion=1.3
+InstanceType=OneSix
+name=Imported Pack
+iconKey=default
+uuid=33333333-4444-5555-6666-777777777777
+EOF
+cat > "${TMP_ROOT}/pack/mmc-pack.json" <<EOF
+{
+  "formatVersion": 1,
+  "components": [
+    { "uid": "net.minecraft", "version": "${MC_VERSION}", "cachedVersion": "${MC_VERSION}", "important": true }
+  ]
+}
+EOF
+python3 - "${TMP_ROOT}/pack.zip" "${TMP_ROOT}/pack" <<'PY'
+import os
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "w") as archive:
+    for root, _, files in os.walk(sys.argv[2]):
+        for name in files:
+            path = os.path.join(root, name)
+            archive.write(path, os.path.relpath(path, sys.argv[2]))
+PY
+run_cmd instance create --name spike-imported --from "${TMP_ROOT}/pack.zip" --no-download
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["id"] == "spike-imported"'
+check_json 'd["name"] == "spike-imported"'
+expect_file "${DATA_DIR}/instances/spike-imported/instance.cfg"
+
+step "instance list (the imported instance is there)"
+run_cmd instance list
+expect_rc 0
+check_json 'any(i["id"] == "spike-imported" for i in d["instances"])'
+
+step "instance delete (the imported instance)"
+run_cmd instance delete spike-imported --purge
+expect_rc 0
+check_json 'd["ok"] is True'
+
 step "instance duplicate (a copy for the trash test)"
 run_cmd instance duplicate "${INSTANCE_ID}" --name spike-trash
 expect_rc 0

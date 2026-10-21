@@ -154,6 +154,14 @@ void FlameCreationTask::executeTask()
 
     auto warnUser = [this, createInst](const QString& title,
                                        const QString& text) {  // We don't have an old index file, so we may duplicate stuff!
+        if (!m_interactive) {
+            // A headless run cannot answer the question - the warning is
+            // written to the standard error and the import continues.
+            qWarning() << title << ":" << text;
+            createInst();
+            return;
+        }
+
         auto* dialog = CustomMessageBox::selectable(m_parent, title, text, QMessageBox::Warning, QMessageBox::Ok | QMessageBox::Cancel);
 
         if (dialog->exec() == QDialog::DialogCode::Rejected) {

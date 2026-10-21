@@ -294,8 +294,13 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
         // A headless run cannot answer the question whether an existing
         // instance should be updated, so the question is never asked.
         task->setConfirmUpdate(false);
+        // A headless run has nobody to answer the dialogs of the launcher -
+        // the defaults are taken and the warnings are written to the
+        // standard error.
+        task->setInteractive(false);
+        // The files of the game are downloaded when the command asks for it.
+        task->setDownloadDuringCreation(cmd.download);
 
-        const auto expectedId = expectedInstanceId(ctx, cmd.name);
         shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
         if (auto result = runTaskSync(wrapped, g_DownloadTimeoutMs); !result) {
             return outputError(QStringLiteral("create_failed"),
@@ -304,7 +309,10 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
         }
 
         instances->loadList();
-        auto* instance = instances->getInstanceById(expectedId);
+        // The id of the instance is decided when it is committed - a folder
+        // with the same name may exist already - so it is not predicted.
+        const auto committedId = instances->committedInstanceId();
+        auto* instance = committedId.isEmpty() ? nullptr : instances->getInstanceById(committedId);
         if (!instance) {
             return outputError(QStringLiteral("create_failed"),
                                QStringLiteral("The instance was imported, but it could not be found afterwards"),
@@ -380,7 +388,6 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
     task->setIcon(iconKey.isEmpty() ? QStringLiteral("default") : iconKey);
     task->setTargetDir(instances->primaryDir());
 
-    const auto expectedId = expectedInstanceId(ctx, cmd.name);
     shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
     auto result = runTaskSync(wrapped, g_DownloadTimeoutMs);
 
@@ -391,7 +398,10 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
     }
 
     instances->loadList();
-    auto* instance = instances->getInstanceById(expectedId);
+    // The id of the instance is decided when it is committed - a folder with
+    // the same name may exist already - so it is not predicted.
+    const auto committedId = instances->committedInstanceId();
+    auto* instance = committedId.isEmpty() ? nullptr : instances->getInstanceById(committedId);
     if (!instance) {
         return outputError(QStringLiteral("create_failed"),
                            QStringLiteral("The instance was created, but it could not be found afterwards"),

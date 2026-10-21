@@ -316,6 +316,10 @@ void InstanceImportTask::processFlame()
     instCreationTask->setIcon(m_instIcon);
     instCreationTask->setGroup(m_instGroup);
     instCreationTask->setConfirmUpdate(shouldConfirmUpdate());
+    // The child task has to know whether it may ask the user a question and
+    // whether it downloads the files of the game itself.
+    instCreationTask->setInteractive(isInteractive());
+    instCreationTask->setDownloadDuringCreation(downloadDuringCreation());
 
     auto weak = instCreationTask.toWeakRef();
     connect(instCreationTask.get(), &Task::succeeded, this, [this, weak] {
@@ -422,6 +426,10 @@ void InstanceImportTask::processModrinth()
     instCreationTask->setIcon(m_instIcon);
     instCreationTask->setGroup(m_instGroup);
     instCreationTask->setConfirmUpdate(shouldConfirmUpdate());
+    // The child task has to know whether it may ask the user a question and
+    // whether it downloads the files of the game itself.
+    instCreationTask->setInteractive(isInteractive());
+    instCreationTask->setDownloadDuringCreation(downloadDuringCreation());
 
     auto weak = instCreationTask.toWeakRef();
     connect(instCreationTask.get(), &Task::succeeded, this, [this, weak] {
