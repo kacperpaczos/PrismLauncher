@@ -134,7 +134,7 @@ class OutputCapture {
     /// The raw text that was written in the scope of the capture.
     const QString& text() const { return m_text; }
     /// Whether the command wrote raw text instead of a JSON document.
-    bool isRaw() const { return m_documents.empty() && !m_text.isEmpty(); }
+    bool isRaw() const { return m_documents.empty() && m_wroteText; }
     /// The result of the command - the last document it wrote. A command that
     /// only wrote raw text reports it in the `text` field.
     QJsonObject result() const;
@@ -143,6 +143,12 @@ class OutputCapture {
     OutputSink m_previous;
     std::vector<QJsonDocument> m_documents;
     QString m_text;
+    /// Set when raw text was written - a raw write of an empty text is still
+    /// a raw write.
+    bool m_wroteText = false;
+    /// The size of the UTF-8 encoding of the captured text - the cap counts
+    /// the bytes, not the code units of the string.
+    qsizetype m_textBytes = 0;
     /// Set when the captured text hit the size cap - the cap keeps a huge
     /// `log read` from ballooning the IPC response frame.
     bool m_truncated = false;

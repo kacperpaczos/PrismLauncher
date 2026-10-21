@@ -360,6 +360,12 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
                             // The command wrote raw text instead of a JSON
                             // envelope.
                             Cli::outputText(result.data.value(QStringLiteral("text")).toString());
+                            if (result.data.value(QStringLiteral("truncated")).toBool()) {
+                                // The text of the command did not fit into the
+                                // answer of the launcher - the client has to
+                                // say so, the output is incomplete.
+                                std::cerr << "The output of the command was truncated." << std::endl;
+                            }
                         } else {
                             Cli::outputDocument(QJsonDocument(result.data));
                         }

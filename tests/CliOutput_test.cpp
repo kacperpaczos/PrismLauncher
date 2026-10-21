@@ -214,6 +214,24 @@ class CliOutputTest : public QObject {
 
             QCOMPARE(capture.isRaw(), true);
             QCOMPARE(capture.result().value("text").toString(), QString("hello world\n"));
+            // A raw result always says whether it was truncated.
+            QCOMPARE(capture.result().value("truncated").toBool(), false);
+        });
+
+        QVERIFY(raw.isEmpty());
+    }
+
+    void test_outputSink_emptyRawTextIsRaw()
+    {
+        const QByteArray raw = captureStdout([] {
+            Cli::OutputCapture capture;
+
+            Cli::outputText("");
+
+            // The command wrote raw text - even when the text is empty.
+            QCOMPARE(capture.isRaw(), true);
+            QCOMPARE(capture.result().value("text").toString(), QString());
+            QCOMPARE(capture.result().value("truncated").toBool(), false);
         });
 
         QVERIFY(raw.isEmpty());
@@ -230,6 +248,26 @@ class CliOutputTest : public QObject {
             // The cap keeps a huge `log read` from ballooning the IPC frame.
             QCOMPARE(capture.result().value("truncated").toBool(), true);
             QCOMPARE(capture.result().value("text").toString().size(), qsizetype{ 1024 * 1024 });
+        });
+
+        QVERIFY(raw.isEmpty());
+    }
+
+    void test_outputSink_theCapCountsTheBytesOfTheText()
+    {
+        const QByteArray raw = captureStdout([] {
+            Cli::OutputCapture capture;
+
+            // Every character of the text takes two bytes in its UTF-8
+            // encoding - the cap counts the bytes, not the code units.
+            const QString text(600 * 1000, QChar(0x0105));
+            Cli::outputText(text);
+
+            QCOMPARE(capture.result().value("truncated").toBool(), true);
+            const auto captured = capture.result().value("text").toString();
+            QCOMPARE(captured.toUtf8().size(), qsizetype{ 1024 * 1024 });
+            // The cut is at a character boundary - the text is still valid.
+            QCOMPARE(captured.size(), qsizetype{ 512 * 1024 });
         });
 
         QVERIFY(raw.isEmpty());

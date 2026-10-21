@@ -176,6 +176,7 @@ EOF
 
 # an instance with a world and a note
 mkdir -p "${GAME_DIR}/saves/Test World" "${GAME_DIR}/logs"
+printf 'a line of the log\n[12:00:00] [main/INFO]: another line\n' > "${GAME_DIR}/logs/latest.log"
 cat > "${INSTANCE_DIR}/instance.cfg" <<EOF
 [Instance]
 InstanceType=OneSix
@@ -280,6 +281,15 @@ expect_rc 0
 check_json 'd["ok"] is True'
 if ! grep -q "another note" "${INSTANCE_DIR}/instance.cfg"; then
     fail "the launcher did not write the notes of the instance"
+fi
+
+step "log read (the raw output of the launcher)"
+run_cmd log read -i "${INSTANCE_ID}"
+expect_rc 0
+# The command writes raw text instead of a JSON envelope - the client prints
+# the text of the answer.
+if ! echo "${LAST_OUT}" | grep -q "a line of the log"; then
+    fail "the client did not print the raw output of the command: ${LAST_OUT}"
 fi
 
 step "a command of an instance that does not exist"
