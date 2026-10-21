@@ -576,7 +576,10 @@ void InstanceCli::addInstanceArgs(CLI::App& app)
 
     {
         // instance delete <id> [--purge]
-        auto* remove = instance->add_subcommand("delete", "Delete an instance.");
+        auto* remove = instance->add_subcommand(
+            "delete",
+            "Delete an instance. The files of the instance are moved to the trash - the command fails when the trash cannot be used, "
+            "it never deletes them permanently on its own. Use '--purge' to delete them permanently.");
         remove->add_option("id", deleteId, "Instance ID.")->option_text("id")->required();
         remove->add_flag("--purge", deletePurge, "Delete the files of the instance instead of moving them to the trash.");
         addJsonFlag(remove);

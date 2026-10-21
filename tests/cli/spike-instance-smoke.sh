@@ -478,6 +478,29 @@ run_cmd instance delete spike-created --purge
 expect_rc 0
 check_json 'd["ok"] is True'
 
+step "instance duplicate (a copy for the trash test)"
+run_cmd instance duplicate "${INSTANCE_ID}" --name spike-trash
+expect_rc 0
+check_json 'd["ok"] is True'
+expect_file "${DATA_DIR}/instances/spike-trash/instance.cfg"
+
+step "instance delete (the trash is used when --purge is not given)"
+run_cmd instance delete spike-trash
+if [ "${LAST_RC}" = "0" ]; then
+    check_json 'd["ok"] is True'
+    check_json 'd["method"] == "trash"'
+    check_json 'd["purged"] is False'
+    expect_no_file "${DATA_DIR}/instances/spike-trash/instance.cfg"
+else
+    # The trash is not available everywhere (a headless machine has no
+    # desktop) - the command has to fail then, it must never delete the files
+    # permanently on its own.
+    expect_rc 5
+    check_json 'd["ok"] is False'
+    check_json 'd["error"]["code"] == "trash_failed"'
+    expect_file "${DATA_DIR}/instances/spike-trash/instance.cfg"
+fi
+
 if [ "${FULL_DOWNLOAD:-0}" = "1" ]; then
     # The download of the files of an instance takes a while, so it is only
     # done when the test is asked for it.

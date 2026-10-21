@@ -570,14 +570,28 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceDelete& cmd)
 
     // The instance is moved to the trash by default. The trash is not
     // available everywhere (a headless machine has no desktop), so the
-    // files are deleted permanently when the trash cannot be used - the same
-    // fallback the GUI takes.
+    // command fails when the trash cannot be used - it never falls back to
+    // the permanent deletion on its own, that is what `--purge` is for.
     bool trashed = false;
-    if (!cmd.purge) {
-        trashed = instances->trashInstance(cmd.id);
-    }
-    if (!trashed) {
+    if (cmd.purge) {
         instances->deleteInstance(cmd.id);
+        // The deletion of the launcher only logs its failures, so the folder
+        // is checked here - the command must not report a success that did
+        // not happen.
+        if (QFileInfo::exists(path)) {
+            instances->loadList();
+            return outputError(QStringLiteral("delete_failed"),
+                               QStringLiteral("The instance '%1' could not be deleted").arg(cmd.id),
+                               ExitCode::Generic);
+        }
+    } else {
+        trashed = instances->trashInstance(cmd.id);
+        if (!trashed) {
+            return outputError(QStringLiteral("trash_failed"),
+                               QStringLiteral("The instance '%1' could not be moved to the trash - use --purge to delete it permanently")
+                                   .arg(cmd.id),
+                               ExitCode::Ambiguous);
+        }
     }
 
     instances->loadList();
