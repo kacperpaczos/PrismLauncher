@@ -131,6 +131,7 @@
 #include <minecraft/auth/AccountList.h>
 #include "icons/IconList.h"
 #include "net/HttpMetaCache.h"
+#include "net/NetJob.h"
 
 #include "updater/ExternalUpdater.h"
 
@@ -1326,6 +1327,13 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
     // - the guard keeps the batch and the command apart.
     m_operationBusy = true;
 
+    // The jobs of a command must not ask the user whether a failed request
+    // should be retried - the dialog cannot be answered in a headless run
+    // and it would block the launcher when the command runs over the IPC. The
+    // default is restored afterwards, so that the GUI keeps its behaviour.
+    const bool oldAskRetry = NetJob::defaultAskRetry();
+    NetJob::setDefaultAskRetry(false);
+
     // headless command handling (mod management)
     Cli::ExitCode headlessExitCode = Cli::ExitCode::OK;
     bool stopProcessing = false;
@@ -1538,6 +1546,7 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
 
     // The batch is done - a command that arrives now is executed again.
     m_operationBusy = false;
+    NetJob::setDefaultAskRetry(oldAskRetry);
 
     return headlessExitCode;
 }

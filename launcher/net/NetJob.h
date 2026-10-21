@@ -64,6 +64,22 @@ class NetJob : public ConcurrentTask {
     auto getFailedFiles() -> QList<QString>;
     void setAskRetry(bool askRetry);
 
+    /// Whether the job asks the user whether a failed request should be retried.
+    bool asksRetry() const { return m_ask_retry; }
+
+    /**
+     * @brief whether the jobs that are created ask for a retry
+     *
+     * The jobs of the GUI ask the user whether a failed request should be
+     * retried - a dialog cannot be answered in a headless run, so the CLI
+     * turns the default off for the duration of its operations. The default
+     * is on, so that the GUI keeps its behaviour.
+     */
+    static bool defaultAskRetry();
+
+    /// @brief set the default for the jobs that are created afterwards
+    static void setDefaultAskRetry(bool askRetry);
+
    public slots:
     // Qt can't handle auto at the start for some reason?
     bool abort() override;
@@ -82,4 +98,7 @@ class NetJob : public ConcurrentTask {
     int m_try = 1;
     bool m_ask_retry = true;
     int m_manual_try = 0;
+
+    // The default of the `m_ask_retry` of the jobs that are created.
+    static bool s_defaultAskRetry;
 };

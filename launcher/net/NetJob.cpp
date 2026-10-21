@@ -46,7 +46,20 @@
 #include "ui/dialogs/NetworkJobFailedDialog.h"
 #endif
 
-NetJob::NetJob(QString job_name, QNetworkAccessManager* network, int max_concurrent) : ConcurrentTask(job_name), m_network(network)
+bool NetJob::s_defaultAskRetry = true;
+
+bool NetJob::defaultAskRetry()
+{
+    return s_defaultAskRetry;
+}
+
+void NetJob::setDefaultAskRetry(bool askRetry)
+{
+    s_defaultAskRetry = askRetry;
+}
+
+NetJob::NetJob(QString job_name, QNetworkAccessManager* network, int max_concurrent)
+    : ConcurrentTask(job_name), m_network(network), m_ask_retry(s_defaultAskRetry)
 {
 #if defined(LAUNCHER_APPLICATION)
     if (APPLICATION_DYN && max_concurrent < 0)
