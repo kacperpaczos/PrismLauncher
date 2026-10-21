@@ -302,6 +302,12 @@ class Application : public QApplication {
     // (messageReceived) and must never turn a running GUI launcher headless.
     bool m_headlessRun = false;
 
+    // True while a batch of commands is being executed. A command that
+    // arrives over the IPC in the meantime would run inside the batch and
+    // its side effects would interfere with the ones of the batch, so it is
+    // refused.
+    bool m_operationBusy = false;
+
 #ifdef Q_OS_MACOS
     Qt::ApplicationState m_prevAppState = Qt::ApplicationInactive;
 #endif

@@ -1322,6 +1322,10 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
 {
     QList<QUrl> toProcessURIs{};
 
+    // A command that arrives while the batch is running would run inside it
+    // - the guard keeps the batch and the command apart.
+    m_operationBusy = true;
+
     // headless command handling (mod management)
     Cli::ExitCode headlessExitCode = Cli::ExitCode::OK;
     bool stopProcessing = false;
@@ -1532,6 +1536,9 @@ Cli::ExitCode Application::processCommands(const std::vector<Cli::Command>& cmds
         QCoreApplication::exit(static_cast<int>(headlessExitCode));
     }
 
+    // The batch is done - a command that arrives now is executed again.
+    m_operationBusy = false;
+
     return headlessExitCode;
 }
 
@@ -1561,6 +1568,26 @@ void Application::messageReceived(const QByteArray& message, quint64 handle)
         // The launcher does not expect answers and acknowledgements - they are
         // the messages of the client.
         qWarning() << "Received unexpected message of the IPC:" << static_cast<int>(received.type);
+        return;
+    }
+
+    if (m_operationBusy) {
+        // A batch of commands is running in this process. The command would
+        // run inside the batch and its side effects would interfere with the
+        // ones of the batch, so it is refused.
+        if (m_headlessRun) {
+            // A headless run has nobody to answer the request in - the
+            // dispatch is ignored entirely.
+            std::cerr << "The command is ignored: another command is running in this process." << std::endl;
+            return;
+        }
+        if (received.expectsReply()) {
+            answerRequest(received.requestId,
+                          handle,
+                          Cli::ExitCode::Ambiguous,
+                          Cli::errorEnvelope(QStringLiteral("operation_in_progress"),
+                                             QStringLiteral("another command is running in the launcher")));
+        }
         return;
     }
 

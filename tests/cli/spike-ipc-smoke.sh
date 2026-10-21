@@ -299,6 +299,38 @@ if ! kill -0 "${GUI_PID}" 2>/dev/null; then
     fail "the launcher died while it served the requests"
 fi
 
+step "two commands at the same time"
+# The launcher refuses a command that arrives while another one is running -
+# the side effects of the two commands would interfere with each other. The
+# refusal does not have to happen (the commands may be executed one after the
+# other), but the launcher has to survive it either way and a refused command
+# has to say why it was refused.
+PARALLEL_PIDS=""
+for n in 1 2 3 4; do
+    (
+        QT_QPA_PLATFORM=offscreen "${PRISM_BIN}" -d "${DATA_DIR}" --ipc-timeout 20 mod list -i "${INSTANCE_ID}" \
+            >"${TMP_ROOT}/parallel${n}.json" 2>>"${LOG_FILE}"
+        echo "$?" > "${TMP_ROOT}/parallel${n}.rc"
+    ) &
+    PARALLEL_PIDS="${PARALLEL_PIDS} $!"
+done
+for pid in ${PARALLEL_PIDS}; do
+    wait "${pid}"
+done
+for n in 1 2 3 4; do
+    rc="$(cat "${TMP_ROOT}/parallel${n}.rc")"
+    echo "   parallel client ${n} -> exit ${rc}"
+    if [ "${rc}" = "0" ]; then
+        continue
+    fi
+    if ! grep -q "operation_in_progress" "${TMP_ROOT}/parallel${n}.json"; then
+        fail "the refused command does not report the operation_in_progress error: $(cat "${TMP_ROOT}/parallel${n}.json")"
+    fi
+done
+if ! kill -0 "${GUI_PID}" 2>/dev/null; then
+    fail "the launcher died while it served the concurrent requests"
+fi
+
 # --------------------------------------------------------------------------
 # the launcher is gone - the commands work on their own
 # --------------------------------------------------------------------------
