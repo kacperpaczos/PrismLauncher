@@ -194,6 +194,7 @@
 
 #include "logging/Debug.h"
 
+#include "cli/CommandUtils.h"
 #include "cli/Commands.h"
 #include "cli/Ipc.h"
 #include "cli/InstanceCommands.h"
@@ -2214,7 +2215,9 @@ void Application::triggerUpdateCheck()
 
 QUrl Application::normalizeImportUrl(const QString& url)
 {
-    auto localFile = QFileInfo(url);
+    // A relative path is resolved against the working directory of the
+    // client - the launcher runs in the data path.
+    auto localFile = QFileInfo(Cli::resolveClientPath(url));
     if (localFile.exists()) {
         return QUrl::fromLocalFile(localFile.absoluteFilePath());
     }

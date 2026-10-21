@@ -48,6 +48,27 @@ class ResourceFolderModel;
 
 namespace Cli {
 
+/**
+ * @brief the working directory of the client
+ *
+ * The launcher changes its own working directory to the data path, so the
+ * paths that the client gives are resolved against the directory it was
+ * started in.
+ */
+QString clientWorkingDir();
+
+/// @brief remember the working directory of the client
+void setClientWorkingDir(const QString& dir);
+
+/**
+ * @brief resolve a path of the client against its working directory
+ *
+ * An absolute path is returned as it is. A relative path is resolved against
+ * the working directory of the client - otherwise it would point at a file of
+ * the data path of the launcher.
+ */
+QString resolveClientPath(const QString& path);
+
 /// @brief a string that is empty when there is nothing to report
 QJsonValue jsonNullIfEmpty(const QString& value);
 QJsonValue jsonNullIfEmpty(const QVariant& value);

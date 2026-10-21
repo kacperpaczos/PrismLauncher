@@ -221,7 +221,9 @@ ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotCopy& cm
     }
 
     const auto source = selected.first()->m_file;
-    const QFileInfo destination(cmd.destination);
+    // A relative path is resolved against the working directory of the
+    // client - the launcher runs in the data path.
+    const QFileInfo destination(resolveClientPath(cmd.destination));
     const auto target = destination.isDir() ? FS::PathCombine(destination.absoluteFilePath(), source.fileName())
                                              : destination.absoluteFilePath();
 

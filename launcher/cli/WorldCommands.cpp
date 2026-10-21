@@ -420,7 +420,9 @@ ExitCode runWorldCommand(CommandContext& ctx, const Cmd::WorldImport& cmd)
         return code;
     }
 
-    const QFileInfo source(cmd.path);
+    // A relative path is resolved against the working directory of the
+    // client - the launcher runs in the data path.
+    const QFileInfo source(resolveClientPath(cmd.path));
     if (!source.exists()) {
         return outputError(QStringLiteral("import_source_not_found"),
                            QStringLiteral("The world '%1' does not exist").arg(cmd.path),

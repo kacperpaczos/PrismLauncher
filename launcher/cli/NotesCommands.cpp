@@ -66,7 +66,9 @@ QString trimTrailingBreak(const QString& text)
 Result<QString, QString> readNotesText(const Cmd::NotesSet& cmd, bool allowStdin)
 {
     if (cmd.file.has_value()) {
-        const QFileInfo info(*cmd.file);
+        // A relative path is resolved against the working directory of the
+        // client - the launcher runs in the data path.
+        const QFileInfo info(resolveClientPath(*cmd.file));
         if (!info.exists() || !info.isFile()) {
             return std::unexpected(QStringLiteral("There is no file '%1'").arg(*cmd.file));
         }

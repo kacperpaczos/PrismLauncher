@@ -108,6 +108,21 @@ run_cmd() {
     echo "   \$ prismlauncher $* -> exit ${rc}"
 }
 
+# run_cmd_in <directory> <arguments> - the command is run in the given
+# directory, so that a relative path of the client can be tested.
+run_cmd_in() {
+    local dir="$1"
+    shift
+    local out rc
+    set +e
+    out="$(cd "${dir}" && QT_QPA_PLATFORM=offscreen "${PRISM_BIN}" "$@" 2>>"${LOG_FILE}")"
+    rc=$?
+    set -e
+    LAST_OUT="${out}"
+    LAST_RC="${rc}"
+    echo "   \$ (cd ${dir} && prismlauncher $*) -> exit ${rc}"
+}
+
 expect_rc() {
     local expected="$1"
     if [ "${LAST_RC}" != "${expected}" ]; then
@@ -532,6 +547,17 @@ check_json 'd["ok"] is True'
 check_json 'd["id"] == "spike-imported"'
 check_json 'd["name"] == "spike-imported"'
 expect_file "${DATA_DIR}/instances/spike-imported/instance.cfg"
+
+# The paths of the client are relative to the directory the command was
+# started in - the launcher itself runs in the data path.
+step "instance create --from (a relative path of the client)"
+run_cmd_in "${TMP_ROOT}" instance create --name spike-relative --from "pack.zip" --no-download
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["id"] == "spike-relative"'
+expect_file "${DATA_DIR}/instances/spike-relative/instance.cfg"
+run_cmd instance delete spike-relative --purge
+expect_rc 0
 
 step "instance list (the imported instance is there)"
 run_cmd instance list

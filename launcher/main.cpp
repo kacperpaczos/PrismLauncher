@@ -37,6 +37,7 @@
 
 #include <BuildConfig.h>
 
+#include <QDir>
 #include <QObject>
 #include <QString>
 
@@ -46,6 +47,7 @@
 #include "console/WindowsConsole.h"
 #endif
 
+#include "cli/CommandUtils.h"
 #include "cli/Commands.h"
 #include "cli/Parser.h"
 
@@ -62,6 +64,11 @@ int main(int argc, char* argv[])
     const auto exePath = Startup::resolveApplicationFilePath(argv[0]);
     // get default dataPath before cli alterations
     const auto dataPathResult = Startup::resolveDataPath(exePath.parent_path());
+
+    // The launcher changes its own working directory to the data path - the
+    // paths of the client are resolved against the directory it was started
+    // in, so it has to be remembered before that.
+    Cli::setClientWorkingDir(QDir::currentPath());
 
     Cli::Args args{
         .dataPath = dataPathResult,

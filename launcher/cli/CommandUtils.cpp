@@ -23,6 +23,7 @@
 
 #include <algorithm>
 
+#include <QDir>
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QTimer>
@@ -48,6 +49,10 @@ namespace {
 constexpr int g_NetworkTimeoutMs = 180000;
 constexpr int g_SearchPageSize = 25;
 
+// The working directory of the client - the launcher changes its own working
+// directory to the data path.
+QString g_clientWorkingDir;
+
 /// Runs a paged Modrinth search - the endpoint hardcodes the page size, so
 /// the results have to be requested page by page - and builds the JSON
 /// envelope shared by the search commands. The raw response is used (instead
@@ -63,6 +68,32 @@ NetJob::Ptr makeCliNetJob(const QString& name)
     auto job = makeShared<NetJob>(name, APPLICATION->network());
     job->setAskRetry(false);
     return job;
+}
+
+QString clientWorkingDir()
+{
+    return g_clientWorkingDir;
+}
+
+void setClientWorkingDir(const QString& dir)
+{
+    g_clientWorkingDir = dir;
+}
+
+QString resolveClientPath(const QString& path)
+{
+    if (path.isEmpty()) {
+        return path;
+    }
+    const QFileInfo info(path);
+    if (info.isAbsolute()) {
+        return path;
+    }
+    const auto dir = clientWorkingDir();
+    if (dir.isEmpty()) {
+        return path;
+    }
+    return QDir(dir).absoluteFilePath(path);
 }
 
 

@@ -66,6 +66,24 @@ namespace {
 constexpr int g_DownloadTimeoutMs = 900000;
 
 /**
+ * The icon of an instance - it is either an icon key or the path of an image
+ * file.
+ *
+ * A relative path is resolved against the working directory of the client -
+ * the launcher runs in the data path. A path that does not point at a file is
+ * an icon key, so it is used as it is.
+ */
+QString resolveIconPath(const QString& icon)
+{
+    const auto resolved = resolveClientPath(icon);
+    const QFileInfo info(resolved);
+    if (info.exists() && info.isFile()) {
+        return resolved;
+    }
+    return icon;
+}
+
+/**
  * The icon key of a new instance. A path of an image file is installed into
  * the icon directory of the launcher, everything else is used as it is.
  */
@@ -272,13 +290,16 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
     }
 
     // The icon of a new instance is either an icon key or the path of an
-    // image file that is installed into the icon directory.
+    // image file that is installed into the icon directory. A relative path
+    // is resolved against the working directory of the client.
     QString installedIcon;
-    const auto iconKey = cmd.icon.has_value() ? resolveIconKey(ctx, cmd.icon.value(), &installedIcon) : QString();
+    const auto iconKey = cmd.icon.has_value() ? resolveIconKey(ctx, resolveIconPath(cmd.icon.value()), &installedIcon) : QString();
 
     if (cmd.from.has_value()) {
         // ---- import an instance from a URL or a file ----
-        const auto source = cmd.from.value();
+        // A relative path is resolved against the working directory of the
+        // client - the launcher runs in the data path.
+        const auto source = resolveClientPath(cmd.from.value());
         QFileInfo info(source);
         const auto url = info.exists() && info.isFile() ? QUrl::fromLocalFile(info.absoluteFilePath()) : QUrl(source);
         if (!url.isValid()) {
@@ -644,7 +665,7 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceIconSet& cmd
     }
 
     QString installedIcon;
-    const auto key = resolveIconKey(ctx, cmd.icon, &installedIcon);
+    const auto key = resolveIconKey(ctx, resolveIconPath(cmd.icon), &installedIcon);
     if (installedIcon.isEmpty()) {
         // The icon is not a file, so it has to be an existing icon key.
         if (!icons->icon(key)) {

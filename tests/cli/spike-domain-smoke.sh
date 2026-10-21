@@ -77,6 +77,21 @@ run_cmd() {
     echo "   \$ prismlauncher $* -> exit ${rc}"
 }
 
+# run_cmd_in <directory> <arguments> - the command is run in the given
+# directory, so that a relative path of the client can be tested.
+run_cmd_in() {
+    local dir="$1"
+    shift
+    local out rc
+    set +e
+    out="$(cd "${dir}" && QT_QPA_PLATFORM=offscreen "${PRISM_BIN}" "$@" 2>>"${LOG_FILE}")"
+    rc=$?
+    set -e
+    LAST_OUT="${out}"
+    LAST_RC="${rc}"
+    echo "   \$ (cd ${dir} && prismlauncher $*) -> exit ${rc}"
+}
+
 expect_rc() {
     local expected="$1"
     if [ "${LAST_RC}" != "${expected}" ]; then
@@ -451,6 +466,14 @@ run_cmd notes set -i "${INSTANCE_ID}" --file "${TMP_ROOT}/notes4.txt"
 expect_rc 0
 check_json 'd["notes"] == "with a break"'
 
+# The paths of the client are relative to the directory the command was
+# started in - the launcher itself runs in the data path.
+step "notes set --file (a relative path of the client)"
+printf 'from a relative file' > "${TMP_ROOT}/relative-notes.txt"
+run_cmd_in "${TMP_ROOT}" notes set -i "${INSTANCE_ID}" --file "relative-notes.txt"
+expect_rc 0
+check_json 'd["notes"] == "from a relative file"'
+
 step "notes set (a file that does not exist)"
 run_cmd notes set -i "${INSTANCE_ID}" --file "${TMP_ROOT}/nope.txt"
 expect_rc 3
@@ -547,6 +570,14 @@ expect_rc 2
 check_json 'd["ok"] is False'
 check_json 'd["error"]["code"] == "copy_failed"'
 expect_file "${GAME_DIR}/screenshots/shot.png"
+
+# The paths of the client are relative to the directory the command was
+# started in - the launcher itself runs in the data path.
+step "screenshot copy (a relative path of the client)"
+run_cmd_in "${TMP_ROOT}" screenshot copy "shot.png" "relative-copy.png" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+expect_file "${TMP_ROOT}/relative-copy.png"
 
 step "screenshot copy (a screenshot that does not exist)"
 run_cmd screenshot copy "nope.png" "${TMP_ROOT}/nope.png" -i "${INSTANCE_ID}"
