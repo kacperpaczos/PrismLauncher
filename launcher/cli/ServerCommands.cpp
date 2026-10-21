@@ -165,6 +165,12 @@ ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerAdd& cmd)
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
         return code;
     }
+    // The check is in-process: a separate CLI process cannot see that an
+    // instance is running, so it only guards the commands that are dispatched
+    // inside a running launcher.
+    if (auto code = checkInstanceRunning(instance, cmd.instance, QStringLiteral("change the servers")); code != ExitCode::OK) {
+        return code;
+    }
 
     std::optional<ServersDat> dat;
     if (auto code = loadServers(instance, dat); code != ExitCode::OK) {
@@ -193,6 +199,12 @@ ExitCode runServerCommand(CommandContext& ctx, const Cmd::ServerRemove& cmd)
 {
     MinecraftInstance* instance = nullptr;
     if (auto code = resolveInstance(ctx.app, cmd.instance, instance); code != ExitCode::OK) {
+        return code;
+    }
+    // The check is in-process: a separate CLI process cannot see that an
+    // instance is running, so it only guards the commands that are dispatched
+    // inside a running launcher.
+    if (auto code = checkInstanceRunning(instance, cmd.instance, QStringLiteral("change the servers")); code != ExitCode::OK) {
         return code;
     }
 

@@ -24,6 +24,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QString>
+#include <memory>
 #include <optional>
 
 namespace nbt {
@@ -83,6 +84,16 @@ class ServersDat {
     };
 
     explicit ServersDat(const QString& path);
+    ~ServersDat();
+
+    // The unknown tags of the file are held in a compound - the class cannot
+    // be copied, it can be moved.
+    ServersDat(const ServersDat&) = delete;
+    ServersDat& operator=(const ServersDat&) = delete;
+    // The move operations are defined in the implementation - the unknown
+    // tags are held in a compound that is only complete there.
+    ServersDat(ServersDat&&) noexcept;
+    ServersDat& operator=(ServersDat&&) noexcept;
 
     /// The path of the file.
     const QString& path() const { return m_path; }
@@ -119,4 +130,7 @@ class ServersDat {
     QString m_path;
     QList<Server> m_servers;
     State m_state = State::Missing;
+    /// The tags of the file that the CLI does not know - they are written
+    /// back unchanged, so that an edit of the list does not lose them.
+    std::unique_ptr<nbt::tag_compound> m_unknownTags;
 };

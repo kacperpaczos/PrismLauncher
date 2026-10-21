@@ -23,9 +23,17 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <sstream>
+
 #include <FileSystem.h>
 
 #include <minecraft/ServersDat.h>
+
+#include <io/stream_reader.h>
+#include <io/stream_writer.h>
+#include <tag_compound.h>
+#include <tag_list.h>
+#include <tag_string.h>
 
 class ServersDatTest : public QObject {
     Q_OBJECT
@@ -160,6 +168,63 @@ class ServersDatTest : public QObject {
         QCOMPARE(backup.load(), ServersDat::State::Loaded);
         QCOMPARE(backup.servers().size(), 1);
         QCOMPARE(backup.servers()[0].m_name, QString("First"));
+    }
+
+    void test_unknownTagsSurviveAnEdit()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = FS::PathCombine(dir.path(), "servers.dat");
+
+        // A file with a tag that the CLI does not know.
+        {
+            nbt::tag_compound root;
+            nbt::tag_list servers;
+            nbt::tag_compound server;
+            server.insert("name", std::string("Hypixel"));
+            server.insert("ip", std::string("mc.hypixel.net"));
+            servers.push_back(std::move(server));
+            root.insert("servers", nbt::value(std::move(servers)));
+            root.insert("someUnknownTag", std::string("a value"));
+
+            std::ostringstream stream;
+            nbt::io::write_tag("", root, stream);
+            const auto data = stream.str();
+
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(data.data(), static_cast<int>(data.size()));
+            file.close();
+        }
+
+        // The list is edited...
+        {
+            ServersDat dat(path);
+            QCOMPARE(dat.load(), ServersDat::State::Loaded);
+            QCOMPARE(dat.servers().size(), 1);
+            dat.add(Server("Second", "example.com:25565"));
+            QVERIFY(dat.save());
+        }
+
+        // ...and the unknown tag is still there.
+        {
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            const auto data = file.readAll();
+            file.close();
+
+            std::istringstream stream(std::string(data.constData(), data.size()));
+            auto pair = nbt::io::read_compound(stream);
+            QVERIFY(pair.second != nullptr);
+            QVERIFY(pair.second->has_key("someUnknownTag"));
+            QCOMPARE(pair.second->at("someUnknownTag").as<nbt::tag_string>().get(), std::string("a value"));
+        }
+
+        // The list itself was changed.
+        ServersDat dat(path);
+        QCOMPARE(dat.load(), ServersDat::State::Loaded);
+        QCOMPARE(dat.servers().size(), 2);
+        QCOMPARE(dat.servers()[1].m_name, QString("Second"));
     }
 };
 

@@ -85,6 +85,12 @@ void Server::serialize(nbt::tag_compound& server) const
 
 ServersDat::ServersDat(const QString& path) : m_path(path) {}
 
+ServersDat::~ServersDat() = default;
+
+ServersDat::ServersDat(ServersDat&&) noexcept = default;
+
+ServersDat& ServersDat::operator=(ServersDat&&) noexcept = default;
+
 QString ServersDat::pathForGameRoot(const QString& gameRoot)
 {
     return FS::PathCombine(gameRoot, "servers.dat");
@@ -125,6 +131,16 @@ ServersDat::State ServersDat::load()
         return m_state;
     }
 
+    // The tags that the CLI does not know are kept - they are written back
+    // unchanged, so that an edit of the list does not lose them.
+    m_unknownTags = std::make_unique<nbt::tag_compound>();
+    for (const auto& [key, value] : *root) {
+        if (key == "servers") {
+            continue;
+        }
+        m_unknownTags->insert(key, nbt::value(value));
+    }
+
     try {
         auto& serversList = root->at("servers").as<nbt::tag_list>();
         for (auto& iter : serversList) {
@@ -154,6 +170,12 @@ bool ServersDat::save()
     }
 
     nbt::tag_compound out;
+    if (m_unknownTags) {
+        // The tags that the CLI does not know are written back unchanged.
+        for (const auto& [key, value] : *m_unknownTags) {
+            out.insert(key, nbt::value(value));
+        }
+    }
     nbt::tag_list list;
     for (const auto& server : m_servers) {
         nbt::tag_compound serverNbt;
