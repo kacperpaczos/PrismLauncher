@@ -61,7 +61,6 @@ namespace {
 
 // The Modrinth search API always uses a page size of 25, so the results have
 // to be requested page by page.
-constexpr int g_SearchPageSize = 25;
 // Upper bound for a single network request.
 constexpr int g_NetworkTimeoutMs = 180000;
 
@@ -369,81 +368,11 @@ ExitCode runPackCommand(PackContext& ctx, const Cmd::PackSearch& cmd)
         args.versions = versions;
     }
 
-    QJsonArray results;
-    int total = 0;
-    int offset = cmd.offset;
-
-    while (results.size() < cmd.limit) {
-        args.offset = offset;
-
-        // The search endpoint hardcodes the page size, so the results have to
-        // be requested page by page. The raw response is used (instead of the
-        // RPC sink of `searchProjectsTask`) because it also carries the total
-        // number of hits and the download count of every project.
-        auto spec = ModrinthAPI::get().searchProjects(args);
-        auto [action, response] = Net::ApiRequest::makeByteArray(spec.first.url, Net::Request::Option::AutoRetry);
-        auto job = makeShared<NetJob>(QStringLiteral("Modrinth::Search"), APPLICATION->network());
-        job->setAskRetry(false);
-        job->addNetAction(action);
-
-        if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-            return outputError(QStringLiteral("network_error"),
-                               QStringLiteral("The Modrinth search failed: %1").arg(result.error()),
-                               ExitCode::Network);
-        }
-
-        QJsonParseError parseError;
-        auto document = QJsonDocument::fromJson(*response, &parseError);
-        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            return outputError(QStringLiteral("network_error"),
-                               QStringLiteral("The Modrinth search returned an invalid response: %1").arg(parseError.errorString()),
-                               ExitCode::Network);
-        }
-
-        auto object = document.object();
-        total = object.value(QStringLiteral("total_hits")).toInt(total);
-        auto hits = object.value(QStringLiteral("hits")).toArray();
-
-        for (const auto& hit : hits) {
-            if (results.size() >= cmd.limit) {
-                break;
-            }
-            auto hitObject = hit.toObject();
-            ModPlatform::IndexedPack pack;
-            if (auto parsed = Modrinth::Parse::loadIndexedPack(pack, hitObject); !parsed) {
-                qWarning() << "Could not parse a Modrinth search hit:" << parsed.error();
-                continue;
-            }
-
-            QJsonObject entry;
-            entry.insert(QStringLiteral("slug"), pack.slug);
-            entry.insert(QStringLiteral("project_id"), pack.addonId.toString());
-            entry.insert(QStringLiteral("name"), pack.name);
-            entry.insert(QStringLiteral("description"), pack.description);
-            QJsonArray authors;
-            for (const auto& author : pack.authors) {
-                authors.append(author.name);
-            }
-            entry.insert(QStringLiteral("authors"), authors);
-            entry.insert(QStringLiteral("website"), pack.websiteUrl);
-            entry.insert(QStringLiteral("icon_url"), pack.logoUrl);
-            entry.insert(QStringLiteral("downloads"), static_cast<int>(hitObject.value(QStringLiteral("downloads")).toInt(0)));
-            results.append(entry);
-        }
-
-        if (hits.size() < g_SearchPageSize) {
-            // The last page was reached.
-            break;
-        }
-        offset += g_SearchPageSize;
+    auto envelope = modrinthSearchJson(args, cmd.limit, cmd.offset);
+    if (!envelope) {
+        return outputError(QStringLiteral("network_error"), envelope.error(), ExitCode::Network);
     }
-
-    QJsonObject out;
-    out.insert(QStringLiteral("offset"), cmd.offset);
-    out.insert(QStringLiteral("limit"), cmd.limit);
-    out.insert(QStringLiteral("total"), total);
-    out.insert(QStringLiteral("results"), results);
-    outputJson(QJsonDocument(out));
+    outputJson(QJsonDocument(envelope.value()));
     return ExitCode::OK;
 }
 

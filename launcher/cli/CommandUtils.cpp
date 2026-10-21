@@ -33,6 +33,8 @@
 #include "minecraft/mod/ResourceFolderModel.h"
 #include "modplatform/ResourceAPI.h"
 #include "modplatform/modrinth/ModrinthAPI.h"
+#include "modplatform/modrinth/ModrinthPackIndex.h"
+#include "net/ApiRequest.h"
 #include "net/Mode.h"
 #include "net/NetJob.h"
 
@@ -41,10 +43,96 @@ namespace {
 
 // Upper bound for a single network request.
 constexpr int g_NetworkTimeoutMs = 180000;
+constexpr int g_SearchPageSize = 25;
+
+/// Runs a paged Modrinth search - the endpoint hardcodes the page size, so
+/// the results have to be requested page by page - and builds the JSON
+/// envelope shared by the search commands. The raw response is used (instead
+/// of the RPC sink of `searchProjectsTask`) because it also carries the total
+/// number of hits and the download count of every project.
 // Upper bound for the model (re)scan + parse wait.
 constexpr int g_ModelWaitMs = 180000;
 
 }  // namespace
+
+NetJob::Ptr makeCliNetJob(const QString& name)
+{
+    auto job = makeShared<NetJob>(name, APPLICATION->network());
+    job->setAskRetry(false);
+    return job;
+}
+
+
+Result<QJsonObject, QString> modrinthSearchJson(ResourceAPI::SearchArgs args, int limit, int offset)
+{
+    const int requestedOffset = offset;
+    QJsonArray results;
+    int total = 0;
+
+    while (results.size() < limit) {
+        args.offset = offset;
+
+        auto spec = ModrinthAPI::get().searchProjects(args);
+        auto [action, response] = Net::ApiRequest::makeByteArray(spec.first.url, Net::Request::Option::AutoRetry);
+        auto job = makeCliNetJob(QStringLiteral("Modrinth::Search"));
+        job->addNetAction(action);
+
+        if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
+            return std::unexpected(QStringLiteral("The Modrinth search failed: %1").arg(result.error()));
+        }
+
+        QJsonParseError parseError;
+        auto document = QJsonDocument::fromJson(*response, &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+            return std::unexpected(
+                QStringLiteral("The Modrinth search returned an invalid response: %1").arg(parseError.errorString()));
+        }
+
+        auto object = document.object();
+        total = object.value(QStringLiteral("total_hits")).toInt(total);
+        auto hits = object.value(QStringLiteral("hits")).toArray();
+
+        for (const auto& hit : hits) {
+            if (results.size() >= limit) {
+                break;
+            }
+            auto hitObject = hit.toObject();
+            ModPlatform::IndexedPack pack;
+            if (auto parsed = Modrinth::Parse::loadIndexedPack(pack, hitObject); !parsed) {
+                qWarning() << "Could not parse a Modrinth search hit:" << parsed.error();
+                continue;
+            }
+
+            QJsonObject entry;
+            entry.insert(QStringLiteral("slug"), pack.slug);
+            entry.insert(QStringLiteral("project_id"), pack.addonId.toString());
+            entry.insert(QStringLiteral("name"), pack.name);
+            entry.insert(QStringLiteral("description"), pack.description);
+            QJsonArray authors;
+            for (const auto& author : pack.authors) {
+                authors.append(author.name);
+            }
+            entry.insert(QStringLiteral("authors"), authors);
+            entry.insert(QStringLiteral("website"), pack.websiteUrl);
+            entry.insert(QStringLiteral("icon_url"), pack.logoUrl);
+            entry.insert(QStringLiteral("downloads"), static_cast<int>(hitObject.value(QStringLiteral("downloads")).toInt(0)));
+            results.append(entry);
+        }
+
+        if (hits.size() < g_SearchPageSize) {
+            // The last page was reached.
+            break;
+        }
+        offset += g_SearchPageSize;
+    }
+
+    QJsonObject out;
+    out.insert(QStringLiteral("offset"), requestedOffset);
+    out.insert(QStringLiteral("limit"), limit);
+    out.insert(QStringLiteral("total"), total);
+    out.insert(QStringLiteral("results"), results);
+    return out;
+}
 
 QJsonValue jsonNullIfEmpty(const QString& value)
 {

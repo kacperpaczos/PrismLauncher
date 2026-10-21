@@ -37,7 +37,9 @@
 #include "Result.h"
 #include "cli/Output.h"
 #include "modplatform/ModIndex.h"
+#include "modplatform/ResourceAPI.h"
 #include "modplatform/ResourceType.h"
+#include "net/NetJob.h"
 
 class Application;
 class MinecraftInstance;
@@ -150,5 +152,15 @@ struct ResolvedTargets {
  *               reporting them
  */
 ResolvedTargets resolveTargets(ResourceFolderModel* model, const std::vector<QString>& targets, const QString& noun, bool force = false);
+
+/// A NetJob for the CLI paths - it never asks for a retry, there is nobody
+/// around to answer the dialog in a headless run.
+NetJob::Ptr makeCliNetJob(const QString& name);
+
+/// Runs a paged Modrinth search - the endpoint hardcodes the page size, so
+/// the results have to be requested page by page - and builds the JSON
+/// envelope shared by the search commands: {offset, limit, total, results}.
+/// `args.type` decides which project type is searched.
+Result<QJsonObject, QString> modrinthSearchJson(ResourceAPI::SearchArgs args, int limit, int offset);
 
 }  // namespace Cli

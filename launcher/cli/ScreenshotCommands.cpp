@@ -151,9 +151,7 @@ ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotUploa
                            ExitCode::NotFound);
     }
 
-    auto job = makeShared<NetJob>("Screenshot upload", APPLICATION->network());
-    // A headless run cannot ask whether a failed request should be retried.
-    job->setAskRetry(false);
+    auto job = makeCliNetJob(QStringLiteral("Screenshot upload"));
     for (const auto& screenshot : selected) {
         auto [request, result] = ImgurAPI::makeUpload(screenshot);
         job->addNetAction(request);
@@ -169,8 +167,7 @@ ExitCode runScreenshotCommand(ScreenshotContext& ctx, const Cmd::ScreenshotUploa
         // The album needs the delete hashes of the uploads, so it is created
         // after them.
         auto [request, result] = ImgurAPI::makeAlbum(selected);
-        auto albumJob = makeShared<NetJob>("Imgur album creation", APPLICATION->network());
-        albumJob->setAskRetry(false);
+        auto albumJob = makeCliNetJob(QStringLiteral("Imgur album creation"));
         albumJob->addNetAction(request);
         if (auto albumResult = runTaskSync(albumJob, g_NetworkTimeoutMs); !albumResult) {
             return outputError(QStringLiteral("upload_failed"),

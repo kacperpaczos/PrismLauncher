@@ -377,8 +377,7 @@ ExitCode runLogCommand(LogContext& ctx, const Cmd::LogUpload& cmd)
     }
 
     auto [request, url] = service->make(content, service->defaultBase());
-    auto job = makeShared<NetJob>("Log upload", APPLICATION->network());
-    job->setAskRetry(false);
+    auto job = makeCliNetJob(QStringLiteral("Log upload"));
     job->addNetAction(request);
 
     if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
