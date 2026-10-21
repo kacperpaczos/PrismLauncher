@@ -64,6 +64,17 @@ QString writeGzFile(const QString& path, const QByteArray& content)
     return writeFile(path, compressed);
 }
 
+/// The content of a log file - the test fails when the reading did not work.
+LogReader::Content readLog(const QString& path, int head, int tail)
+{
+    const auto result = LogReader::read(path, head, tail);
+    if (!result) {
+        qWarning() << "the log could not be read:" << result.error();
+        return {};
+    }
+    return result.value();
+}
+
 }  // namespace
 
 class LogReaderTest : public QObject {
@@ -77,7 +88,7 @@ class LogReaderTest : public QObject {
         const auto path = writeFile(FS::PathCombine(dir.path(), "latest.log"), logContent(5));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 0);
+        const auto content = readLog(path, 0, 0);
         QCOMPARE(content.lines.size(), 5);
         QCOMPARE(content.truncated, false);
         QCOMPARE(content.lines.at(0).number, 1);
@@ -93,7 +104,7 @@ class LogReaderTest : public QObject {
         const auto path = writeFile(FS::PathCombine(dir.path(), "latest.log"), logContent(3, /*trailingNewline=*/false));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 0);
+        const auto content = readLog(path, 0, 0);
         QCOMPARE(content.lines.size(), 3);
         QCOMPARE(content.lines.at(2).text, QString("line 3"));
     }
@@ -105,7 +116,7 @@ class LogReaderTest : public QObject {
         const auto path = writeFile(FS::PathCombine(dir.path(), "latest.log"), logContent(10));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 3, 0);
+        const auto content = readLog(path, 3, 0);
         QCOMPARE(content.lines.size(), 3);
         QCOMPARE(content.truncated, true);
         QCOMPARE(content.lines.at(0).number, 1);
@@ -119,7 +130,7 @@ class LogReaderTest : public QObject {
         const auto path = writeFile(FS::PathCombine(dir.path(), "latest.log"), logContent(10));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 3);
+        const auto content = readLog(path, 0, 3);
         QCOMPARE(content.lines.size(), 3);
         QCOMPARE(content.truncated, true);
         // the lines are numbered as they are in the file
@@ -135,7 +146,7 @@ class LogReaderTest : public QObject {
         const auto path = writeFile(FS::PathCombine(dir.path(), "latest.log"), logContent(4, /*trailingNewline=*/false));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 2);
+        const auto content = readLog(path, 0, 2);
         QCOMPARE(content.lines.size(), 2);
         QCOMPARE(content.lines.at(0).number, 3);
         QCOMPARE(content.lines.at(1).number, 4);
@@ -151,7 +162,7 @@ class LogReaderTest : public QObject {
         const auto path = writeFile(FS::PathCombine(dir.path(), "latest.log"), logContent(20000));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 5);
+        const auto content = readLog(path, 0, 5);
         QCOMPARE(content.lines.size(), 5);
         QCOMPARE(content.truncated, true);
         QCOMPARE(content.lines.at(0).number, 19996);
@@ -166,7 +177,7 @@ class LogReaderTest : public QObject {
         const auto path = writeGzFile(FS::PathCombine(dir.path(), "old.log.gz"), logContent(6));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 0);
+        const auto content = readLog(path, 0, 0);
         QCOMPARE(content.lines.size(), 6);
         QCOMPARE(content.truncated, false);
         QCOMPARE(content.lines.at(0).text, QString("line 1"));
@@ -180,7 +191,7 @@ class LogReaderTest : public QObject {
         const auto path = writeGzFile(FS::PathCombine(dir.path(), "old.log.gz"), logContent(6, /*trailingNewline=*/false));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 0, 2);
+        const auto content = readLog(path, 0, 2);
         QCOMPARE(content.lines.size(), 2);
         QCOMPARE(content.truncated, true);
         QCOMPARE(content.lines.at(0).number, 5);
@@ -195,7 +206,7 @@ class LogReaderTest : public QObject {
         const auto path = writeGzFile(FS::PathCombine(dir.path(), "old.log.gz"), logContent(6));
         QVERIFY(!path.isEmpty());
 
-        const auto content = LogReader::read(path, 2, 0);
+        const auto content = readLog(path, 2, 0);
         QCOMPARE(content.lines.size(), 2);
         QCOMPARE(content.truncated, true);
         QCOMPARE(content.lines.at(1).text, QString("line 2"));
@@ -206,8 +217,24 @@ class LogReaderTest : public QObject {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
 
-        const auto content = LogReader::read(FS::PathCombine(dir.path(), "nope.log"), 0, 0);
-        QVERIFY(content.lines.isEmpty());
+        // A file that cannot be opened is a failure - it is not an empty log.
+        const auto result = LogReader::read(FS::PathCombine(dir.path(), "nope.log"), 0, 0);
+        QVERIFY(!result.has_value());
+        QVERIFY(!result.error().isEmpty());
+    }
+
+    void test_readABrokenGzippedFile()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        // A file that cannot be decompressed is a failure too.
+        const auto path = writeFile(FS::PathCombine(dir.path(), "broken.log.gz"), QByteArray("not a gzip file"));
+        QVERIFY(!path.isEmpty());
+
+        const auto result = LogReader::read(path, 0, 0);
+        QVERIFY(!result.has_value());
+        QVERIFY(result.error().contains("decompressed"));
     }
 };
 

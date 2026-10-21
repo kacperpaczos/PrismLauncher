@@ -284,7 +284,14 @@ ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogRead& cmd)
         }
     }
 
-    auto content = LogReader::read(path, cmd.head.value_or(0), cmd.tail.value_or(0));
+    auto read = LogReader::read(path, cmd.head.value_or(0), cmd.tail.value_or(0));
+    if (!read) {
+        // The log could not be read - that is a failure, not an empty log.
+        return outputError(QStringLiteral("log_not_read"),
+                           QStringLiteral("The log '%1' could not be read: %2").arg(path, read.error()),
+                           ExitCode::Ambiguous);
+    }
+    auto content = read.value();
 
     // The level of a line is guessed the way the launcher does it - the level
     // of the previous line is used for the lines that continue it.
@@ -356,12 +363,34 @@ ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogUpload& cmd)
         return code;
     }
 
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return outputError(QStringLiteral("log_not_found"), QStringLiteral("The log '%1' could not be read").arg(path), ExitCode::Generic);
+    QString content;
+    if (path.endsWith(QLatin1String(".gz"))) {
+        // A gzipped log is decompressed before it is uploaded - the same
+        // reader that `log read` uses.
+        auto read = LogReader::read(path, 0, 0);
+        if (!read) {
+            return outputError(QStringLiteral("log_not_read"),
+                               QStringLiteral("The log '%1' could not be read: %2").arg(path, read.error()),
+                               ExitCode::Ambiguous);
+        }
+        QStringList lines;
+        for (const auto& line : read.value().lines) {
+            lines.append(line.text);
+        }
+        content = lines.join(QLatin1Char('\n'));
+        if (!content.isEmpty()) {
+            content += QLatin1Char('\n');
+        }
+    } else {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return outputError(QStringLiteral("log_not_read"),
+                               QStringLiteral("The log '%1' could not be read").arg(path),
+                               ExitCode::Ambiguous);
+        }
+        content = QString::fromUtf8(file.readAll());
+        file.close();
     }
-    QString content = QString::fromUtf8(file.readAll());
-    file.close();
 
     if (cmd.anonymize) {
         // The paste services anonymize the log themselves - the names of the

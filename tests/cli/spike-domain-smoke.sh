@@ -524,6 +524,27 @@ expect_rc 0
 check_json 'len(d["lines"]) == 1'
 check_json '"ERROR" in d["lines"][0]["text"]'
 
+step "log read (a gzipped log)"
+python3 - "${GAME_DIR}/logs/old.log.gz" <<'GZPY'
+import gzip
+import sys
+
+with gzip.open(sys.argv[1], "wt") as handle:
+    handle.write("a line of an old log\n")
+GZPY
+run_cmd log read -i "${INSTANCE_ID}" --file "logs/old.log.gz"
+expect_rc 0
+if ! echo "${LAST_OUT}" | grep -q "a line of an old log"; then
+    fail "the gzipped log was not read: ${LAST_OUT}"
+fi
+
+step "log read (a gzipped log that cannot be decompressed)"
+printf 'not a gzip file' > "${GAME_DIR}/logs/broken.log.gz"
+run_cmd log read -i "${INSTANCE_ID}" --file "logs/broken.log.gz"
+expect_rc 5
+check_json 'd["ok"] is False'
+check_json 'd["error"]["code"] == "log_not_read"'
+
 step "log read (a log that does not exist)"
 run_cmd log read -i "${INSTANCE_ID}" --file "logs/nope.log"
 expect_rc 3

@@ -221,7 +221,7 @@ Content readPlainAll(QFile& file)
  * A gzipped file cannot be seeked in, so it is streamed through
  * `GZip::readGzFileByBlocks`. Only the lines that are wanted are kept.
  */
-Content readGzLog(QFile& file, int head, int tail)
+Result<Content, QString> readGzLog(QFile& file, int head, int tail)
 {
     Content content;
     QByteArray pending;
@@ -260,7 +260,9 @@ Content readGzLog(QFile& file, int head, int tail)
     });
 
     if (!error.isEmpty()) {
-        qWarning() << "The log could not be decompressed:" << error;
+        // The file could not be decompressed - the content would be wrong,
+        // so the reading fails.
+        return std::unexpected(QStringLiteral("the log could not be decompressed: %1").arg(error));
     }
 
     if (!pending.isEmpty()) {
@@ -292,11 +294,11 @@ Content readGzLog(QFile& file, int head, int tail)
 
 }  // namespace
 
-Content read(const QString& path, int head, int tail)
+Result<Content, QString> read(const QString& path, int head, int tail)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) {
-        return {};
+        return std::unexpected(QStringLiteral("the log could not be opened: %1").arg(file.errorString()));
     }
     if (path.endsWith(QLatin1String(".gz"))) {
         return readGzLog(file, head, tail);

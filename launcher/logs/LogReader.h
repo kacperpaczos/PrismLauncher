@@ -27,6 +27,8 @@
 #include <QList>
 #include <QString>
 
+#include "Result.h"
+
 namespace LogReader {
 
 /// A line of a log file.
@@ -54,10 +56,15 @@ struct Content {
  *
  * A file that does not end with a newline still has a last line.
  *
+ * A file that cannot be opened and a file that cannot be decompressed are
+ * failures - they are not an empty log.
+ *
  * @param path  the file to read
  * @param head  the number of the lines to read from the beginning (0 = all)
  * @param tail  the number of the lines to keep from the end (0 = all)
+ *
+ * @returns the content of the file, or the reason of the failure.
  */
-Content read(const QString& path, int head, int tail);
+Result<Content, QString> read(const QString& path, int head, int tail);
 
 }  // namespace LogReader
