@@ -860,6 +860,283 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModDisable& cmd)
     return runEnableDisable(ctx, cmd.targets, cmd.instance, cmd.recursive, EnableAction::DISABLE);
 }
 
+/// The outcome of one `mod update` run - the arrays the command reports and
+/// the flags that decide its exit code.
+struct ModUpdateReport {
+    QJsonArray updated;
+    QJsonArray upToDate;
+    QJsonArray skipped;
+    QJsonArray failed;
+    QJsonArray dependencies;
+    bool hasUnresolvedTargets = false;
+    bool hasCheckFailures = false;
+};
+
+/// Resolves the mods an update applies to - every mod (`--all`) or the mods
+/// the targets point at. Targets that match nothing are recorded in the
+/// report. Returns nothing when the resolution failed and the command has to
+/// stop (the error is reported inside).
+std::optional<QList<Resource*>> resolveUpdateTargets(ModFolderModel* model, const Cmd::ModUpdate& cmd, ModUpdateReport& report)
+{
+    if (cmd.all) {
+        return model->allResources();
+    }
+
+    auto resolved = resolveTargets(model, cmd.targets, QStringLiteral("mod"));
+    if (resolved.ambiguous) {
+        QJsonObject out;
+        out.insert(QStringLiteral("candidates"), resolved.candidates);
+        out.insert(QStringLiteral("failed"), resolved.failed);
+        outputError(QStringLiteral("ambiguous_target"),
+                    QStringLiteral("Some targets matched more than one mod"),
+                    ExitCode::Ambiguous,
+                    out);
+        return std::nullopt;
+    }
+    if (resolved.resources.isEmpty()) {
+        QJsonObject out;
+        out.insert(QStringLiteral("failed"), resolved.failed);
+        outputError(QStringLiteral("not_found"),
+                    QStringLiteral("None of the targets matched a mod"),
+                    ExitCode::NotFound,
+                    out);
+        return std::nullopt;
+    }
+
+    // The targets that did not match any mod are reported as failed.
+    report.failed = resolved.failed;
+    report.hasUnresolvedTargets = !resolved.failed.isEmpty();
+    return resolved.resources;
+}
+
+/// Mods that must not be updated - locked to a version (unless forced) and
+/// folders - are recorded in the report, the rest is returned as updatable.
+QList<Resource*> partitionUpdatable(const QList<Resource*>& candidates, bool force, ModUpdateReport& report)
+{
+    QList<Resource*> updatable;
+    for (auto* resource : candidates) {
+        if (resource->lockUpdate() && !force) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), resource->name());
+            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("reason"), QStringLiteral("the mod is locked to a specific version"));
+            report.skipped.append(entry);
+            continue;
+        }
+        if (resource->type() == ResourceType::FOLDER) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), resource->name());
+            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("reason"), QStringLiteral("folders cannot be updated"));
+            report.skipped.append(entry);
+            continue;
+        }
+        updatable.append(resource);
+    }
+    return updatable;
+}
+
+/// Make sure every updatable mod has metadata, otherwise it cannot be checked
+/// for updates. The provider is taken from the managed pack, defaulting to
+/// Modrinth (there is no interactive provider chooser in a headless run).
+/// Mods that end up without metadata are recorded in the report, the rest is
+/// returned as checkable.
+std::optional<QList<Resource*>> ensureUpdateMetadata(ModFolderModel* model, const QList<Resource*>& updatable, ModUpdateReport& report)
+{
+    QList<Resource*> withoutMetadata;
+    for (auto* resource : updatable) {
+        if (!resource->metadata()) {
+            withoutMetadata.append(resource);
+        }
+    }
+    if (!withoutMetadata.empty()) {
+        auto provider = ModPlatform::ResourceProvider::MODRINTH;
+        auto metadataTask = makeShared<EnsureMetadataTask>(withoutMetadata, model->indexDir(), provider);
+        auto sequence = makeShared<SequentialTask>(QStringLiteral("Looking for metadata"));
+        if (auto hashingTask = metadataTask->getHashingTask()) {
+            sequence->addTask(hashingTask);
+        }
+        if (auto result = runTaskSync(sequence, g_NetworkTimeoutMs); !result) {
+            QJsonObject out;
+            out.insert(QStringLiteral("failed"), report.failed);
+            out.insert(QStringLiteral("reason"), result.error());
+            outputError(QStringLiteral("metadata_failed"),
+                        QStringLiteral("Could not generate the mod metadata: %1").arg(result.error()),
+                        ExitCode::Network,
+                        out);
+            return std::nullopt;
+        }
+    }
+
+    // Mods without metadata cannot be checked for updates.
+    QList<Resource*> checkable;
+    for (auto* resource : updatable) {
+        if (!resource->metadata()) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), resource->name());
+            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("reason"), QStringLiteral("no metadata is available for the mod"));
+            report.failed.append(entry);
+            continue;
+        }
+        checkable.append(resource);
+    }
+    return checkable;
+}
+
+/// Checks the mods for updates and collects the downloads of the mods that
+/// have a newer version. The dependencies are resolved (and reported), but
+/// they are not downloaded - the update only replaces the mods that have a
+/// newer version.
+QList<shared_qobject_ptr<ResourceDownloadTask>> checkUpdatableMods(MinecraftInstance* instance,
+                                                                   ModFolderModel* model,
+                                                                   const QString& mcVersionString,
+                                                                   QList<Resource*>& checkable,
+                                                                   const Cmd::ModUpdate& cmd,
+                                                                   ModUpdateReport& report)
+{
+    QList<shared_qobject_ptr<ResourceDownloadTask>> updateDownloads;
+    if (checkable.isEmpty()) {
+        return updateDownloads;
+    }
+
+    std::vector<Version> mcVersions{ Version(mcVersionString) };
+    auto loaders = instance->getPackProfile()->getModLoadersList();
+
+    auto checkTask = makeShared<ModrinthCheckUpdate>(checkable, mcVersions, loaders, model);
+
+    // The context of the connections that are made below. It is declared
+    // after the variables that the lambdas use, so that it is destroyed first
+    // and the connections cannot outlive them.
+    QObject connectionContext;
+
+    // The mods for which the check failed - the check could not be done, so
+    // they are neither updated nor up to date.
+    QList<Resource*> failedChecks;
+    QObject::connect(checkTask.get(),
+                     &CheckUpdateTask::checkFailed,
+                     &connectionContext,
+                     [&failedChecks, &report](Resource* resource, const QString& reason, const QUrl&) {
+                         if (!resource) {
+                             return;
+                         }
+                         report.hasCheckFailures = true;
+                         failedChecks.append(resource);
+                         QJsonObject entry;
+                         entry.insert(QStringLiteral("name"), resource->name());
+                         entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+                         entry.insert(QStringLiteral("reason"), reason);
+                         report.failed.append(entry);
+                     });
+
+    if (auto result = runTaskSync(checkTask, g_NetworkTimeoutMs); !result) {
+        QJsonObject out;
+        out.insert(QStringLiteral("failed"), report.failed);
+        out.insert(QStringLiteral("reason"), result.error());
+        outputError(QStringLiteral("check_failed"),
+                    QStringLiteral("Could not check for updates: %1").arg(result.error()),
+                    ExitCode::Network,
+                    out);
+        report.hasCheckFailures = true;
+        return updateDownloads;
+    }
+
+    auto updates = checkTask->getUpdates();
+    for (const auto& update : updates) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("name"), update.name);
+        entry.insert(QStringLiteral("old_version"), update.oldVersion);
+        entry.insert(QStringLiteral("new_version"), update.newVersion);
+        entry.insert(QStringLiteral("release_type"),
+                     update.newVersionType.has_value() ? update.newVersionType.value().toString() : QString());
+        entry.insert(QStringLiteral("provider"), sourceName(update.provider));
+        if (update.download) {
+            entry.insert(QStringLiteral("slug"), normalizedSlug(update.download->getPack()->slug));
+            entry.insert(QStringLiteral("file"), update.download->getFilename());
+            updateDownloads.append(update.download);
+        }
+        report.updated.append(entry);
+    }
+
+    // The list that the check task returns holds the updated mods themselves -
+    // it is the input of the dependency resolution.
+    if (!cmd.noDeps && !checkTask->getDependencies().isEmpty()) {
+        auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, checkTask->getDependencies());
+        if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("reason"), QStringLiteral("the dependencies could not be resolved: %1").arg(result.error()));
+            report.failed.append(entry);
+            report.hasCheckFailures = true;
+        } else {
+            for (const auto& dependency : dependencyTask->getDependecies()) {
+                if (!dependency || !dependency->pack) {
+                    continue;
+                }
+                QJsonObject entry;
+                entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
+                entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
+                entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
+                entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
+                entry.insert(QStringLiteral("file"), dependency->version.fileName);
+                report.dependencies.append(entry);
+            }
+        }
+    }
+
+    // Everything that was checked but has no update available.
+    for (auto* resource : checkable) {
+        if (failedChecks.contains(resource)) {
+            // The check failed for this mod - it is already reported.
+            continue;
+        }
+        auto meta = resource->metadata();
+        auto hasUpdate = std::any_of(updates.begin(), updates.end(), [meta](const auto& update) {
+            return update.download && update.download->getPack()->addonId.toString() == meta->projectId.toString();
+        });
+        if (!hasUpdate) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), resource->name());
+            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
+            entry.insert(QStringLiteral("version"), meta->versionNumber);
+            report.upToDate.append(entry);
+        }
+    }
+    return updateDownloads;
+}
+
+/// Downloads the updates (unless it is a dry run) and waits for the model to
+/// settle. Returns nothing when the downloads failed and the command has to
+/// stop (the error is reported inside).
+std::optional<bool> applyUpdates(ModFolderModel* model,
+                                 const QList<shared_qobject_ptr<ResourceDownloadTask>>& updateDownloads,
+                                 const Cmd::ModUpdate& cmd,
+                                 const ModUpdateReport& report)
+{
+    if (cmd.dryRun || updateDownloads.isEmpty()) {
+        return true;
+    }
+
+    auto download = makeShared<ConcurrentTask>(
+        QStringLiteral("Update Mods"), qMax(1, APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt()));
+    for (const auto& update : updateDownloads) {
+        download->addTask(update);
+    }
+    if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
+        QJsonObject out;
+        out.insert(QStringLiteral("updated"), report.updated);
+        out.insert(QStringLiteral("failed"), report.failed);
+        out.insert(QStringLiteral("reason"), result.error());
+        outputError(QStringLiteral("download_failed"),
+                    QStringLiteral("Could not download the updates: %1").arg(result.error()),
+                    ExitCode::Network,
+                    out);
+        return {};
+    }
+    waitForModel(model);
+    return true;
+}
+
+
 ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
 {
     MinecraftInstance* instance = nullptr;
@@ -894,244 +1171,31 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
                            ExitCode::Generic);
     }
 
-    // The context of the connections that are made below. It is declared
-    // after the variables that the lambdas use, so that it is destroyed first
-    // and the connections cannot outlive them.
-    QList<Resource*> failedChecks;
-    QObject connectionContext;
+    ModUpdateReport report;
 
-    QList<Resource*> candidates;
-    QJsonArray failed;
-    bool hasUnresolvedTargets = false;
-    // The mods for which the check failed - the check could not be done, so
-    // they are neither updated nor up to date.
-    bool hasCheckFailures = false;
-    if (cmd.all) {
-        candidates = model->allResources();
-    } else {
-        auto resolved = resolveTargets(model, cmd.targets, QStringLiteral("mod"));
-        if (resolved.ambiguous) {
-            QJsonObject out;
-            out.insert(QStringLiteral("candidates"), resolved.candidates);
-            out.insert(QStringLiteral("failed"), resolved.failed);
-            return outputError(QStringLiteral("ambiguous_target"),
-                               QStringLiteral("Some targets matched more than one mod"),
-                               ExitCode::Ambiguous,
-                               out);
-        }
-        if (resolved.resources.isEmpty()) {
-            QJsonObject out;
-            out.insert(QStringLiteral("failed"), resolved.failed);
-            return outputError(QStringLiteral("not_found"),
-                               QStringLiteral("None of the targets matched a mod"),
-                               ExitCode::NotFound,
-                               out);
-        }
-        candidates = resolved.resources;
-        // The targets that did not match any mod are reported as failed.
-        failed = resolved.failed;
-        hasUnresolvedTargets = !resolved.failed.isEmpty();
+    auto candidates = resolveUpdateTargets(model, cmd, report);
+    if (!candidates) {
+        return ExitCode::Generic;
     }
-
-    QJsonArray skipped;
-    QList<Resource*> updatable;
-
-    for (auto* resource : candidates) {
-        if (resource->lockUpdate() && !cmd.force) {
-            QJsonObject entry;
-            entry.insert(QStringLiteral("name"), resource->name());
-            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-            entry.insert(QStringLiteral("reason"), QStringLiteral("the mod is locked to a specific version"));
-            skipped.append(entry);
-            continue;
-        }
-        if (resource->type() == ResourceType::FOLDER) {
-            QJsonObject entry;
-            entry.insert(QStringLiteral("name"), resource->name());
-            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-            entry.insert(QStringLiteral("reason"), QStringLiteral("folders cannot be updated"));
-            skipped.append(entry);
-            continue;
-        }
-        updatable.append(resource);
+    auto updatable = partitionUpdatable(candidates.value(), cmd.force, report);
+    auto checkable = ensureUpdateMetadata(model, updatable, report);
+    if (!checkable) {
+        return ExitCode::Network;
     }
-
-    // Make sure every mod has metadata, otherwise it cannot be checked for
-    // updates. The provider is taken from the managed pack, defaulting to
-    // Modrinth (there is no interactive provider chooser in a headless run).
-    QList<Resource*> withoutMetadata;
-    for (auto* resource : updatable) {
-        if (!resource->metadata()) {
-            withoutMetadata.append(resource);
-        }
-    }
-    if (!withoutMetadata.empty()) {
-        // The managed pack type is only used to pick the provider - there is
-        // no interactive provider chooser in a headless run, so Modrinth is
-        // used for every mod.
-        auto provider = ModPlatform::ResourceProvider::MODRINTH;
-        auto metadataTask = makeShared<EnsureMetadataTask>(withoutMetadata, model->indexDir(), provider);
-        auto sequence = makeShared<SequentialTask>(QStringLiteral("Looking for metadata"));
-        if (auto hashingTask = metadataTask->getHashingTask()) {
-            sequence->addTask(hashingTask);
-        }
-        sequence->addTask(metadataTask);
-        if (auto result = runTaskSync(sequence, g_NetworkTimeoutMs); !result) {
-            QJsonObject out;
-            out.insert(QStringLiteral("failed"), failed);
-            out.insert(QStringLiteral("reason"), result.error());
-            return outputError(QStringLiteral("metadata_failed"),
-                               QStringLiteral("Could not generate the mod metadata: %1").arg(result.error()),
-                               ExitCode::Network,
-                               out);
-        }
-    }
-
-    // Mods without metadata cannot be checked for updates.
-    QList<Resource*> checkable;
-    for (auto* resource : updatable) {
-        if (!resource->metadata()) {
-            QJsonObject entry;
-            entry.insert(QStringLiteral("name"), resource->name());
-            entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-            entry.insert(QStringLiteral("reason"), QStringLiteral("no metadata is available for the mod"));
-            failed.append(entry);
-            continue;
-        }
-        checkable.append(resource);
-    }
-
-    QJsonArray updated;
-    QJsonArray upToDate;
-    QJsonArray dependencies;
-    QList<shared_qobject_ptr<ResourceDownloadTask>> updateDownloads;
-
-    if (!checkable.isEmpty()) {
-        std::vector<Version> mcVersions{ Version(mcVersionString) };
-        auto loaders = profile->getModLoadersList();
-
-        auto checkTask = makeShared<ModrinthCheckUpdate>(checkable, mcVersions, loaders, model);
-
-        // The mods for which no version was found are reported as failed -
-        // they are not up to date, they could not be checked at all.
-        QObject::connect(checkTask.get(),
-                         &CheckUpdateTask::checkFailed,
-                         &connectionContext,
-                         [&failedChecks, &failed, &hasCheckFailures](Resource* resource, const QString& reason, const QUrl&) {
-                             if (!resource) {
-                                 return;
-                             }
-                             hasCheckFailures = true;
-                             failedChecks.append(resource);
-                             QJsonObject entry;
-                             entry.insert(QStringLiteral("name"), resource->name());
-                             entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-                             entry.insert(QStringLiteral("reason"), reason);
-                             failed.append(entry);
-                         });
-
-        if (auto result = runTaskSync(checkTask, g_NetworkTimeoutMs); !result) {
-            QJsonObject out;
-            out.insert(QStringLiteral("failed"), failed);
-            out.insert(QStringLiteral("reason"), result.error());
-            return outputError(QStringLiteral("check_failed"),
-                               QStringLiteral("Could not check for updates: %1").arg(result.error()),
-                               ExitCode::Network,
-                               out);
-        }
-
-        auto updates = checkTask->getUpdates();
-        for (const auto& update : updates) {
-            QJsonObject entry;
-            entry.insert(QStringLiteral("name"), update.name);
-            entry.insert(QStringLiteral("old_version"), update.oldVersion);
-            entry.insert(QStringLiteral("new_version"), update.newVersion);
-            entry.insert(QStringLiteral("release_type"),
-                         update.newVersionType.has_value() ? update.newVersionType.value().toString() : QString());
-            entry.insert(QStringLiteral("provider"), sourceName(update.provider));
-            if (update.download) {
-                entry.insert(QStringLiteral("slug"), normalizedSlug(update.download->getPack()->slug));
-                entry.insert(QStringLiteral("file"), update.download->getFilename());
-                updateDownloads.append(update.download);
-            }
-            updated.append(entry);
-        }
-
-        // The list that the check task returns holds the updated mods
-        // themselves - it is the input of the dependency resolution. The
-        // dependencies are resolved (and reported), but they are not
-        // downloaded: the update only replaces the mods that have a newer
-        // version.
-        if (!cmd.noDeps && !checkTask->getDependencies().isEmpty()) {
-            auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, checkTask->getDependencies());
-            if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
-                QJsonObject entry;
-                entry.insert(QStringLiteral("reason"), QStringLiteral("the dependencies could not be resolved: %1").arg(result.error()));
-                failed.append(entry);
-                hasCheckFailures = true;
-            } else {
-                for (const auto& dependency : dependencyTask->getDependecies()) {
-                    if (!dependency || !dependency->pack) {
-                        continue;
-                    }
-                    QJsonObject entry;
-                    entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
-                    entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
-                    entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
-                    entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
-                    entry.insert(QStringLiteral("file"), dependency->version.fileName);
-                    dependencies.append(entry);
-                }
-            }
-        }
-
-        // Everything that was checked but has no update available.
-        for (auto* resource : checkable) {
-            if (failedChecks.contains(resource)) {
-                // The check failed for this mod - it is already reported.
-                continue;
-            }
-            auto meta = resource->metadata();
-            auto hasUpdate = std::any_of(updates.begin(), updates.end(), [meta](const auto& update) {
-                return update.download && update.download->getPack()->addonId.toString() == meta->projectId.toString();
-            });
-            if (!hasUpdate) {
-                QJsonObject entry;
-                entry.insert(QStringLiteral("name"), resource->name());
-                entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
-                entry.insert(QStringLiteral("version"), meta->versionNumber);
-                upToDate.append(entry);
-            }
-        }
-    }
-
-    if (!cmd.dryRun && !updateDownloads.isEmpty()) {
-        auto download = makeShared<ConcurrentTask>(
-            QStringLiteral("Update Mods"), qMax(1, APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt()));
-        for (const auto& update : updateDownloads) {
-            download->addTask(update);
-        }
-        if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
-            QJsonObject out;
-            out.insert(QStringLiteral("updated"), updated);
-            out.insert(QStringLiteral("failed"), failed);
-            out.insert(QStringLiteral("reason"), result.error());
-            return outputError(QStringLiteral("download_failed"),
-                               QStringLiteral("Could not download the updates: %1").arg(result.error()),
-                               ExitCode::Network,
-                               out);
-        }
-        waitForModel(model);
+    auto updateDownloads = checkUpdatableMods(instance, model, mcVersionString, checkable.value(), cmd, report);
+    auto downloaded = applyUpdates(model, updateDownloads, cmd, report);
+    if (!downloaded) {
+        return ExitCode::Network;
     }
 
     QJsonObject out;
     out.insert(QStringLiteral("dry_run"), cmd.dryRun);
-    out.insert(QStringLiteral("updated"), updated);
-    out.insert(QStringLiteral("up_to_date"), upToDate);
-    out.insert(QStringLiteral("skipped"), skipped);
-    out.insert(QStringLiteral("failed"), failed);
-    out.insert(QStringLiteral("dependencies"), dependencies);
-    if (hasUnresolvedTargets) {
+    out.insert(QStringLiteral("updated"), report.updated);
+    out.insert(QStringLiteral("up_to_date"), report.upToDate);
+    out.insert(QStringLiteral("skipped"), report.skipped);
+    out.insert(QStringLiteral("failed"), report.failed);
+    out.insert(QStringLiteral("dependencies"), report.dependencies);
+    if (report.hasUnresolvedTargets) {
         // Some of the targets did not match a mod - the mods that were found
         // are updated anyway, but the command reports the failure.
         return outputError(QStringLiteral("not_found"),
@@ -1139,7 +1203,7 @@ ExitCode runModCommand(ModContext& ctx, const Cmd::ModUpdate& cmd)
                            ExitCode::NotFound,
                            out);
     }
-    if (hasCheckFailures) {
+    if (report.hasCheckFailures) {
         // The update of at least one mod could not be checked - the command
         // reports the failure.
         return outputError(QStringLiteral("check_failed"),
