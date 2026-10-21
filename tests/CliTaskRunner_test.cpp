@@ -12,13 +12,19 @@ class FakeTask : public Task {
     Q_OBJECT
 
    public:
-    enum class Outcome { Succeed, Fail, Hang };
+    enum class Outcome { Succeed, Fail, Hang, Abort };
 
     explicit FakeTask(Outcome outcome) : m_outcome(outcome) {}
 
     void executeTask() override
     {
         if (m_outcome == Outcome::Hang) {
+            // The task never finishes and it cannot be aborted.
+            return;
+        }
+        if (m_outcome == Outcome::Abort) {
+            // The task stops when it is asked to abort.
+            setAbortable(true);
             return;
         }
         QTimer::singleShot(0, this, [this] {
@@ -58,9 +64,30 @@ class CliTaskRunnerTest : public QObject {
         QCOMPARE(result.error(), QString("boom"));
     }
 
-    void test_timeout()
+    void test_timeout_taskThatCannotBeAborted()
     {
-        const auto result = Cli::runTaskSync(makeShared<FakeTask>(FakeTask::Outcome::Hang), 50);
+        // The task cannot be stopped, so it does not finish in the grace
+        // period - the failure says that the operation did not finish.
+        const auto result = Cli::runTaskSync(makeShared<FakeTask>(FakeTask::Outcome::Hang), 50, 200);
+        QVERIFY(!result.has_value());
+        QCOMPARE(result.error(), QString("operation_did_not_finish"));
+        QVERIFY(Cli::taskDidNotFinish(result.error()));
+    }
+
+    void test_timeout_taskThatIsAborted()
+    {
+        // The task is asked to abort and it stops - the timeout is reported.
+        const auto result = Cli::runTaskSync(makeShared<FakeTask>(FakeTask::Outcome::Abort), 50, 2000);
+        QVERIFY(!result.has_value());
+        QVERIFY(result.error().contains("timed out"));
+        QVERIFY(!Cli::taskDidNotFinish(result.error()));
+    }
+
+    void test_timeout_waitsForTheTaskToFinish()
+    {
+        // The task finishes in the grace period - the timeout is reported and
+        // not the failure of the task.
+        const auto result = Cli::runTaskSync(makeShared<FakeTask>(FakeTask::Outcome::Abort), 50, 2000);
         QVERIFY(!result.has_value());
         QVERIFY(result.error().contains("timed out"));
     }

@@ -660,9 +660,10 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         selectedDeps.append(std::make_shared<GetModDependenciesTask::PackDependency>(packPtr, selected.value()));
         auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, selectedDeps);
         if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
-            return outputError(QStringLiteral("network_error"),
+            const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
+            return outputError(failure.code,
                                QStringLiteral("Could not resolve the dependencies: %1").arg(result.error()),
-                               ExitCode::Network);
+                               failure.exitCode);
         }
         dependencies = dependencyTask->getDependecies();
     }
@@ -710,10 +711,11 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
     }
 
     if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
+        const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
         out.insert(QStringLiteral("reason"), result.error());
-        return outputError(QStringLiteral("download_failed"), result.error(), ExitCode::Network, out);
+        return outputError(failure.code, result.error(), failure.exitCode, out);
     }
 
     // Refresh the model so the freshly installed mods show up in the output.
@@ -971,10 +973,12 @@ std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* m
             QJsonObject out;
             out.insert(QStringLiteral("failed"), report.failed);
             out.insert(QStringLiteral("reason"), result.error());
-            return std::unexpected(CliError{ .code = ExitCode::Network,
-                                             .error = QStringLiteral("metadata_failed"),
-                                             .message = QStringLiteral("Could not generate the mod metadata: %1").arg(result.error()),
-                                             .details = out });
+            return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
+                                                              .error = QStringLiteral("metadata_failed"),
+                                                              .message = QStringLiteral("Could not generate the mod metadata: %1")
+                                                                  .arg(result.error()),
+                                                              .details = out },
+                                                            result.error()));
         }
     }
 
@@ -1045,10 +1049,11 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
         out.insert(QStringLiteral("failed"), report.failed);
         out.insert(QStringLiteral("reason"), result.error());
         report.hasCheckFailures = true;
-        return std::unexpected(CliError{ .code = ExitCode::Network,
-                                         .error = QStringLiteral("check_failed"),
-                                         .message = QStringLiteral("Could not check for updates: %1").arg(result.error()),
-                                         .details = out });
+        return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
+                                                          .error = QStringLiteral("check_failed"),
+                                                          .message = QStringLiteral("Could not check for updates: %1").arg(result.error()),
+                                                          .details = out },
+                                                result.error()));
     }
 
     auto updates = checkTask->getUpdates();
@@ -1190,10 +1195,11 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
         out.insert(QStringLiteral("updated"), report.updated);
         out.insert(QStringLiteral("failed"), report.failed);
         out.insert(QStringLiteral("reason"), result.error());
-        return std::unexpected(CliError{ .code = ExitCode::Network,
-                                         .error = QStringLiteral("download_failed"),
-                                         .message = QStringLiteral("Could not download the updates: %1").arg(result.error()),
-                                         .details = out });
+        return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
+                                                          .error = QStringLiteral("download_failed"),
+                                                          .message = QStringLiteral("Could not download the updates: %1").arg(result.error()),
+                                                          .details = out },
+                                                result.error()));
     }
 
     for (const auto& entry : *failed) {

@@ -578,10 +578,11 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInstall& cmd)
                          .source = sourceName(packPtr->provider) };
 
     if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
+        const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
         out.insert(QStringLiteral("reason"), result.error());
-        return outputError(QStringLiteral("download_failed"), result.error(), ExitCode::Network, out);
+        return outputError(failure.code, result.error(), failure.exitCode, out);
     }
 
     // Refresh the model so the freshly installed pack shows up in the output.

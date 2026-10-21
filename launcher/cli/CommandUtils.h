@@ -213,6 +213,27 @@ FailureOutcome evaluateFailures(const QJsonArray& failed, int changed);
 ExitCode reportFailures(const FailureOutcome& outcome, QJsonObject& out, const QString& noun, const QString& allFailedMessage);
 
 /**
+ * @brief the code and the exit code of the failure of a task
+ *
+ * A task that did not finish in the grace period after the timeout is
+ * reported with the `operation_did_not_finish` code and the exit code 1 - the
+ * command cannot tell what the task did, so it must not claim that it failed
+ * for another reason.
+ */
+struct TaskFailure {
+    /// The code of the error envelope.
+    QString code;
+    /// The exit code of the command.
+    ExitCode exitCode = ExitCode::Generic;
+};
+
+/// @brief the code and the exit code of the failure of a task
+TaskFailure taskFailure(const QString& code, const QString& reason, ExitCode exitCode);
+
+/// @brief the error of a failed task, with the code and the exit code of the failure
+CliError taskFailureError(const CliError& error, const QString& reason);
+
+/**
  * @brief resolve the targets of a remove/enable/disable command
  *
  * @param noun  the word that is used in the failure messages ("mod",

@@ -160,9 +160,10 @@ ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotUpload& 
         job->addNetAction(request);
     }
     if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-        return outputError(QStringLiteral("upload_failed"),
+        const auto failure = taskFailure("upload_failed", result.error(), ExitCode::Network);
+        return outputError(failure.code,
                            QStringLiteral("The screenshot could not be uploaded: %1").arg(result.error()),
-                           ExitCode::Network);
+                           failure.exitCode);
     }
 
     QJsonObject album;
@@ -173,9 +174,10 @@ ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotUpload& 
         auto albumJob = makeCliNetJob(QStringLiteral("Imgur album creation"));
         albumJob->addNetAction(request);
         if (auto albumResult = runTaskSync(albumJob, g_NetworkTimeoutMs); !albumResult) {
-            return outputError(QStringLiteral("upload_failed"),
+            const auto failure = taskFailure("upload_failed", albumResult.error(), ExitCode::Network);
+            return outputError(failure.code,
                                QStringLiteral("The album of the screenshots could not be created: %1").arg(albumResult.error()),
-                               ExitCode::Network);
+                               failure.exitCode);
         }
         album.insert(QStringLiteral("id"), result->id);
         album.insert(QStringLiteral("url"), QStringLiteral("https://imgur.com/a/%1").arg(result->id));

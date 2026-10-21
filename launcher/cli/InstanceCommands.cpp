@@ -171,11 +171,12 @@ ExitCode downloadInstanceFiles(CommandContext& ctx, MinecraftInstance* instance,
     }
 
     if (auto result = runTaskSync(task, g_DownloadTimeoutMs); !result) {
+        const auto failure = taskFailure("download_failed", result.error(), failureCode);
         QJsonObject out;
         out.insert(QStringLiteral("reason"), result.error());
-        return outputError(QStringLiteral("download_failed"),
+        return outputError(failure.code,
                            QStringLiteral("The files of the instance could not be downloaded: %1").arg(result.error()),
-                           failureCode,
+                           failure.exitCode,
                            out);
     }
     // The download of the creation task of the launcher cannot report its
@@ -303,9 +304,10 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
 
         shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
         if (auto result = runTaskSync(wrapped, g_DownloadTimeoutMs); !result) {
-            return outputError(QStringLiteral("create_failed"),
+            const auto failure = taskFailure("create_failed", result.error(), ExitCode::Conflict);
+            return outputError(failure.code,
                                QStringLiteral("The instance could not be imported: %1").arg(result.error()),
-                               ExitCode::Conflict);
+                               failure.exitCode);
         }
 
         instances->loadList();
@@ -392,9 +394,10 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
     auto result = runTaskSync(wrapped, g_DownloadTimeoutMs);
 
     if (!result) {
-        return outputError(QStringLiteral("create_failed"),
+        const auto failure = taskFailure("create_failed", result.error(), ExitCode::Conflict);
+        return outputError(failure.code,
                            QStringLiteral("The instance could not be created: %1").arg(result.error()),
-                           ExitCode::Conflict);
+                           failure.exitCode);
     }
 
     instances->loadList();
@@ -481,9 +484,10 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceDuplicate& c
     const auto expectedId = expectedInstanceId(ctx, name);
     shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
     if (auto result = runTaskSync(wrapped, g_DownloadTimeoutMs); !result) {
-        return outputError(QStringLiteral("duplicate_failed"),
+        const auto failure = taskFailure("duplicate_failed", result.error(), ExitCode::Conflict);
+        return outputError(failure.code,
                            QStringLiteral("The instance could not be duplicated: %1").arg(result.error()),
-                           ExitCode::Conflict);
+                           failure.exitCode);
     }
 
     instances->loadList();

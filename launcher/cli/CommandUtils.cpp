@@ -546,4 +546,23 @@ ExitCode reportFailures(const FailureOutcome& outcome, QJsonObject& out, const Q
     return outputError(outcome.error, message, outcome.code, out);
 }
 
+TaskFailure taskFailure(const QString& code, const QString& reason, ExitCode exitCode)
+{
+    if (taskDidNotFinish(reason)) {
+        return { .code = QString::fromLatin1(g_TaskDidNotFinish), .exitCode = ExitCode::Generic };
+    }
+    return { .code = code, .exitCode = exitCode };
+}
+
+CliError taskFailureError(const CliError& error, const QString& reason)
+{
+    if (!taskDidNotFinish(reason)) {
+        return error;
+    }
+    auto adjusted = error;
+    adjusted.code = ExitCode::Generic;
+    adjusted.error = QString::fromLatin1(g_TaskDidNotFinish);
+    return adjusted;
+}
+
 }  // namespace Cli

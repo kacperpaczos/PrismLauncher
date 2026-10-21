@@ -30,12 +30,30 @@
 
 namespace Cli {
 
+/// The reason of a task that did not finish in the grace period after the
+/// timeout - the command cannot tell what the task did, so it must not claim
+/// that it failed for another reason.
+inline constexpr auto g_TaskDidNotFinish = "operation_did_not_finish";
+
+/// Whether the reason of a failed task means that the task did not finish.
+inline bool taskDidNotFinish(const QString& reason)
+{
+    return reason == QLatin1String(g_TaskDidNotFinish);
+}
+
 /// Run `task` to completion on a local event loop, blocking the calling thread.
 ///
 /// A single throttled progress line is written to stderr while the task runs.
-/// On timeout the task is aborted (when possible) and an error is returned.
+/// On timeout the task is aborted (when possible) and it gets a grace period
+/// to finish. A task that does not finish in the grace period is kept alive
+/// (its callbacks would point to freed memory otherwise) and the failure
+/// `operation_did_not_finish` is reported.
+///
+/// @param task          the task to run
+/// @param timeoutMs     the time the task gets to finish
+/// @param gracePeriodMs the time the task gets to finish after the timeout
 ///
 /// @returns an empty result on success, or the failure reason / timeout message.
-Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs = 300000);
+Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs = 300000, int gracePeriodMs = 5000);
 
 }  // namespace Cli
