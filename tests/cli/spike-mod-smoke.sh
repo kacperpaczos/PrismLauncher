@@ -368,6 +368,16 @@ expect_rc 0
 check_json 'd["ok"] is True'
 check_json 'd["dry_run"] is True'
 check_json 'any(d["slug"] == "mezzconfig" for d in d["dependencies"])'
+check_json 'all(d["installed"] is False for d in d["dependencies"])'
+
+step "mod update --all (the dependencies are installed)"
+run_cmd mod update --all -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["failed"] == []'
+check_json 'any(d["slug"] == "mezzconfig" and d["installed"] is True for d in d["dependencies"])'
+MEZZ_FILE="$(json_value '[d["file"] for d in d["dependencies"] if d["slug"] == "mezzconfig"][0]')"
+expect_file "${MODS_DIR}/${MEZZ_FILE}"
 
 step "mod update --all --no-deps (the dependencies are not resolved)"
 run_cmd mod update --all -i "${INSTANCE_ID}" --dry-run --no-deps

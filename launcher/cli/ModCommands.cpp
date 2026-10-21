@@ -863,6 +863,19 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModDisable& cmd)
     return runEnableDisable(ctx, cmd.targets, cmd.instance, cmd.recursive, EnableAction::DISABLE);
 }
 
+/// A dependency that was resolved for an update.
+struct ResolvedDependency {
+    /// The project of the dependency.
+    ModPlatform::IndexedPack::Ptr pack;
+    /// The version of the dependency that was resolved.
+    ModPlatform::IndexedVersion version;
+    /// The version of the mod that requires the dependency - it is reported to
+    /// the provider.
+    QString dependentOn;
+    /// Whether the dependency was installed.
+    bool installed = false;
+};
+
 /// The outcome of one `mod update` run - the arrays the command reports and
 /// the flags that decide its exit code.
 struct ModUpdateReport {
@@ -870,12 +883,13 @@ struct ModUpdateReport {
     QJsonArray upToDate;
     QJsonArray skipped;
     QJsonArray failed;
-    QJsonArray dependencies;
     bool hasUnresolvedTargets = false;
     bool hasCheckFailures = false;
     /// The files that have to be renamed to `.disabled` after the download -
     /// the mod was disabled before the update and it stays disabled.
     QList<QPair<QString, QString>> disabledRenames;
+    /// The dependencies that were resolved for the update.
+    QList<ResolvedDependency> resolvedDependencies;
 };
 
 /// Resolves the mods an update applies to - every mod (`--all`) or the mods
@@ -1095,17 +1109,21 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
             report.failed.append(entry);
             report.hasCheckFailures = true;
         } else {
+            const auto extraInfo = dependencyTask->getExtraInfo();
             for (const auto& dependency : dependencyTask->getDependecies()) {
                 if (!dependency || !dependency->pack) {
                     continue;
                 }
-                QJsonObject entry;
-                entry.insert(QStringLiteral("slug"), normalizedSlug(dependency->pack->slug));
-                entry.insert(QStringLiteral("project_id"), dependency->pack->addonId.toString());
-                entry.insert(QStringLiteral("version_id"), dependency->version.fileId.toString());
-                entry.insert(QStringLiteral("version_number"), dependency->version.versionNumber);
-                entry.insert(QStringLiteral("file"), dependency->version.fileName);
-                report.dependencies.append(entry);
+                ResolvedDependency resolved;
+                resolved.pack = dependency->pack;
+                resolved.version = dependency->version;
+                // The version of the mod that requires the dependency is
+                // reported to the provider.
+                const auto info = extraInfo.constFind(dependency->pack->addonId.toString());
+                if (info != extraInfo.constEnd() && !info->requiredByIds.isEmpty()) {
+                    resolved.dependentOn = info->requiredByIds.first();
+                }
+                report.resolvedDependencies.append(resolved);
             }
         }
     }
@@ -1139,16 +1157,51 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
                                            const Cmd::ModUpdate& cmd,
                                            ModUpdateReport& report)
 {
-    if (cmd.dryRun || updateDownloads.isEmpty()) {
+    if (cmd.dryRun) {
+        // A dry run only reports what would be done.
         return true;
     }
+
+    // The failures of the downloads are collected in a list that is shared
+    // with the download tasks - they may outlive this function (the tasks are
+    // deleted through the event loop).
+    auto failed = std::make_shared<QJsonArray>();
 
     auto download = makeShared<ConcurrentTask>(
         QStringLiteral("Update Mods"), qMax(1, APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt()));
     for (const auto& update : updateDownloads) {
         download->addTask(update);
     }
+    // The dependencies of the updated mods are installed as well - they are
+    // part of the same batch of downloads.
+    bool hasDependencies = false;
+    if (!cmd.noDeps) {
+        for (const auto& dependency : report.resolvedDependencies) {
+            const auto slug = normalizedSlug(dependency.pack->slug);
+            const auto fileName = dependency.version.fileName;
+            auto task = makeShared<ResourceDownloadTask>(
+                dependency.pack, dependency.version, model, true, QStringLiteral("dependency"), dependency.dependentOn);
+            QObject::connect(task.get(), &Task::failed, download.get(), [slug, fileName, failed](const QString& reason) {
+                QJsonObject entry;
+                entry.insert(QStringLiteral("name"), slug);
+                entry.insert(QStringLiteral("file"), fileName);
+                entry.insert(QStringLiteral("reason"), reason);
+                failed->append(entry);
+            });
+            download->addTask(task);
+            hasDependencies = true;
+        }
+    }
+
+    if (updateDownloads.isEmpty() && !hasDependencies) {
+        // There was nothing to download.
+        return true;
+    }
+
     if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
+        for (const auto& entry : *failed) {
+            report.failed.append(entry);
+        }
         QJsonObject out;
         out.insert(QStringLiteral("updated"), report.updated);
         out.insert(QStringLiteral("failed"), report.failed);
@@ -1157,6 +1210,14 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
                                          .error = QStringLiteral("download_failed"),
                                          .message = QStringLiteral("Could not download the updates: %1").arg(result.error()),
                                          .details = out });
+    }
+
+    for (const auto& entry : *failed) {
+        report.failed.append(entry);
+    }
+    // The dependencies that were part of the batch are installed.
+    for (auto& dependency : report.resolvedDependencies) {
+        dependency.installed = true;
     }
 
     // The mods that were disabled before the update have to stay disabled -
@@ -1242,7 +1303,18 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModUpdate& cmd)
     out.insert(QStringLiteral("up_to_date"), report.upToDate);
     out.insert(QStringLiteral("skipped"), report.skipped);
     out.insert(QStringLiteral("failed"), report.failed);
-    out.insert(QStringLiteral("dependencies"), report.dependencies);
+    QJsonArray dependencies;
+    for (const auto& dependency : report.resolvedDependencies) {
+        QJsonObject entry;
+        entry.insert(QStringLiteral("slug"), normalizedSlug(dependency.pack->slug));
+        entry.insert(QStringLiteral("project_id"), dependency.pack->addonId.toString());
+        entry.insert(QStringLiteral("version_id"), dependency.version.fileId.toString());
+        entry.insert(QStringLiteral("version_number"), dependency.version.versionNumber);
+        entry.insert(QStringLiteral("file"), dependency.version.fileName);
+        entry.insert(QStringLiteral("installed"), dependency.installed);
+        dependencies.append(entry);
+    }
+    out.insert(QStringLiteral("dependencies"), dependencies);
     if (report.hasUnresolvedTargets) {
         // Some of the targets did not match a mod - the mods that were found
         // are updated anyway, but the command reports the failure.
