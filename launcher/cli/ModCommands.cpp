@@ -29,6 +29,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -872,6 +873,9 @@ struct ModUpdateReport {
     QJsonArray dependencies;
     bool hasUnresolvedTargets = false;
     bool hasCheckFailures = false;
+    /// The files that have to be renamed to `.disabled` after the download -
+    /// the mod was disabled before the update and it stays disabled.
+    QList<QPair<QString, QString>> disabledRenames;
 };
 
 /// Resolves the mods an update applies to - every mod (`--all`) or the mods
@@ -1058,10 +1062,25 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
         entry.insert(QStringLiteral("release_type"),
                      update.newVersionType.has_value() ? update.newVersionType.value().toString() : QString());
         entry.insert(QStringLiteral("provider"), sourceName(update.provider));
+        entry.insert(QStringLiteral("enabled"), update.enabled);
         if (update.download) {
             entry.insert(QStringLiteral("slug"), normalizedSlug(update.download->getPack()->slug));
             entry.insert(QStringLiteral("file"), update.download->getFilename());
             updateDownloads.append(update.download);
+            if (!update.enabled) {
+                // The mod was disabled before the update - the download writes
+                // the file with its plain name, so it has to be renamed back
+                // to `.disabled` once it is there.
+                const auto projectId = update.download->getPack()->addonId.toString();
+                for (auto* resource : checkable) {
+                    auto meta = resource->metadata();
+                    if (!meta || meta->projectId.toString() != projectId) {
+                        continue;
+                    }
+                    report.disabledRenames.append({ resource->fileinfo().fileName(), update.download->getFilename() });
+                    break;
+                }
+            }
         }
         report.updated.append(entry);
     }
@@ -1118,7 +1137,7 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
 std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
                                            const QList<shared_qobject_ptr<ResourceDownloadTask>>& updateDownloads,
                                            const Cmd::ModUpdate& cmd,
-                                           const ModUpdateReport& report)
+                                           ModUpdateReport& report)
 {
     if (cmd.dryRun || updateDownloads.isEmpty()) {
         return true;
@@ -1139,6 +1158,23 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
                                          .message = QStringLiteral("Could not download the updates: %1").arg(result.error()),
                                          .details = out });
     }
+
+    // The mods that were disabled before the update have to stay disabled -
+    // the download writes the file with its plain name, so it is renamed back
+    // to `.disabled` here.
+    for (const auto& rename : report.disabledRenames) {
+        const auto dir = model->dir();
+        const auto oldPath = dir.absoluteFilePath(rename.first);
+        const auto newPath = dir.absoluteFilePath(rename.second);
+        const auto disabledPath = newPath + QLatin1String(".disabled");
+        if (oldPath != newPath && QFile::exists(oldPath) && !QFile::remove(oldPath)) {
+            qWarning() << "The old file of the disabled mod could not be removed:" << oldPath;
+        }
+        if (QFile::exists(newPath) && !QFile::rename(newPath, disabledPath)) {
+            qWarning() << "The updated mod could not be disabled again:" << newPath;
+        }
+    }
+
     waitForModel(model);
     return true;
 }

@@ -357,7 +357,10 @@ void ModCli::addModArgs(CLI::App& app)
 
     {
         // mod update [<target>...] --all -i <instance> [--dry-run] [--no-deps] [--force] [-y] [--json]
-        auto* update = mod->add_subcommand("update", "Update one or more mods in an instance.");
+        auto* update = mod->add_subcommand(
+            "update",
+            "Update one or more mods in an instance. A mod that is disabled stays disabled - the updated file is renamed back to "
+            "'.disabled' after the download. The dependencies of the updated mods are installed too, unless '--no-deps' is given.");
         auto* updateTargetsOpt = update->add_option("targets", updateTargets, "Mod filename, slug, project ID or name.")
                                      ->option_text("target")
                                      ->expected(1, -1);

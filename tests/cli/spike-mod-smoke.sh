@@ -422,6 +422,31 @@ if [ "${BEFORE}" != "${AFTER}" ]; then
     fail "the dry run changed the mod file"
 fi
 
+# A mod that is disabled stays disabled - the updated file is renamed back to
+# '.disabled' after the download.
+step "mod disable (the mod with the old version)"
+run_cmd mod disable "${MOD_SLUG}" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["changed"][0]["enabled"] is False'
+expect_mod_file '^jei-1\.21\.1-fabric-.*\.jar\.disabled$'
+
+step "mod update --all (a disabled mod stays disabled)"
+run_cmd mod update --all -i "${INSTANCE_ID}" --no-deps
+expect_rc 0
+check_json 'd["ok"] is True'
+check_json 'd["failed"] == []'
+check_json 'len(d["updated"]) > 0'
+check_json 'all(u["enabled"] is False for u in d["updated"])'
+expect_mod_file '^jei-1\.21\.1-fabric-.*\.jar\.disabled$'
+expect_no_mod_file '^jei-1\.21\.1-fabric-.*\.jar$'
+
+step "mod enable (the updated mod)"
+run_cmd mod enable "${MOD_SLUG}" -i "${INSTANCE_ID}"
+expect_rc 0
+check_json 'd["ok"] is True'
+expect_mod_file '^jei-1\.21\.1-fabric-.*\.jar$'
+
 step "mod install --version (a version of another loader)"
 run_cmd mod install "${MOD_SLUG}" -i "${INSTANCE_ID}" --version "${NEOFORGE_VERSION}" --no-deps
 expect_rc 3
