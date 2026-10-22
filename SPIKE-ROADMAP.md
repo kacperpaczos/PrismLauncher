@@ -1,5 +1,9 @@
 # SPIKE: CLI zarządzania modami — rozpiska
 
+> Wznowienie prac (2026-10-22): [docs/cli/HANDOFF.md](docs/cli/HANDOFF.md).
+> Ten plik zawiera historyczne wyniki etapów; aktualne uwagi niezależnej recenzji
+> i status późniejszych rewizji zapisano w handoffie i rejestrze rewizji.
+
 > Cel spiKA: **pełne zarządzanie modami z konsoli** — `prism mod list|search|info|install|remove|enable|disable|update`
 > — działające headless (bez GUI, platforma offscreen), z wyjściem JSON i kodami wyjścia.
 > Baza: gałąź `cli_rebirth` (PR #6193, Ryex), pin **`059625c8b89509fe5180384fd9db8432512e93a7`**.
@@ -773,11 +777,15 @@ W trakcie etapu wpadły też porządki poprzednich przebiegów (refaktor `resolv
 - **`ipc_timeout` nie cofa skutków** — jeśli GUI odpowiedzi po limicie, komenda i tak została
   wykonana; klient tylko nie poznał wyniku.
 
-## Codex review round (2026-10-21) — 16 findings, all fixed
+## Codex review round (2026-10-21) — poprawki i wynik niezależnej weryfikacji
 
-An independent review (Codex) of `spike/mod-cli` @ e0e3d1839 produced 16 findings; all are
-fixed on this branch (commits `2a53efde7`..`3a31871eb` + this doc). Build clean (-Werror),
-**35/35 tests**, all smoke scripts green.
+An independent review (Codex) of `spike/mod-cli` @ e0e3d1839 produced 16 findings.
+Fixes were implemented in commits `809e805e3`..`3a31871eb`. The subsequent independent
+review of **`9a84365d0`** returned **changes requested: 7 FIXED, 9 PARTIAL**, plus
+five new issues. It reported a passing container build, **35/35 CTest**, and passing
+mod/pack network smoke tests. These results do not constitute approval of later fixes.
+See the [archived review](docs/cli/CODEX-REVIEW-2026-10-21.md) and
+[current handoff](docs/cli/HANDOFF.md).
 
 ### Documented policies (as implemented)
 
@@ -787,7 +795,7 @@ fixed on this branch (commits `2a53efde7`..`3a31871eb` + this doc). Build clean 
    (`not_found` | `ambiguous` | `locked` | `io` | `download` | `already_absent`).
    `evaluateFailures()` computes the outcome: only informational failures (`already_absent`)
    → success; every target failed → all-`not_found` → exit 3, all-`ambiguous` → exit 5,
-   otherwise exit 1; mixed success/failure → exit 0 but the envelope carries
+   otherwise exit 1; mixed success/failure → exit 1 and the envelope carries
    `partial: true` and the per-entry codes.
 3. **IPC busy policy**: while a command batch is executing, a new command arriving over
    IPC is rejected with `operation_in_progress` (exit 5) instead of running concurrently.
