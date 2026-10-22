@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonParseError>
 #include <QTest>
 #include <QTemporaryFile>
 
@@ -172,6 +173,33 @@ class CliOutputTest : public QObject {
         QCOMPARE(error.value("code").toString(), QString("ambiguous_target"));
         QCOMPARE(error.value("message").toString(), QString("Some targets matched more than one mod"));
         QCOMPARE(root.value("failed").toArray().size(), 1);
+    }
+
+    void test_reportError_emitsExactlyOneDocument()
+    {
+        // Regression (P2): the phases of `mod update` printed their own error
+        // envelope on top of the one the orchestrator printed, so two JSON
+        // documents landed on the standard output and the parsers of the CLI
+        // and of the IPC broke. The output of a command parses as a single
+        // complete JSON document - a second envelope after it is garbage.
+        const QByteArray raw = captureStdout([] {
+            Cli::reportError(Cli::CliError{ .code = Cli::ExitCode::Network,
+                                            .error = "check_failed",
+                                            .message = "The update of at least one mod could not be checked" });
+        });
+
+        QJsonParseError parseError{};
+        const auto doc = QJsonDocument::fromJson(raw, &parseError);
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        QVERIFY(doc.isObject());
+        QCOMPARE(doc.object().value("ok").toBool(), false);
+        QCOMPARE(doc.object().value("error").toObject().value("code").toString(), QString("check_failed"));
+
+        // The failure mode the phases regressed into: an envelope printed by a
+        // phase in front of the envelope of the orchestrator does not parse.
+        QJsonParseError doubleError{};
+        QJsonDocument::fromJson(raw + raw, &doubleError);
+        QVERIFY(doubleError.error != QJsonParseError::NoError);
     }
 
     void test_outputSink_captureDocuments()

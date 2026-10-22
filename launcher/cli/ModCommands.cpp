@@ -944,9 +944,10 @@ QList<Resource*> partitionUpdatable(const QList<Resource*>& candidates, bool for
 /// Make sure every updatable mod has metadata, otherwise it cannot be checked
 /// for updates. The provider is taken from the managed pack, defaulting to
 /// Modrinth (there is no interactive provider chooser in a headless run).
-/// Mods that end up without metadata are recorded in the report, the rest is
-/// returned as checkable. The error is returned when the metadata could not
-/// be generated - it is written by the orchestrator.
+/// Mods that end up without metadata are recorded in the report and mark the
+/// outcome as failed (`hasCheckFailures`), the rest is returned as checkable.
+/// The error is returned when the metadata could not be generated - it is
+/// written by the orchestrator.
 std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* model,
                                                                 const QList<Resource*>& updatable,
                                                                 ModUpdateReport& report)
@@ -970,6 +971,10 @@ std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* m
         // it, see `ResourceUpdateDialog`).
         sequence->addTask(metadataTask);
         if (auto result = runTaskSync(sequence, g_NetworkTimeoutMs); !result) {
+            // The outcome flag travels in the report as well - a metadata
+            // failure must never end in a success envelope, even if the
+            // command went on after the phase.
+            report.hasCheckFailures = true;
             QJsonObject out;
             out.insert(QStringLiteral("failed"), report.failed);
             out.insert(QStringLiteral("reason"), result.error());
@@ -982,10 +987,13 @@ std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* m
         }
     }
 
-    // Mods without metadata cannot be checked for updates.
+    // Mods without metadata cannot be checked for updates. This is a failure
+    // of the metadata phase - without the flag the command would report
+    // `ok: true` and exit 0 although nothing was updated.
     QList<Resource*> checkable;
     for (auto* resource : updatable) {
         if (!resource->metadata()) {
+            report.hasCheckFailures = true;
             QJsonObject entry;
             entry.insert(QStringLiteral("name"), resource->name());
             entry.insert(QStringLiteral("file"), resource->fileinfo().fileName());
