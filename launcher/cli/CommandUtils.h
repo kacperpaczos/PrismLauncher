@@ -65,7 +65,8 @@ void setClientWorkingDir(const QString& dir);
  *
  * An absolute path is returned as it is. A relative path is resolved against
  * the working directory of the client - otherwise it would point at a file of
- * the data path of the launcher.
+ * the data path of the launcher. A URL (https://, http://, file://, ...) is
+ * not a filesystem path and is returned unchanged.
  */
 QString resolveClientPath(const QString& path);
 

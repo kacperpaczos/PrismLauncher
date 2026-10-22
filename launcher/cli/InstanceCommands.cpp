@@ -297,11 +297,13 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
 
     if (cmd.from.has_value()) {
         // ---- import an instance from a URL or a file ----
-        // A relative path is resolved against the working directory of the
-        // client - the launcher runs in the data path.
+        // The source is normalized exactly like the URIs of the launcher
+        // (`Application::normalizeImportUrl`): an existing file becomes a
+        // local file URL - a relative one resolved against the working
+        // directory of the client - while a URL reaches the import task
+        // unchanged.
         const auto source = resolveClientPath(cmd.from.value());
-        QFileInfo info(source);
-        const auto url = info.exists() && info.isFile() ? QUrl::fromLocalFile(info.absoluteFilePath()) : QUrl(source);
+        const auto url = Application::normalizeImportUrl(cmd.from.value());
         if (!url.isValid()) {
             return outputError(QStringLiteral("invalid_source"),
                                QStringLiteral("'%1' is not a valid URL or file").arg(source),

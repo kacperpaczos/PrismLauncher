@@ -82,6 +82,9 @@ add_dependencies(CliParser ${Launcher_Name})
 ecm_add_test(CliTaskRunner_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME CliTaskRunner)
 
+ecm_add_test(CommandUtils_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
+    TEST_NAME CommandUtils)
+
 ecm_add_test(SettingsCommands_test.cpp LINK_LIBRARIES Launcher_logic Qt${QT_VERSION_MAJOR}::Test
     TEST_NAME SettingsCommands)
 

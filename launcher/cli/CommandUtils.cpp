@@ -27,6 +27,7 @@
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QTimer>
+#include <QUrl>
 
 #include "Application.h"
 #include "InstanceList.h"
@@ -83,6 +84,13 @@ void setClientWorkingDir(const QString& dir)
 QString resolveClientPath(const QString& path)
 {
     if (path.isEmpty()) {
+        return path;
+    }
+    // A URL is not a filesystem path - it has to reach the import task
+    // unchanged. Prefixing it with the working directory of the client turned
+    // `instance create --from https://...` into a bogus local path without a
+    // scheme, which the import could only fail on.
+    if (!QUrl(path).scheme().isEmpty()) {
         return path;
     }
     const QFileInfo info(path);

@@ -463,6 +463,11 @@ class CliParserTest : public QObject {
         // a vanilla instance needs a name and a Minecraft version
         QCOMPARE(cmd.name, QString());
         QCOMPARE(cmd.mcVersion, QString());
+
+        // any scheme reaches the command struct unchanged - the resolution of
+        // the source decides whether it is a file or a URL
+        const auto local = parseOk({ "prismlauncher", "instance", "create", "--from", "file:///home/user/pack.mrpack" });
+        QCOMPARE(*onlyCommand<Cli::Cmd::InstanceCreate>(local).from, QString("file:///home/user/pack.mrpack"));
     }
 
     void test_instanceCreate_requiresNameOrFrom()
