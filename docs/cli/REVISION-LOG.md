@@ -125,3 +125,12 @@ Pełny raport: [CODEX-REVIEW-2026-10-21.md](CODEX-REVIEW-2026-10-21.md).
 Pozostałe sprawy i dokładna procedura wznowienia: [HANDOFF.md](HANDOFF.md).
 Zamknięto sesje Claude settings, Codex re-review, nadzorcy OpenCode/makara
 oraz osierocony terminal spike-resources. Innych projektów nie zamykano.
+
+## Uzupełnienie dokumentacyjne — 2026-10-22
+
+Commit dokumentacji checkpointu to `61844dc24`. Pełny zapis czynności tej
+rozmowy, granice autorstwa i niewykonane prace:
+[SESSION-LOG-2026-10-22.md](SESSION-LOG-2026-10-22.md).
+Przy obecnym zapisie zastano zmienione `TaskRunner.cpp` i `.h`; nie były
+przedmiotem tej sesji ani weryfikacji 37/37, pozostają niezacomitowane.
+Nowy commit obejmuje wyłącznie dokumentację; nie przeprowadzono nowych testów.

@@ -1,5 +1,10 @@
 # Wznowienie prac nad Prism CLI
 
+> Uzupełnienie po checkpointcie: [pełny zapis działań tej rozmowy](SESSION-LOG-2026-10-22.md).
+> Przy kolejnym zleceniu dokumentacyjnym HEAD wynosił `61844dc24`, ale zmienione
+> były `launcher/cli/TaskRunner.cpp` i `.h`. Nie należą do opisanej poniżej
+> weryfikacji 37/37; pozostawiono je poza commitem dokumentacji.
+
 Stan zapisywany 2026-10-22 na polecenie użytkownika: zachować pracę lokalnie,
 udokumentować recenzje i zamknąć agentów projektu. To checkpoint, nie deklaracja
 gotowości produkcyjnej. W tej sesji nie wykonano push ani publikacji upstream.
@@ -125,7 +130,8 @@ przeniesiona z lokalnych sesji/ignorowanego `.scratch/` do śledzonych plików.
 Pozostałe projekty użytkownika nie należą do zakresu zamykania.
 
 W chwili przygotowania commitów pozostawała wyłącznie sesja Codexa zapisująca
-checkpoint; jej zamknięcie następuje po przekazaniu wyniku użytkownikowi.
+checkpoint. Zaplanowano jej zamknięcie po przekazaniu wyniku użytkownikowi;
+wykonania tej zaplanowanej operacji później nie potwierdzono.
 
 ## Wynik weryfikacji checkpointu
 
