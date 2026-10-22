@@ -871,9 +871,12 @@ struct ModUpdateReport {
     QJsonArray failed;
     bool hasUnresolvedTargets = false;
     bool hasCheckFailures = false;
-    /// The files that have to be renamed to `.disabled` after the download -
-    /// the mod was disabled before the update and it stays disabled.
-    QList<QPair<QString, QString>> disabledRenames;
+    /// Whether the disabled state of at least one updated mod could not be
+    /// restored after the download.
+    bool hasRestoreFailures = false;
+    /// The mods that have to stay disabled after the download - they were
+    /// disabled before the update.
+    QList<DisabledModRename> disabledRenames;
     /// The dependencies that were resolved for the update.
     QList<ResolvedDependency> resolvedDependencies;
 };
@@ -1088,7 +1091,8 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
                     if (!meta || meta->projectId.toString() != projectId) {
                         continue;
                     }
-                    report.disabledRenames.append({ resource->fileinfo().fileName(), update.download->getFilename() });
+                    report.disabledRenames.append(
+                        { resource->name(), resource->fileinfo().fileName(), update.download->getFilename() });
                     break;
                 }
             }
@@ -1146,6 +1150,41 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
     return updateDownloads;
 }
 
+/// Restores the disabled state of the updated mods - see the declaration in
+/// ModCommands.h.
+QJsonArray restoreDisabledMods(const QDir& dir, const QList<DisabledModRename>& renames)
+{
+    QJsonArray failed;
+    for (const auto& rename : renames) {
+        const auto newPath = dir.absoluteFilePath(rename.newFileName);
+        if (!QFile::exists(newPath)) {
+            // The download of this file did not go through (its failure is
+            // reported already) - the old `.disabled` file of the mod is
+            // still in place, so there is nothing to rename.
+            continue;
+        }
+        const auto disabledPath = newPath + QLatin1String(".disabled");
+        const auto oldPath = dir.absoluteFilePath(rename.oldFileName);
+        if (oldPath != newPath && QFile::exists(oldPath) && !QFile::remove(oldPath)) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), rename.name);
+            entry.insert(QStringLiteral("file"), rename.oldFileName);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
+            entry.insert(QStringLiteral("reason"), QStringLiteral("the old file of the disabled mod could not be removed"));
+            failed.append(entry);
+        }
+        if (!QFile::rename(newPath, disabledPath)) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("name"), rename.name);
+            entry.insert(QStringLiteral("file"), rename.newFileName);
+            entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
+            entry.insert(QStringLiteral("reason"), QStringLiteral("the updated mod could not be disabled again"));
+            failed.append(entry);
+        }
+    }
+    return failed;
+}
+
 /// Downloads the updates (unless it is a dry run) and waits for the model to
 /// settle. The error is returned when the downloads failed and the command
 /// has to stop - it is written by the orchestrator.
@@ -1195,43 +1234,43 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
         return true;
     }
 
-    if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
-        for (const auto& entry : *failed) {
-            report.failed.append(entry);
-        }
-        QJsonObject out;
-        out.insert(QStringLiteral("updated"), report.updated);
-        out.insert(QStringLiteral("failed"), report.failed);
-        out.insert(QStringLiteral("reason"), result.error());
-        return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
-                                                          .error = QStringLiteral("download_failed"),
-                                                          .message = QStringLiteral("Could not download the updates: %1").arg(result.error()),
-                                                          .details = out },
-                                                result.error()));
-    }
+    // The outcome of the batch as a whole - the restoration below runs no
+    // matter how the batch ended, the result is evaluated after it.
+    const auto batchResult = runTaskSync(download, g_NetworkTimeoutMs);
 
     for (const auto& entry : *failed) {
         report.failed.append(entry);
     }
-    // The dependencies that were part of the batch are installed.
-    for (auto& dependency : report.resolvedDependencies) {
-        dependency.installed = true;
+    if (batchResult) {
+        // The dependencies that were part of the batch are installed.
+        for (auto& dependency : report.resolvedDependencies) {
+            dependency.installed = true;
+        }
     }
 
     // The mods that were disabled before the update have to stay disabled -
-    // the download writes the file with its plain name, so it is renamed back
-    // to `.disabled` here.
-    for (const auto& rename : report.disabledRenames) {
-        const auto dir = model->dir();
-        const auto oldPath = dir.absoluteFilePath(rename.first);
-        const auto newPath = dir.absoluteFilePath(rename.second);
-        const auto disabledPath = newPath + QLatin1String(".disabled");
-        if (oldPath != newPath && QFile::exists(oldPath) && !QFile::remove(oldPath)) {
-            qWarning() << "The old file of the disabled mod could not be removed:" << oldPath;
+    // whether the batch succeeded or not: a download that failed must not
+    // keep the successfully downloaded mods from being disabled again. The
+    // decision is made per file, on what is actually on the disk, so the
+    // pairs whose download failed are skipped.
+    const auto restoreFailures = restoreDisabledMods(model->dir(), report.disabledRenames);
+    if (!restoreFailures.isEmpty()) {
+        report.hasRestoreFailures = true;
+        for (const auto& entry : restoreFailures) {
+            report.failed.append(entry);
         }
-        if (QFile::exists(newPath) && !QFile::rename(newPath, disabledPath)) {
-            qWarning() << "The updated mod could not be disabled again:" << newPath;
-        }
+    }
+
+    if (!batchResult) {
+        QJsonObject out;
+        out.insert(QStringLiteral("updated"), report.updated);
+        out.insert(QStringLiteral("failed"), report.failed);
+        out.insert(QStringLiteral("reason"), batchResult.error());
+        return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
+                                                          .error = QStringLiteral("download_failed"),
+                                                          .message = QStringLiteral("Could not download the updates: %1").arg(batchResult.error()),
+                                                          .details = out },
+                                                batchResult.error()));
     }
 
     waitForModel(model);
@@ -1327,6 +1366,16 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModUpdate& cmd)
         return outputError(QStringLiteral("check_failed"),
                            QStringLiteral("The update of at least one mod could not be checked"),
                            ExitCode::Network,
+                           out);
+    }
+    if (report.hasRestoreFailures) {
+        // The updated mods are in place, but the disabled state of at least
+        // one of them could not be restored - such a mod came back enabled,
+        // so the command must not report a plain success.
+        out.insert(QStringLiteral("partial"), true);
+        return outputError(QStringLiteral("restore_failed"),
+                           QStringLiteral("The disabled state of at least one updated mod could not be restored"),
+                           ExitCode::Generic,
                            out);
     }
     outputJson(QJsonDocument(out));

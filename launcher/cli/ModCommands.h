@@ -27,7 +27,41 @@
 #include "cli/Commands.h"
 #include "cli/Output.h"
 
+#include <QDir>
+#include <QJsonArray>
+#include <QList>
+#include <QString>
+
 namespace Cli {
+
+/// A mod that was disabled before an update and has to stay disabled after
+/// it - the download writes the file with its plain name, so it has to be
+/// renamed back to `.disabled` once it is on the disk.
+struct DisabledModRename {
+    /// The name of the mod (it goes into the report).
+    QString name;
+    /// The file of the mod before the update (the `.disabled` file).
+    QString oldFileName;
+    /// The file the download writes (the plain name).
+    QString newFileName;
+};
+
+/**
+ * @brief restore the disabled state of the updated mods
+ *
+ * The decision is made per pair, on what is actually on the disk: the
+ * freshly downloaded file that exists is renamed to `.disabled`, the file
+ * that does not exist is skipped - its download failed, so the old
+ * `.disabled` file of the mod is still in place and the mod never left its
+ * disabled state.
+ *
+ * @param dir     the directory of the mods
+ * @param renames the mods that have to stay disabled
+ * @returns the entries of the `failed` array for the renames that could not
+ *          be restored (every one of them carries the code `io`) - empty
+ *          when everything was restored or skipped
+ */
+QJsonArray restoreDisabledMods(const QDir& dir, const QList<DisabledModRename>& renames);
 
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModList& cmd);
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd);
