@@ -35,9 +35,10 @@ namespace {
  * The tasks that did not finish in the grace period after a timeout.
  *
  * A task that is still running must not be deleted - its callbacks would
- * point to freed memory and the process would crash. The list keeps the tasks
- * alive until the process exits. It is not destroyed on purpose: the tasks
- * are gone when the process exits anyway.
+ * point to freed memory and the process would crash. The list keeps such
+ * tasks alive; when a task eventually finishes on its own, it is released
+ * through its finished signal. The list itself is not destroyed on purpose:
+ * the tasks that never finish are gone when the process exits anyway.
  */
 std::vector<Task::Ptr>& unfinishedTasks()
 {
@@ -91,10 +92,10 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriod
     QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, [&loop, &timedOut, &task, &graceTimer, gracePeriodMs] {
         timedOut = true;
         // The task is asked to stop - the result of the command is not needed
-        // any more, but the task may not be able to stop right away.
-        if (task->canAbort()) {
-            task->abort();
-        }
+        // any more, but the task may not be able to stop right away. abort()
+        // is safe to call even when the task says that it cannot be aborted:
+        // it is a no-op then, and some tasks stop anyway.
+        task->abort();
         // The task gets a grace period to finish - the event loop keeps
         // running until it does or until the grace period is over.
         graceTimer.start(gracePeriodMs);
@@ -140,11 +141,19 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriod
         // The task is still running - it is kept alive, so that its callbacks
         // stay valid until the process exits.
         unfinishedTasks().push_back(task);
+        // When the task eventually finishes on its own, the reaper releases
+        // it again. The reference of the reaper is the last one, so dropping
+        // it deletes the task through its deferred deleter - from the event
+        // loop, never inside the emission of its own finished signal.
+        QObject::connect(task.get(), &Task::finished, task.get(), [task] { std::erase(unfinishedTasks(), task); });
         return std::unexpected(QString::fromLatin1(g_TaskDidNotFinish));
     }
 
     if (timedOut) {
-        return std::unexpected(QStringLiteral("task timed out after %1 ms").arg(timeoutMs));
+        // The task stopped in the grace period, but the operation was not
+        // completed - the command reports that it was cancelled, not that
+        // it failed for the reason of the task.
+        return std::unexpected(QStringLiteral("the operation was cancelled after the timeout (%1 ms)").arg(timeoutMs));
     }
 
     if (!task->wasSuccessful()) {

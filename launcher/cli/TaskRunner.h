@@ -44,10 +44,14 @@ inline bool taskDidNotFinish(const QString& reason)
 /// Run `task` to completion on a local event loop, blocking the calling thread.
 ///
 /// A single throttled progress line is written to stderr while the task runs.
-/// On timeout the task is aborted (when possible) and it gets a grace period
-/// to finish. A task that does not finish in the grace period is kept alive
-/// (its callbacks would point to freed memory otherwise) and the failure
-/// `operation_did_not_finish` is reported.
+/// On timeout the task is asked to abort - abort() is safe to call even when
+/// the task says that it cannot be aborted - and it gets a grace period to
+/// finish. A task that stops in the grace period did not complete the
+/// operation though, so the failure says that the operation was cancelled
+/// after the timeout. A task that does not even stop in the grace period is
+/// handed over to a process-lifetime reaper (its callbacks would point to
+/// freed memory otherwise) and the failure `operation_did_not_finish` is
+/// reported; the reaper releases the task as soon as it eventually finishes.
 ///
 /// @param task          the task to run
 /// @param timeoutMs     the time the task gets to finish
