@@ -121,7 +121,9 @@
 #include <QNetworkAccessManager>
 #include <QStringList>
 #include <QStringLiteral>
+#include <QStyle>
 #include <QStyleFactory>
+#include <QStyleHints>
 #include <QTranslator>
 #include <QWindow>
 
@@ -173,7 +175,7 @@
 #include <sys/types.h>
 #endif
 
-#if defined(Q_OS_MAC)
+#if defined(Q_OS_MACOS)
 #if defined(SPARKLE_ENABLED)
 #include "updater/MacSparkleUpdater.h"
 #endif
@@ -186,10 +188,6 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#endif
-
-#if defined(Q_OS_WIN32) || defined(Q_OS_MAC)
-#include <QStyleHints>
 #endif
 
 #include "logging/Qt.h"
@@ -263,7 +261,6 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
     setApplicationDisplayName(QString("%1 %2").arg(BuildConfig.LAUNCHER_DISPLAYNAME, BuildConfig.printableVersionString()));
     setApplicationVersion(BuildConfig.printableVersionString() + "\n" + BuildConfig.GIT_COMMIT);
     setDesktopFileName(BuildConfig.LAUNCHER_APPID);
-    m_startTime = QDateTime::currentDateTime();
 
     // Decide once whether this process is a pure headless run. The result gates
     // the headless exit in processCommands() and suppressing the main window.
@@ -283,7 +280,7 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
         m_rootPath = foo.absolutePath();
 #elif defined(Q_OS_WIN32)
         m_rootPath = binPath;
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_MACOS)
         QDir foo(FS::PathCombine(binPath, "../.."));
         m_rootPath = foo.absolutePath();
         // on macOS, touch the root to force Finder to reload the .app metadata (and fix any icon change issues)
@@ -568,15 +565,15 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
 
         m_settings->registerSetting("NumberOfConcurrentTasks", 10);
         m_settings->registerSetting("NumberOfConcurrentDownloads", 6);
-        m_settings->registerSetting("NumberOfManualRetries", 1);
-        m_settings->registerSetting("RequestTimeout", 60);
+        m_settings->registerSetting("NetworkRetryLimit", 2);
+        m_settings->registerSetting("RequestTimeout", 15);
 
         QString defaultMonospace;
         int defaultSize = 11;
 #ifdef Q_OS_WIN32
         defaultMonospace = "Courier";
         defaultSize = 10;
-#elifdef Q_OS_MAC
+#elif defined(Q_OS_MACOS)
         defaultMonospace = "Menlo";
 #else
         defaultMonospace = "Monospace";
@@ -613,6 +610,7 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
         m_settings->registerSetting("MoveModsFromDownloadsDir", false);
         m_settings->registerSetting("SkinsDir", "skins");
         m_settings->registerSetting("JavaDir", "java");
+        m_settings->registerSetting("TemplateDir", "instance-template");
 
 #ifdef Q_OS_MACOS
         // Folder security-scoped bookmarks
@@ -622,6 +620,7 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
         m_settings->registerSetting("DownloadsDirBookmark", "");
         m_settings->registerSetting("SkinsDirBookmark", "");
         m_settings->registerSetting("JavaDirBookmark", "");
+        m_settings->registerSetting("TemplateDirBookmark", "");
 #endif
 
         // Editors
@@ -663,6 +662,7 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
         m_settings->registerSetting("JavaVersion", "");
         m_settings->registerSetting("JavaVendor", "");
         m_settings->registerSetting("LastHostname", "");
+        m_settings->registerSetting("PinnedJavaPaths", "{}");
         m_settings->registerSetting("JvmArgs", "");
         m_settings->registerSetting("IgnoreJavaCompatibility", false);
         m_settings->registerSetting("IgnoreJavaWizard", false);
@@ -798,7 +798,6 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
             resetIfInvalid(m_settings->registerSetting("LegacyFMLLibsURLOverride", "").get());
         }
 
-        m_settings->registerSetting("MetaRefreshOnLaunch", true);
         m_settings->registerSetting("CloseAfterLaunch", false);
         m_settings->registerSetting("QuitAfterGameStop", false);
 
@@ -895,6 +894,7 @@ Application::Application(int& argc, char** argv, const Cli::Args& args) : QAppli
         m_settings->get("DownloadsDir");
         m_settings->get("SkinsDir");
         m_settings->get("JavaDir");
+        m_settings->get("TemplateDir");
     }
 #endif
 
@@ -1183,16 +1183,24 @@ bool Application::createSetupWizard()
     bool themeInterventionRequired = !validWidgets || !validIcons;
     bool wizardRequired = javaRequired || languageRequired || pasteInterventionRequired || themeInterventionRequired || askjava || login;
     if (wizardRequired) {
+        const bool darkMode = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
         // set default theme after going into theme wizard
         if (!validIcons) {
-            settings()->set("IconTheme", QString("pe_colored"));
+            QString defaultIconTheme;
+            if (QApplication::style()->name() == "breeze") {
+                defaultIconTheme = darkMode ? "breeze_dark" : "breeze_light";
+            } else {
+                defaultIconTheme = darkMode ? "flat_white" : "flat";
+            }
+
+            settings()->set("IconTheme", defaultIconTheme);
         }
         if (!validWidgets) {
-#if defined(Q_OS_WIN32) || defined(Q_OS_MACOS)
-            const QString style =
-                QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark ? QStringLiteral("dark") : QStringLiteral("bright");
+#if defined(Q_OS_LINUX)
+            const QString style = "system";
 #else
-            const QString style = QStringLiteral("system");
+            const QString style = darkMode ? QStringLiteral("dark") : QStringLiteral("bright");
+
 #endif
 
             settings()->set("ApplicationTheme", style);
@@ -1232,7 +1240,7 @@ bool Application::createSetupWizard()
 
 bool Application::updaterEnabled()
 {
-#ifdef Q_OS_MAC
+#if defined(Q_OS_MACOS)
     return BuildConfig.UPDATER_ENABLED;
 #else
     return BuildConfig.UPDATER_ENABLED && QFileInfo(FS::PathCombine(m_rootPath, updaterBinaryName())).isFile();
@@ -1306,7 +1314,7 @@ void Application::performMainStartupAction(const std::vector<Cli::Command>& cmds
     // initialize the updater
     if (updaterEnabled()) {
         qDebug() << "Initializing updater";
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
 #if defined(SPARKLE_ENABLED)
         m_updater = std::make_unique<MacSparkleUpdater>();
 #endif
@@ -1711,30 +1719,27 @@ bool Application::launch(MinecraftInstance* instance,
     if (m_updateRunning) {
         qDebug() << "Cannot launch instances while an update is running. Please try again when updates are completed.";
     } else if (instance->canLaunch()) {
-        QMutexLocker locker(&m_instanceExtrasMutex);
-        auto& extras = m_instanceExtras[instance->id()];
-        auto* window = extras.window;
-        if (window) {
-            if (!window->saveAll()) {
+        if (instance->window() != nullptr) {
+            if (!instance->window()->saveAll()) {
                 return false;
             }
         }
-        auto& controller = extras.controller;
-        controller = std::make_unique<LaunchController>();
+        instance->setLaunchController(std::make_unique<LaunchController>());
+        auto* controller = instance->launchController();
         controller->setInstance(instance);
         controller->setLaunchMode(mode);
         controller->setProfiler(profilers().value(instance->settings()->get("Profiler").toString(), nullptr).get());
         controller->setTargetToJoin(std::move(targetToJoin));
         controller->setAccountToUse(std::move(accountToUse));
         controller->setOfflineName(offlineName);
-        if (window) {
-            controller->setParentWidget(window);
-        } else if (m_mainWindow) {
+        if (instance->window() != nullptr) {
+            controller->setParentWidget(instance->window());
+        } else if (m_mainWindow != nullptr) {
             controller->setParentWidget(m_mainWindow);
         }
-        connect(controller.get(), &LaunchController::finished, this, &Application::controllerFinished);
+        connect(controller, &LaunchController::finished, this, &Application::controllerFinished);
         addRunningInstance();
-        QMetaObject::invokeMethod(controller.get(), &Task::start, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(controller, &Task::start, Qt::QueuedConnection);
         return true;
     } else if (instance->isRunning()) {
         showInstanceWindow(instance, "console");
@@ -1752,13 +1757,8 @@ bool Application::kill(BaseInstance* instance)
         qWarning() << "Attempted to kill instance" << instance->id() << ", which isn't running.";
         return false;
     }
-    QMutexLocker locker(&m_instanceExtrasMutex);
-    auto& extras = m_instanceExtras[instance->id()];
-    // NOTE: copy of the shared pointer keeps it alive
-    auto& controller = extras.controller;
-    locker.unlock();
-    if (controller) {
-        return controller->abort();
+    if (instance->launchController() != nullptr) {
+        return instance->launchController()->abort();
     }
     return true;
 }
@@ -1811,19 +1811,17 @@ void Application::controllerFinished()
     if (!controller) {
         return;
     }
-    auto id = controller->id();
 
-    QMutexLocker locker(&m_instanceExtrasMutex);
-    auto& extras = m_instanceExtras.at(id);
+    auto* instance = controller->instance();
 
     const bool wasSuccessful = controller->wasSuccessful();
     // on success, do...
-    if (wasSuccessful && controller->instance()->settings()->get("AutoCloseConsole").toBool()) {
-        if (extras.window) {
-            QMetaObject::invokeMethod(extras.window, &QWidget::close, Qt::QueuedConnection);
+    if (wasSuccessful && instance->settings()->get("AutoCloseConsole").toBool()) {
+        if (instance->window() != nullptr) {
+            QMetaObject::invokeMethod(instance->window(), &QWidget::close, Qt::QueuedConnection);
         }
     }
-    extras.controller.reset();
+    instance->setLaunchController(nullptr);
     subRunningInstance();
 
     // quit when there are no more windows.
@@ -1866,7 +1864,10 @@ MainWindow* Application::showMainWindow(bool minimized)
 
         m_mainWindow->checkInstancePathForProblems();
         connect(this, &Application::updateAllowedChanged, m_mainWindow, &MainWindow::updatesAllowedChanged);
-        connect(m_mainWindow, &MainWindow::isClosing, this, &Application::on_windowClose);
+        connect(m_mainWindow, &MainWindow::isClosing, this, [this] {
+            m_mainWindow = nullptr;
+            on_windowClose();
+        });
         m_openWindows++;
     }
     return m_mainWindow;
@@ -1880,7 +1881,10 @@ ViewLogWindow* Application::showLogWindow()
         m_viewLogWindow->activateWindow();
     } else {
         m_viewLogWindow = new ViewLogWindow();
-        connect(m_viewLogWindow, &ViewLogWindow::isClosing, this, &Application::on_windowClose);
+        connect(m_viewLogWindow, &ViewLogWindow::isClosing, this, [this] {
+            m_viewLogWindow = nullptr;
+            on_windowClose();
+        });
         m_openWindows++;
     }
     return m_viewLogWindow;
@@ -1892,11 +1896,9 @@ InstanceWindow* Application::showInstanceWindow(MinecraftInstance* instance, con
         return nullptr;
     }
     auto id = instance->id();
-    QMutexLocker locker(&m_instanceExtrasMutex);
-    auto& extras = m_instanceExtras[id];
-    auto& window = extras.window;
+    auto* window = instance->window();
 
-    if (window) {
+    if (window != nullptr) {
 // If the window is minimized on macOS or Windows, activate and bring it up
 #ifdef Q_OS_MACOS
         if (window->isMinimized()) {
@@ -1913,14 +1915,21 @@ InstanceWindow* Application::showInstanceWindow(MinecraftInstance* instance, con
     } else {
         window = new InstanceWindow(instance);
         m_openWindows++;
-        connect(window, &InstanceWindow::isClosing, this, &Application::on_windowClose);
+        connect(window, &InstanceWindow::isClosing, this, [this, instance] {
+            instance->setWindow(nullptr);
+            if (instance->launchController() != nullptr) {
+                instance->launchController()->setParentWidget(m_mainWindow);
+            }
+            on_windowClose();
+        });
+        instance->setWindow(window);
     }
 
     if (!page.isEmpty()) {
         window->selectPage(page);
     }
-    if (extras.controller) {
-        extras.controller->setParentWidget(window);
+    if (instance->launchController() != nullptr) {
+        instance->launchController()->setParentWidget(window);
     }
     return window;
 }
@@ -1928,23 +1937,6 @@ InstanceWindow* Application::showInstanceWindow(MinecraftInstance* instance, con
 void Application::on_windowClose()
 {
     m_openWindows--;
-    auto* instWindow = qobject_cast<InstanceWindow*>(sender());
-    if (instWindow) {
-        QMutexLocker locker(&m_instanceExtrasMutex);
-        auto& extras = m_instanceExtras[instWindow->instanceId()];
-        extras.window = nullptr;
-        if (extras.controller) {
-            extras.controller->setParentWidget(m_mainWindow);
-        }
-    }
-    auto* mainWindow = qobject_cast<MainWindow*>(sender());
-    if (mainWindow) {
-        m_mainWindow = nullptr;
-    }
-    auto* logWindow = qobject_cast<ViewLogWindow*>(sender());
-    if (logWindow) {
-        m_viewLogWindow = nullptr;
-    }
     // quit when there are no more windows.
     if (shouldExitNow()) {
         exit(0);

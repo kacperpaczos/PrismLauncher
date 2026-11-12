@@ -1919,7 +1919,7 @@ bool removeFiles(const QStringList& listFile)
     // For each file
     for (int i = 0; i < listFile.count(); i++) {
         // Remove
-        ret = ret && QFile::remove(listFile.at(i));
+        ret = QFile::remove(listFile.at(i)) && ret;
     }
     return ret;
 }

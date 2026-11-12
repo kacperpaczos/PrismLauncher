@@ -6,8 +6,6 @@ project(application)
 
 set(CORE_SOURCES
     # LOGIC - Base classes and infrastructure
-    BaseInstaller.h
-    BaseInstaller.cpp
     BaseVersionList.h
     BaseVersionList.cpp
     InstanceList.h
@@ -36,7 +34,6 @@ set(CORE_SOURCES
     archive/ExtractZipTask.h
     StringUtils.h
     StringUtils.cpp
-    QVariantUtils.h
     RuntimeContext.h
     PSaveFile.h
     EnumWrapper.h
@@ -70,6 +67,7 @@ set(CORE_SOURCES
     FileSystem.cpp
 
     Result.h
+    Handle.h
 
     # RW lock protected map
     RWStorage.h
@@ -88,10 +86,6 @@ set(CORE_SOURCES
     # Version number string support
     Version.h
     Version.cpp
-
-    # A Recursive file system watcher
-    RecursiveFileSystemWatcher.h
-    RecursiveFileSystemWatcher.cpp
 
     # Time
     MMCTime.h
@@ -1195,6 +1189,8 @@ SET(LAUNCHER_SOURCES
     ui/widgets/MinecraftSettingsWidget.cpp
     ui/widgets/JavaSettingsWidget.h
     ui/widgets/JavaSettingsWidget.cpp
+    ui/widgets/EditableLabel.h
+    ui/widgets/EditableLabel.cpp
 
     # GUI - instance group view
     ui/instanceview/InstanceProxyModel.cpp
@@ -1365,6 +1361,10 @@ if(APPLE)
 endif()
 
 add_executable(${Launcher_Name} MACOSX_BUNDLE WIN32 main.cpp ${LAUNCHER_RCS})
+target_link_options(${Launcher_Name} PRIVATE
+    # /MANIFEST:NO disables generating a manifest file, we instead provide our own
+    $<$<STREQUAL:${CMAKE_CXX_COMPILER_FRONTEND_VARIANT},MSVC>:/MANIFEST:NO>
+)
 
 if(${Launcher_USE_PCH})
     target_precompile_headers(${Launcher_Name} REUSE_FROM Launcher_logic)
@@ -1512,26 +1512,32 @@ if (UNIX AND APPLE AND Launcher_ENABLE_UPDATER)
 endif()
 
 # Set basic compiler warning/error flags for all targets
-get_property(Launcher_TARGETS DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS)
+get_directory_property(Launcher_TARGETS BUILDSYSTEM_TARGETS)
 foreach(target ${Launcher_TARGETS})
-    message(STATUS "Enabling all warnings as errors for target '${target}'")
-    if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-        target_compile_options(${target} PRIVATE /W4 /WX /permissive-)
+    # TODO: Fix unused parameter warnings (/wd4100, -Wno-unused-parameter, etc)
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+        target_compile_options(${target} PRIVATE
+            /W4 /permissive- /wd4100
+            $<$<STREQUAL:${CMAKE_CXX_COMPILER_ID},Clang>:-Wno-missing-field-initializers -Wno-missing-designated-field-initializers>
+        )
+        # /STACK sets the stack reserve size, ATL's pack list needs 3-4 MiB as of November 2022, provide 8 MiB
+        target_link_options(${target} PRIVATE /STACK:8388608)
     else()
-        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        target_compile_options(${target} PRIVATE
+            -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-missing-field-initializers
+        )
     endif()
 endforeach()
 
-# Disable some warnings in main launcher target due to being present in a lot of places. TODO: Fix them.
-if (CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
-    target_compile_options(Launcher_logic PRIVATE /wd4100) # C4100 - unused parameter
-    target_compile_options(${Launcher_Name} PRIVATE /wd4100) # C4100 - unused parameter
-else()
-    # sfinae-incomplete is a new GCC warning and triggers in Qt headers
-    # no-unknown-warning-option so that compilers that don't have sfinae-incomplete don't error
-    target_compile_options(Launcher_logic PRIVATE -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unknown-warning-option -Wno-sfinae-incomplete)
-    target_compile_options(${Launcher_Name} PRIVATE -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unknown-warning-option -Wno-sfinae-incomplete)
+set_target_properties(${Launcher_TARGETS} PROPERTIES COMPILE_WARNING_AS_ERROR ${Launcher_WARNING_AS_ERROR})
+
+# NOTE: Universal macOS builds (i.e., `CMAKE_OSX_ARCHITECTURES="x86_64;arm64") emit benign warnings for duplicate libraries
+# lld-link on Windows fails warns with `found both wWinMain and WinMain; using latter`
+# TODO: Maybe fix this...?
+if(NOT (CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR (MSVC AND (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_LINKER_TYPE STREQUAL "LLD"))))
+    set_target_properties(${Launcher_TARGETS} PROPERTIES LINK_WARNING_AS_ERROR ${Launcher_WARNING_AS_ERROR})
 endif()
+
 
 #### The bundle mess! ####
 # Bundle utilities are used to complete packages for different platforms - they add all the libraries that would otherwise be missing on the target system.

@@ -242,6 +242,9 @@ void OtherLogsPage::reload()
         if (m_instance) {
             setControlsEnabled(false);
         } else {
+            if (m_model && m_model->parent() == this) {
+                m_model->deleteLater();
+            }
             m_model = APPLICATION->logModel.get();
             m_proxy->setSourceModel(m_model);
             ui->text->setModel(m_proxy);
@@ -256,8 +259,8 @@ void OtherLogsPage::reload()
     if (!file.open(QFile::ReadOnly)) {
         setControlsEnabled(false);
         ui->btnReload->setEnabled(true);  // allow reload
-        m_currentFile = QString();
         QMessageBox::critical(this, tr("Error"), tr("Unable to open %1 for reading: %2").arg(m_currentFile, file.errorString()));
+        m_currentFile = QString();
     } else {
         auto setPlainText = [this](const QString& text) {
             QTextDocument* doc = ui->text->document();
@@ -303,6 +306,9 @@ void OtherLogsPage::reload()
         ui->text->clear();
         ui->text->setModel(nullptr);
         if (!m_instance) {
+            if (m_model && m_model->parent() == this) {
+                m_model->deleteLater();
+            }
             m_model = new LogModel(this);
             m_model->setMaxLines(getConsoleMaxLines(APPLICATION->settings()));
             m_model->setStopOnOverflow(shouldStopOnConsoleOverflow(APPLICATION->settings()));
@@ -310,28 +316,30 @@ void OtherLogsPage::reload()
         }
         m_model->clear();
         if (file.fileName().endsWith(".gz")) {
-            QString line;
-            auto error = GZip::readGzFileByBlocks(&file, [&line, handleLine](const QByteArray& d) {
-                auto block = d;
-                int newlineIndex = block.indexOf('\n');
-                while (newlineIndex != -1) {
-                    line += QString::fromUtf8(block).left(newlineIndex);
-                    block.remove(0, newlineIndex + 1);
-                    if (handleLine(line)) {
-                        line.clear();
+            QByteArray buffer;
+            auto error = GZip::readGzFileByBlocks(&file, [handleLine, &buffer](const QByteArray& d) {
+                const auto block = buffer + d;
+                auto view = QByteArrayView{ block };
+
+                qsizetype newlineIndex = -1;
+                while ((newlineIndex = view.indexOf('\n')) != -1) {
+                    if (handleLine(QString::fromUtf8(view.first(newlineIndex)))) {
+                        buffer.clear();
                         return false;
                     }
-                    line.clear();
-                    newlineIndex = block.indexOf('\n');
+                    view = view.sliced(newlineIndex + 1);
                 }
-                line += QString::fromUtf8(block);
+
+                buffer = QByteArray{ view };
                 return true;
             });
+
             if (!error.isEmpty()) {
                 setPlainText(tr("The file (%1) encountered an error when reading: %2.").arg(file.fileName(), error));
                 return;
-            } else if (!line.isEmpty()) {
-                handleLine(line);
+            }
+            if (!buffer.isEmpty()) {
+                handleLine(QString::fromUtf8(buffer));
             }
         } else {
             while (!file.atEnd() && !handleLine(QString::fromUtf8(file.readLine()))) {
