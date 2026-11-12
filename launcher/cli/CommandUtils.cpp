@@ -432,7 +432,12 @@ QList<Resource*> matchTarget(ResourceFolderModel* model, const QString& target)
     };
 
     auto byFileName = matches([&target](Resource* resource) {
-        return resource->fileinfo().fileName() == target || resource->getOriginalFileName() == target;
+        // The name of a disabled resource without its ".disabled" suffix.
+        auto originalName = resource->fileinfo().fileName();
+        if (!resource->enabled() && originalName.endsWith(QLatin1String(".disabled"))) {
+            originalName.chop(9);
+        }
+        return resource->fileinfo().fileName() == target || originalName == target;
     });
     if (!byFileName.isEmpty()) {
         return byFileName;

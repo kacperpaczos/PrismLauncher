@@ -76,20 +76,20 @@ class CliTaskRunnerTest : public QObject {
 
     void test_timeout_taskThatIsAborted()
     {
-        // The task is asked to abort and it stops - the timeout is reported.
+        // The task is asked to abort and it stops - the cancellation is reported.
         const auto result = Cli::runTaskSync(makeShared<FakeTask>(FakeTask::Outcome::Abort), 50, 2000);
         QVERIFY(!result.has_value());
-        QVERIFY(result.error().contains("timed out"));
+        QVERIFY(result.error().contains("cancelled after the timeout"));
         QVERIFY(!Cli::taskDidNotFinish(result.error()));
     }
 
     void test_timeout_waitsForTheTaskToFinish()
     {
-        // The task finishes in the grace period - the timeout is reported and
+        // The task finishes in the grace period - the cancellation is reported and
         // not the failure of the task.
         const auto result = Cli::runTaskSync(makeShared<FakeTask>(FakeTask::Outcome::Abort), 50, 2000);
         QVERIFY(!result.has_value());
-        QVERIFY(result.error().contains("timed out"));
+        QVERIFY(result.error().contains("cancelled after the timeout"));
     }
 };
 
