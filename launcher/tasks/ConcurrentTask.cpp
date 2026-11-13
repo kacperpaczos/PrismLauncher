@@ -56,9 +56,26 @@ auto ConcurrentTask::getStepProgress() const -> TaskStepProgressList
     return m_task_progress.values();
 }
 
-void ConcurrentTask::addTask(Task::Ptr task)
+bool ConcurrentTask::addTask(Task::Ptr task)
 {
+    if (!task || !task->setUnattended(isUnattended())) {
+        return false;
+    }
     m_queue.append(task);
+    return true;
+}
+
+bool ConcurrentTask::setUnattended(bool unattended)
+{
+    if (isRunning()) {
+        return Task::setUnattended(unattended);
+    }
+    for (const auto& task : m_queue) {
+        if (!task->setUnattended(unattended)) {
+            return false;
+        }
+    }
+    return Task::setUnattended(unattended);
 }
 
 void ConcurrentTask::executeTask()
@@ -166,6 +183,12 @@ void ConcurrentTask::executeNextSubTask()
 
 void ConcurrentTask::startSubTask(Task::Ptr next)
 {
+    if (!next->setUnattended(isUnattended())) {
+        // Do not cancel a shared task belonging to an unrelated operation.
+        m_abortFailed = true;
+        abort();
+        return;
+    }
     connect(next.get(), &Task::succeeded, this, [this, next]() { subTaskSucceeded(next); });
     connect(next.get(), &Task::failed, this, [this, next](QString msg) {
         if (m_aborting) {

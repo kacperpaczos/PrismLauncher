@@ -100,6 +100,10 @@ class Task : public QObject, public QRunnable {
     bool isFinished() const;
     bool wasSuccessful() const;
 
+    bool isUnattended() const { return m_unattended; }
+    // A running operation cannot change its interaction policy.
+    virtual bool setUnattended(bool unattended);
+
     /*!
      * MultiStep tasks are combinations of multiple tasks into a single logical task.
      * The main usage of this is in SequencialTask.
@@ -149,7 +153,7 @@ class Task : public QObject, public QRunnable {
     void status(QString status);
     void details(QString details);
     void warningLogged(const QString& warning);
-    void stepProgress(TaskStepProgress const& task_progress);
+    void stepProgress(const TaskStepProgress& task_progress);
 
     //! Emitted when the canAbort() status has changed. */
     void abortStatusChanged(bool can_abort);
@@ -177,10 +181,7 @@ class Task : public QObject, public QRunnable {
         emit abortStatusChanged(can_abort);
     }
 
-    void setAbortButtonText(QString text)
-    {
-        emit abortButtonTextChanged(text);
-    }
+    void setAbortButtonText(QString text) { emit abortButtonTextChanged(text); }
 
    protected:
     //! The task subclass must implement this method. This method is called to start to run the task.
@@ -195,7 +196,7 @@ class Task : public QObject, public QRunnable {
     //! The Task subclass must call this method when the task has failed
     virtual void emitFailed(QString reason = "");
 
-    virtual void propagateStepProgress(TaskStepProgress const& task_progress);
+    virtual void propagateStepProgress(const TaskStepProgress& task_progress);
 
    public slots:
     void setStatus(const QString& status);
@@ -218,4 +219,5 @@ class Task : public QObject, public QRunnable {
     // Change using setAbortStatus
     bool m_can_abort = false;
     QUuid m_uid;
+    bool m_unattended = false;
 };

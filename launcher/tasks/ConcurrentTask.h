@@ -64,7 +64,8 @@ class ConcurrentTask : public Task {
     auto getStepProgress() const -> TaskStepProgressList override;
 
     //! Adds a task to execute in this ConcurrentTask
-    void addTask(Task::Ptr task);
+    bool addTask(Task::Ptr task);
+    bool setUnattended(bool unattended) override;
 
    public slots:
     bool abort() override;

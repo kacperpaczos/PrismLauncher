@@ -55,6 +55,16 @@ Task::~Task()
     }
 }
 
+bool Task::setUnattended(bool unattended)
+{
+    if (isRunning() && unattended != m_unattended) {
+        qCWarning(taskLogC) << "Cannot change interaction policy of running task" << describe();
+        return false;
+    }
+    m_unattended = unattended;
+    return true;
+}
+
 void Task::setStatus(const QString& new_status)
 {
     if (m_status != new_status) {

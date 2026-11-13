@@ -78,9 +78,7 @@ auto NetJob::addNetAction(const Net::Request::Ptr& action) -> bool
 {
     action->setNetwork(m_network);
 
-    addTask(action);
-
-    return true;
+    return addTask(action);
 }
 
 void NetJob::executeNextSubTask()

@@ -127,10 +127,58 @@ class ControlledAbortTask : public Task {
     bool m_finishesOnAbort;
 };
 
+class LateGrandchildTask : public ConcurrentTask {
+   public:
+    explicit LateGrandchildTask(Task::Ptr child) : m_child(child) {}
+
+   protected:
+    void executeTask() override
+    {
+        addTask(m_child);
+        ConcurrentTask::executeTask();
+    }
+
+   private:
+    Task::Ptr m_child;
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_unattendedReachesLateGrandchild()
+    {
+        ConcurrentTask operation;
+        ConcurrentTask unrelated;
+        auto leaf = makeShared<SharedMetadataTask>();
+        auto middle = makeShared<LateGrandchildTask>(leaf);
+        QVERIFY(operation.addTask(middle));
+        QVERIFY(operation.setUnattended(true));
+        QVERIFY(middle->isUnattended());
+        operation.start();
+        QTRY_VERIFY(leaf->isRunning());
+        QVERIFY(leaf->isUnattended());
+        QVERIFY(!operation.setUnattended(false));
+        QVERIFY(!leaf->setUnattended(false));
+        QVERIFY(operation.isUnattended());
+        QVERIFY(leaf->isUnattended());
+        QVERIFY(!unrelated.isUnattended());
+        leaf->complete();
+        QTRY_VERIFY(operation.wasSuccessful());
+    }
+
+    void test_unattendedRejectsRunningInteractiveChild()
+    {
+        ConcurrentTask operation;
+        QVERIFY(operation.setUnattended(true));
+        auto existing = makeShared<SharedMetadataTask>();
+        existing->start();
+        QVERIFY(!operation.addTask(existing));
+        QVERIFY(!existing->isUnattended());
+        QVERIFY(existing->isRunning());
+        existing->complete();
+    }
+
     void test_abortBeforeChildrenStart()
     {
         ConcurrentTask parent;
