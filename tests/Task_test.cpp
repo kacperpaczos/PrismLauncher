@@ -1,4 +1,6 @@
 #include <QTest>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QThread>
@@ -177,6 +179,33 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_inactiveTerminalEmissionIsRejected()
+    {
+        if (qEnvironmentVariableIsSet("PRISM_TEST_INACTIVE_TASK_EMIT")) {
+            TerminalSignalTask task;
+            QSignalSpy finished(&task, &Task::finished);
+            task.emitFailed("inactive task");
+            // Release builds log and reject the transition; Debug builds assert.
+            QCOMPARE(task.getState(), Task::State::Inactive);
+            QCOMPARE(finished.count(), 0);
+            return;
+        }
+        QProcess child;
+        auto environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("PRISM_TEST_INACTIVE_TASK_EMIT", "1");
+        child.setProcessEnvironment(environment);
+        child.start(QCoreApplication::applicationFilePath(), { "Task_test", "test_inactiveTerminalEmissionIsRejected" });
+        QVERIFY(child.waitForStarted());
+        QVERIFY(child.waitForFinished(15000));
+        const auto output = child.readAllStandardOutput() + child.readAllStandardError();
+        if (child.exitStatus() == QProcess::CrashExit) {
+            QVERIFY2(output.contains("ASSERT") && output.contains("Task.cpp"), output.constData());
+        } else {
+            QCOMPARE(child.exitCode(), 0);
+            QVERIFY2(output.contains("failed while not running"), output.constData());
+        }
+    }
+
     void test_inactiveAndFinishedAbortIsNoOp()
     {
         ConcurrentTask parent;
