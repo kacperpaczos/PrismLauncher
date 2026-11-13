@@ -87,7 +87,7 @@ void ComponentUpdateTask::executeTask()
 }
 
 namespace {
-enum class LoadResult { LoadedLocal, RequiresRemote, Failed };
+enum class LoadResult { LoadedLocal, RequiresRemote };
 
 LoadResult composeLoadResult(LoadResult a, LoadResult b)
 {
@@ -104,7 +104,7 @@ static LoadResult loadComponent(ComponentPtr component, Task::Ptr& loadTask, Net
         return LoadResult::LoadedLocal;
     }
 
-    LoadResult result = LoadResult::Failed;
+    LoadResult result = LoadResult::LoadedLocal;
     auto customPatchFilename = component->getFilename();
     if (QFile::exists(customPatchFilename)) {
         // if local file exists...
@@ -132,13 +132,9 @@ static LoadResult loadComponent(ComponentPtr component, Task::Ptr& loadTask, Net
             result = LoadResult::LoadedLocal;
         } else {
             loadTask = APPLICATION->metadataIndex()->loadVersion(component->m_uid, component->m_version, netmode);
-            loadTask->start();
-            if (netmode == Net::Mode::Online)
-                result = LoadResult::RequiresRemote;
-            else if (metaVersion->isLoaded())
-                result = LoadResult::LoadedLocal;
-            else
-                result = LoadResult::Failed;
+            // Even an offline load may need event delivery before it completes.
+            // Register every task and its callbacks before starting any of them.
+            result = LoadResult::RequiresRemote;
         }
     }
     return result;
@@ -240,13 +236,16 @@ void ComponentUpdateTask::loadComponents()
             // we wait for signals.
             break;
         }
-        case LoadResult::Failed: {
-            emitFailed(tr("Some component metadata load tasks failed."));
-            return;
-        }
     }
 
     setDetails(tr("Downloading metadata for %1 components").arg(taskIndex));
+    // A cached load may complete synchronously and clear the status list.
+    const auto pending = d->remoteLoadStatusList;
+    for (const auto& status : pending) {
+        if (!status.task->isRunning()) {
+            status.task->start();
+        }
+    }
 }
 
 namespace {
@@ -753,7 +752,7 @@ void ComponentUpdateTask::remoteLoadSucceeded(size_t taskIndex)
         return;
     }
     qCDebug(instanceProfileResolveC) << "Remote task" << taskIndex << "succeeded";
-    taskSlot.succeeded = false;
+    taskSlot.succeeded = true;
     taskSlot.finished = true;
     d->remoteTasksInProgress--;
     // update the cached data of the component from the downloaded version file.

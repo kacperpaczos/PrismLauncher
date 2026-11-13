@@ -11,6 +11,8 @@
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTcpServer>
+#include <QTcpSocket>
 
 #include <algorithm>
 #include <string>
@@ -160,6 +162,52 @@ class CliParserTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_metadataFailureReturnsOneError()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(makeFixtureInstance(dir));
+        QFile pack(dir.filePath("instances/spike-test/mmc-pack.json"));
+        QVERIFY(pack.open(QIODevice::WriteOnly));
+        pack.write(R"({"formatVersion":1,"components":[
+            {"uid":"net.minecraft","version":"1.21.1","cachedVersion":"1.21.1"},
+            {"uid":"net.fabricmc.fabric-loader","version":"0.16.9","cachedVersion":"0.16.9"}]})");
+        pack.close();
+
+        // Serve deterministic failures on loopback; never contact the metadata service.
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost));
+        int requests = 0;
+        connect(&server, &QTcpServer::newConnection, &server, [&] {
+            while (auto* socket = server.nextPendingConnection()) {
+                connect(socket, &QTcpSocket::readyRead, &server, [socket, &requests] {
+                    socket->readAll();
+                    ++requests;
+                    socket->write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    socket->disconnectFromHost();
+                });
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+            }
+        });
+        QFile settings(dir.filePath("prismlauncher.cfg"));
+        QVERIFY(settings.open(QIODevice::WriteOnly));
+        settings.write("[General]\nMetaURLOverride=http://127.0.0.1:" + QByteArray::number(server.serverPort()) + "/\n");
+        settings.close();
+        QProcess process;
+        process.start(launcherBinary(), { "--dir", dir.path(), "version", "install-loader", "spike-test", "fabric", "0.16.9" });
+        QVERIFY(process.waitForStarted());
+        QTRY_VERIFY_WITH_TIMEOUT(process.state() == QProcess::NotRunning, 10000);
+        QVERIFY(requests > 0);
+        QCOMPARE(process.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(process.exitCode(), static_cast<int>(Cli::ExitCode::Network));
+        const auto output = process.readAllStandardOutput();
+        QCOMPARE(errorCode(output), QString("network_error"));
+        QJsonParseError error;
+        const auto document = QJsonDocument::fromJson(output, &error);
+        QCOMPARE(error.error, QJsonParseError::NoError);
+        QVERIFY(document.isObject());
+    }
+
     void test_status()
     {
         const auto args = parseOk({ "prismlauncher", "status" });

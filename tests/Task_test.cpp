@@ -84,10 +84,49 @@ class BigConcurrentTaskThread : public QThread {
     bool passed_the_deadline = false;
 };
 
+class SharedMetadataTask : public Task {
+   public:
+    int starts = 0;
+    void complete() { emitSucceeded(); }
+
+   protected:
+    void executeTask() override { ++starts; }
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_sharedMetadataTaskStartsOnce_data()
+    {
+        QTest::addColumn<bool>("alreadyRunning");
+        QTest::newRow("queued-by-both-parents") << false;
+        QTest::newRow("already-running") << true;
+    }
+
+    void test_sharedMetadataTaskStartsOnce()
+    {
+        QFETCH(bool, alreadyRunning);
+        auto child = makeShared<SharedMetadataTask>();
+        ConcurrentTask first;
+        ConcurrentTask second;
+        first.addTask(child);
+        second.addTask(child);
+        if (alreadyRunning) {
+            // Delay completion until both composites have attached their handlers.
+            child->start();
+        }
+        first.start();
+        second.start();
+        QTRY_VERIFY(child->isRunning() && !first.getStepProgress().isEmpty() && !second.getStepProgress().isEmpty());
+        QCoreApplication::processEvents();
+        child->complete();
+        QTRY_VERIFY(first.isFinished() && second.isFinished());
+        QVERIFY(first.wasSuccessful());
+        QVERIFY(second.wasSuccessful());
+        QCOMPARE(child->starts, 1);
+    }
+
     void test_SetStatus_NoMultiStep()
     {
         BasicTask t;
