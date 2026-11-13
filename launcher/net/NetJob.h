@@ -80,10 +80,6 @@ class NetJob : public ConcurrentTask {
     /// @brief set the default for the jobs that are created afterwards
     static void setDefaultAskRetry(bool askRetry);
 
-   public slots:
-    // Qt can't handle auto at the start for some reason?
-    bool abort() override;
-
    protected slots:
     void emitFailed(QString reason) override;
     void executeNextSubTask() override;

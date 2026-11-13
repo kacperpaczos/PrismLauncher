@@ -136,7 +136,9 @@ class NetJobTest : public QObject {
         AbortNetJob job;
         QSignalSpy finished(&job, &Task::finished);
         job.start();
-        QVERIFY(job.abort());
+        bool accepted = false;
+        QVERIFY(QMetaObject::invokeMethod(&job, "abort", Qt::DirectConnection, qReturnArg(accepted)));
+        QVERIFY(accepted);
         QCOMPARE(job.getState(), Task::State::AbortedByUser);
         QCOMPARE(finished.count(), 1);
         QCOMPARE(job.interactiveFailures, 0);

@@ -121,13 +121,6 @@ auto NetJob::canAbort() const -> bool
     return canFullyAbort;
 }
 
-auto NetJob::abort() -> bool
-{
-    // The composite cancellation path disconnects child aborted handlers and
-    // waits for finished acknowledgements without invoking the retry dialog.
-    return ConcurrentTask::abort();
-}
-
 auto NetJob::getFailedActions() -> QList<Net::Request*>
 {
     QList<Net::Request*> failed;
