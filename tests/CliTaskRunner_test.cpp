@@ -83,7 +83,8 @@ class CliTaskRunnerTest : public QObject {
         Cli::OutputCapture capture;
         QElapsedTimer timer;
         timer.start();
-        const auto code = Cli::runModInstallDownload(download, failed, 1000);
+        // Keep the deadline well beyond the responsiveness bound below.
+        const auto code = Cli::runModInstallDownload(download, failed, 10000);
         QCOMPARE(code, Cli::ExitCode::Network);
         QVERIFY(timer.elapsed() < 1000);
         QCOMPARE(capture.documents().size(), std::size_t{ 1 });
