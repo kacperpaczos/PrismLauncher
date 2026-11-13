@@ -166,7 +166,7 @@ void NetJob::emitFailed(QString reason)
 {
 #ifdef LAUNCHER_APPLICATION
 
-    if (APPLICATION_DYN && asksRetry() && isOnline()) {
+    if (APPLICATION_DYN && shouldAskRetry(APPLICATION->isHeadlessRun()) && isOnline()) {
         auto failed = getFailedActions();
         QWidget* activeWindow = QApplication::activeWindow();
         auto* dialog = new NetworkJobFailedDialog(objectName(), m_try, m_done.size(), failed.size(), activeWindow);

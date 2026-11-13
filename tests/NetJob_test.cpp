@@ -59,6 +59,19 @@ class NetJobTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_retryDecisionRetainsHeadlessFallback()
+    {
+        NetJob beforeBracket("created before CLI", nullptr);
+        NetJob::setDefaultAskRetry(false);
+        beforeBracket.setAskRetry(true);
+        QVERIFY(beforeBracket.asksRetry());
+        QVERIFY(beforeBracket.shouldAskRetry(false));
+        QVERIFY(!beforeBracket.shouldAskRetry(true));
+        QVERIFY(beforeBracket.setUnattended(true));
+        QVERIFY(!beforeBracket.shouldAskRetry(false));
+        QVERIFY(!beforeBracket.shouldAskRetry(true));
+    }
+
     void test_modInstallDownloadFailureIsOneEnvelope()
     {
         auto job = makeShared<NetJob>("failed mod download", nullptr);
