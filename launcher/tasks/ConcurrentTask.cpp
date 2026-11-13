@@ -82,6 +82,8 @@ void ConcurrentTask::executeTask()
 {
     m_aborting = false;
     m_abortFailed = false;
+    m_abortFailureCode = FailureCode::Failed;
+    m_abortFailureReason.clear();
     for (auto i = 0; i < m_total_max_size; i++)
         QMetaObject::invokeMethod(this, &ConcurrentTask::executeNextSubTask, Qt::QueuedConnection);
 }
@@ -126,7 +128,8 @@ void ConcurrentTask::finishAbort()
         return;
     }
     if (m_abortFailed) {
-        Task::emitFailed(tr("Failed to abort all running tasks."));
+        const auto reason = m_abortFailureReason.isEmpty() ? tr("Failed to abort all running tasks.") : m_abortFailureReason;
+        Task::emitFailedWithCode(m_abortFailureCode, reason);
     } else {
         emitAborted();
     }
@@ -191,8 +194,13 @@ void ConcurrentTask::executeNextSubTask()
 void ConcurrentTask::startSubTask(Task::Ptr next)
 {
     if (!next->setUnattended(isUnattended())) {
-        // Do not cancel a shared task belonging to an unrelated operation.
+        // Record the rejected child, but do not cancel an unrelated operation.
+        m_done.insert(next.get(), next);
+        m_failed.insert(next.get(), next);
         m_abortFailed = true;
+        m_abortFailureCode = FailureCode::PolicyConflict;
+        m_abortFailureReason = tr("Cannot adopt a running task with a different interaction policy.");
+        updateState();
         abort();
         return;
     }

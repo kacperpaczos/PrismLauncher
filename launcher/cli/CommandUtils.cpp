@@ -598,17 +598,18 @@ TaskFailure taskFailure(const QString& code, const TaskError& reason, ExitCode e
     if (reason.code == Task::FailureCode::Incomplete) {
         return { .code = QStringLiteral("operation_did_not_finish"), .exitCode = ExitCode::Generic };
     }
+    if (reason.code == Task::FailureCode::PolicyConflict) {
+        return { .code = QStringLiteral("task_policy_conflict"), .exitCode = ExitCode::Generic };
+    }
     return { .code = code, .exitCode = exitCode };
 }
 
 CliError taskFailureError(const CliError& error, const TaskError& reason)
 {
-    if (reason.code != Task::FailureCode::Incomplete) {
-        return error;
-    }
+    const auto mapped = taskFailure(error.error, reason, error.code);
     auto adjusted = error;
-    adjusted.code = ExitCode::Generic;
-    adjusted.error = QStringLiteral("operation_did_not_finish");
+    adjusted.code = mapped.exitCode;
+    adjusted.error = mapped.code;
     return adjusted;
 }
 

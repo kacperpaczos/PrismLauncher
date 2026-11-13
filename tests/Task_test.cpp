@@ -166,10 +166,43 @@ class IdleAbortWrapper : public Base {
     void executeTask() override {}
 };
 
+class PolicyTrackedTask : public ConcurrentTask {
+   public:
+    bool recordedFailure(const Task::Ptr& task) const { return m_failed.contains(task.get()); }
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_policyRejectionIsRecordedAndWaitsForOwnedWork()
+    {
+        PolicyTrackedTask parent;
+        QVERIFY(parent.setUnattended(true));
+        auto owned = makeShared<ControlledAbortTask>(true, false);
+        auto unrelated = makeShared<ControlledAbortTask>(true, true);
+        QVERIFY(parent.addTask(owned));
+        parent.start();
+        QTRY_VERIFY(owned->isRunning());
+        QVERIFY(parent.addTask(unrelated));
+        QVERIFY(unrelated->setUnattended(false));
+        unrelated->start();
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(QMetaObject::invokeMethod(&parent, "executeNextSubTask", Qt::QueuedConnection));
+        QTRY_VERIFY(parent.recordedFailure(unrelated));
+        QVERIFY(parent.isRunning());
+        QCOMPARE(finished.count(), 0);
+        QCOMPARE(owned->aborts, 1);
+        QCOMPARE(unrelated->aborts, 0);
+        QVERIFY(unrelated->isRunning());
+        owned->complete();
+        QCOMPARE(parent.failureCode(), Task::FailureCode::PolicyConflict);
+        QVERIFY(parent.failReason().contains("interaction policy"));
+        QCOMPARE(finished.count(), 1);
+        unrelated->complete();
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_compositePreservesFailureCode_data()
     {
         QTest::addColumn<bool>("sequential");

@@ -69,9 +69,10 @@ class CliTaskRunnerTest : public QObject {
     {
         const std::array cases{ Cli::TaskError{ Task::FailureCode::Failed, "the project was not found" },
                                 Cli::TaskError{ Task::FailureCode::NotFound, "arbitrary message" },
-                                Cli::TaskError{ Task::FailureCode::Incomplete, "still running" } };
-        const std::array codes{ Cli::ExitCode::Network, Cli::ExitCode::NotFound, Cli::ExitCode::Generic };
-        const std::array names{ "network_error", "project_not_found", "operation_did_not_finish" };
+                                Cli::TaskError{ Task::FailureCode::Incomplete, "still running" },
+                                Cli::TaskError{ Task::FailureCode::PolicyConflict, "incompatible policy" } };
+        const std::array codes{ Cli::ExitCode::Network, Cli::ExitCode::NotFound, Cli::ExitCode::Generic, Cli::ExitCode::Generic };
+        const std::array names{ "network_error", "project_not_found", "operation_did_not_finish", "task_policy_conflict" };
         for (std::size_t i = 0; i < cases.size(); ++i) {
             Cli::OutputCapture output;
             QCOMPARE(Cli::reportProjectError(cases[i]), codes[i]);

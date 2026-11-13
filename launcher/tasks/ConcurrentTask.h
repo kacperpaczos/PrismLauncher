@@ -110,4 +110,6 @@ class ConcurrentTask : public Task {
     bool m_aborting = false;
     bool m_abortInProgress = false;
     bool m_abortFailed = false;
+    FailureCode m_abortFailureCode = FailureCode::Failed;
+    QString m_abortFailureReason;
 };
