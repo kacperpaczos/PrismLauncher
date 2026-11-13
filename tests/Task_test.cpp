@@ -146,6 +146,43 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_orderedCompositeAbort_data()
+    {
+        QTest::addColumn<bool>("multipleOptions");
+        QTest::addColumn<bool>("active");
+        QTest::newRow("sequential-queued") << false << false;
+        QTest::newRow("sequential-active") << false << true;
+        QTest::newRow("options-queued") << true << false;
+        QTest::newRow("options-active") << true << true;
+    }
+
+    void test_orderedCompositeAbort()
+    {
+        QFETCH(bool, multipleOptions);
+        QFETCH(bool, active);
+        shared_qobject_ptr<ConcurrentTask> parent = makeShared<SequentialTask>();
+        if (multipleOptions) {
+            parent = makeShared<MultipleOptionsTask>("options");
+        }
+        auto child = makeShared<ControlledAbortTask>(true, false);
+        QVERIFY(parent->addTask(child));
+        QSignalSpy finished(parent.get(), &Task::finished);
+        parent->start();
+        if (active) {
+            QTRY_VERIFY(child->isRunning());
+        }
+        QVERIFY(parent->abort());
+        QVERIFY(QMetaObject::invokeMethod(parent.get(), "executeNextSubTask", Qt::QueuedConnection));
+        QCoreApplication::processEvents();
+        QCOMPARE(finished.count(), active ? 0 : 1);
+        if (active) {
+            QVERIFY(parent->isRunning());
+            child->complete();
+        }
+        QCOMPARE(parent->getState(), Task::State::AbortedByUser);
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_unattendedReachesLateGrandchild()
     {
         ConcurrentTask operation;

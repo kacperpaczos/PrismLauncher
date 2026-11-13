@@ -40,6 +40,9 @@ MultipleOptionsTask::MultipleOptionsTask(const QString& task_name) : ConcurrentT
 
 void MultipleOptionsTask::executeNextSubTask()
 {
+    if (!isRunning() || m_aborting) {
+        return;
+    }
     if (m_done.size() != m_failed.size()) {
         emitSucceeded();
         return;
