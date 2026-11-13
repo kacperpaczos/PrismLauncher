@@ -44,7 +44,11 @@ void SequentialTask::subTaskFailed(Task::Ptr task, const QString& msg)
 {
     qWarning() << msg;
     ConcurrentTask::subTaskFailed(task, msg);
-    emitFailed(msg);
+    if (task->failureCode() == FailureCode::Failed || task->failureCode() == FailureCode::None) {
+        emitFailed(msg);
+    } else {
+        emitFailedWithCode(task->failureCode(), msg);
+    }
 }
 
 void SequentialTask::updateState()

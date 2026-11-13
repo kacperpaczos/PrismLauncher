@@ -107,6 +107,7 @@ class TerminalSignalTask : public Task {
    public:
     using Task::emitAborted;
     using Task::emitFailed;
+    using Task::emitFailedWithCode;
     using Task::emitSucceeded;
 
    protected:
@@ -169,6 +170,38 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_compositePreservesFailureCode_data()
+    {
+        QTest::addColumn<bool>("sequential");
+        QTest::newRow("concurrent") << false;
+        QTest::newRow("resource-download-style") << true;
+    }
+
+    void test_compositePreservesFailureCode()
+    {
+        QFETCH(bool, sequential);
+        shared_qobject_ptr<ConcurrentTask> parent = makeShared<ConcurrentTask>();
+        if (sequential) {
+            parent = makeShared<SequentialTask>();
+        }
+        auto child = makeShared<TerminalSignalTask>();
+        int cleanups = 0;
+        // ResourceDownloadTask performs cleanup before the composite failure handler.
+        connect(child.get(), &Task::failed, parent.get(), [&cleanups] { ++cleanups; });
+        QVERIFY(parent->addTask(child));
+        QSignalSpy failed(parent.get(), &Task::failed);
+        QSignalSpy finished(parent.get(), &Task::finished);
+        parent->start();
+        QTRY_VERIFY(child->isRunning());
+        child->emitFailedWithCode(Task::FailureCode::NotFound, "typed child failure");
+        QTRY_VERIFY(parent->isFinished());
+        QCOMPARE(parent->failureCode(), Task::FailureCode::NotFound);
+        QCOMPARE(parent->failReason(), QString("typed child failure"));
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(cleanups, 1);
+    }
+
     void test_launchPreparationDoesNotClaimCancellation()
     {
         auto child = makeShared<IdleAbortWrapper<LaunchController>>();

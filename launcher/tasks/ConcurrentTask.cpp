@@ -162,7 +162,11 @@ void ConcurrentTask::executeNextSubTask()
                 if (reason.isEmpty()) {  // clearly a bug somewhere
                     reason = tr("Task failed");
                 }
-                emitFailed(reason);
+                if (task->failureCode() == FailureCode::Failed || task->failureCode() == FailureCode::None) {
+                    emitFailed(reason);
+                } else {
+                    emitFailedWithCode(task->failureCode(), reason);
+                }
             } else {
                 QStringList failReason;
                 for (auto t : m_failed) {
