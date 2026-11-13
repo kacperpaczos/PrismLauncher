@@ -64,13 +64,20 @@ bool ComponentUpdateTask::canAbort() const
 
 bool ComponentUpdateTask::abort()
 {
+    if (!isRunning()) {
+        return true;
+    }
     bool aborted = true;
-    for (const auto& status : d->remoteLoadStatusList) {
-        if (status.task && !status.task->abort()) {
+    // Completion callbacks can clear the original status list synchronously.
+    const auto pending = d->remoteLoadStatusList;
+    for (const auto& status : pending) {
+        if (!status.finished && status.task && !status.task->abort()) {
             aborted = false;
         }
     }
-
+    if (isRunning() && d->remoteTasksInProgress == 0) {
+        emitAborted();
+    }
     return aborted;
 }
 
