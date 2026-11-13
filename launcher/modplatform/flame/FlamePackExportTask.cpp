@@ -56,8 +56,7 @@ void FlamePackExportTask::executeTask()
 bool FlamePackExportTask::abort()
 {
     if (task) {
-        task->abort();
-        return true;
+        return task->abort();
     }
     return false;
 }

@@ -64,8 +64,7 @@ void ModrinthPackExportTask::executeTask()
 bool ModrinthPackExportTask::abort()
 {
     if (task) {
-        task->abort();
-        return true;
+        return task->abort();
     }
     return false;
 }
