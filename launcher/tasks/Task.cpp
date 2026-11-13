@@ -118,6 +118,10 @@ void Task::start()
 
 void Task::emitFailed(QString reason)
 {
+    if (isFinished()) {
+        qCWarning(taskLogC) << "Ignoring duplicate failure for task" << describe();
+        return;
+    }
     // Don't fail twice.
     if (ASSERT_NEVER(!isRunning())) {
         qCCritical(taskLogC) << "Task" << describe() << "failed while not running!!!!:" << reason;
@@ -132,6 +136,10 @@ void Task::emitFailed(QString reason)
 
 void Task::emitAborted()
 {
+    if (isFinished()) {
+        qCWarning(taskLogC) << "Ignoring duplicate cancellation for task" << describe();
+        return;
+    }
     // Don't abort twice.
     if (ASSERT_NEVER(!isRunning())) {
         qCCritical(taskLogC) << "Task" << describe() << "aborted while not running!!!!";
@@ -147,6 +155,10 @@ void Task::emitAborted()
 
 void Task::emitSucceeded()
 {
+    if (isFinished()) {
+        qCWarning(taskLogC) << "Ignoring duplicate success for task" << describe();
+        return;
+    }
     // Don't succeed twice.
     if (ASSERT_NEVER(!isRunning())) {
         qCCritical(taskLogC) << "Task" << describe() << "succeeded while not running!!!!";

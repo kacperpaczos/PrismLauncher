@@ -1,4 +1,5 @@
 #include <QTest>
+#include <QSignalSpy>
 #include <QThread>
 #include <QTimer>
 
@@ -93,10 +94,50 @@ class SharedMetadataTask : public Task {
     void executeTask() override { ++starts; }
 };
 
+class TerminalSignalTask : public Task {
+   public:
+    using Task::emitAborted;
+    using Task::emitFailed;
+    using Task::emitSucceeded;
+
+   protected:
+    void executeTask() override {}
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_terminalSignalsAreIdempotent()
+    {
+        for (int first = 0; first < 3; ++first) {
+            TerminalSignalTask task;
+            QSignalSpy finished(&task, &Task::finished);
+            QSignalSpy succeeded(&task, &Task::succeeded);
+            QSignalSpy failed(&task, &Task::failed);
+            QSignalSpy aborted(&task, &Task::aborted);
+            task.start();
+            if (first == 0) {
+                task.emitSucceeded();
+            } else if (first == 1) {
+                task.emitFailed("first failure");
+            } else {
+                task.emitAborted();
+            }
+            const auto state = task.getState();
+            const auto reason = task.failReason();
+            task.emitFailed("late failure");
+            task.emitAborted();
+            task.emitSucceeded();
+            QCOMPARE(task.getState(), state);
+            QCOMPARE(task.failReason(), reason);
+            QCOMPARE(finished.count(), 1);
+            QCOMPARE(succeeded.count(), first == 0 ? 1 : 0);
+            QCOMPARE(failed.count(), first == 1 ? 1 : 0);
+            QCOMPARE(aborted.count(), first == 2 ? 1 : 0);
+        }
+    }
+
     void test_sharedMetadataTaskStartsOnce_data()
     {
         QTest::addColumn<bool>("alreadyRunning");
