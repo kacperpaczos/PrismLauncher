@@ -12,6 +12,8 @@
 #include <tasks/Task.h>
 
 #include "LaunchController.h"
+#include "launch/LaunchTask.h"
+#include "launch/TaskStepWrapper.h"
 #include "minecraft/ComponentUpdateTask.h"
 #include "minecraft/mod/tasks/ResourceFolderLoadTask.h"
 #include "modplatform/EnsureMetadataTask.h"
@@ -175,10 +177,38 @@ class PolicyTrackedTask : public ConcurrentTask {
     bool recordedFailure(const Task::Ptr& task) const { return m_failed.contains(task.get()); }
 };
 
+class EmptyLaunchOwner : public LaunchTask {
+   public:
+    EmptyLaunchOwner() : LaunchTask(nullptr) {}
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_waitingLaunchWrapperCancelsWithoutStartingChild()
+    {
+        EmptyLaunchOwner launch;
+        auto child = makeShared<ConcurrentTask>();
+        auto step = makeShared<TaskStepWrapper>(&launch, child);
+        // Exercise the wrapper independently of the full launch state machine.
+        disconnect(step.get(), nullptr, &launch, nullptr);
+        ConcurrentTask parent;
+        QVERIFY(parent.addTask(step));
+        parent.start();
+        QTRY_VERIFY(step->isRunning());
+        QCOMPARE(child->getState(), Task::State::Inactive);
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(parent.abort());
+        QCOMPARE(step->getState(), Task::State::AbortedByUser);
+        QCOMPARE(parent.getState(), Task::State::AbortedByUser);
+        QCOMPARE(finished.count(), 1);
+        step->proceed();
+        QCoreApplication::processEvents();
+        QCOMPARE(child->getState(), Task::State::Inactive);
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_inactiveTerminalEmissionIsRejected()
     {
         if (qEnvironmentVariableIsSet("PRISM_TEST_INACTIVE_TASK_EMIT")) {

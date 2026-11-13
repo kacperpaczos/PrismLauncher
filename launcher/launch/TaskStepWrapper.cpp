@@ -29,6 +29,9 @@ void TaskStepWrapper::executeTask()
 
 void TaskStepWrapper::proceed()
 {
+    if (!isRunning()) {
+        return;
+    }
     m_task->start();
 }
 
@@ -55,6 +58,14 @@ bool TaskStepWrapper::canAbort() const
 
 bool TaskStepWrapper::abort()
 {
+    if (!isRunning()) {
+        return true;
+    }
+    if (m_task && !m_task->isRunning()) {
+        disconnect(m_task.get(), nullptr, this, nullptr);
+        emitAborted();
+        return true;
+    }
     if (m_task && m_task->canAbort()) {
         return m_task->abort();
     }
