@@ -9,6 +9,7 @@
 #include <tasks/Task.h>
 
 #include "minecraft/ComponentUpdateTask.h"
+#include "modplatform/EnsureMetadataTask.h"
 #include "minecraft/update/AssetUpdateTask.h"
 #include "minecraft/update/LibrariesTask.h"
 #include "minecraft/update/LegacyFMLLibrariesTask.h"
@@ -173,6 +174,7 @@ class TaskTest : public QObject {
         QTest::newRow("legacy-libraries") << 2;
         QTest::newRow("java-archive") << 3;
         QTest::newRow("component-coordinator") << 4;
+        QTest::newRow("metadata-generator") << 5;
     }
 
     void test_idleDownloadWrapperAbort()
@@ -192,9 +194,12 @@ class TaskTest : public QObject {
             case 3:
                 child = makeShared<IdleAbortWrapper<Java::ArchiveDownloadTask>>(QUrl{}, QString{});
                 break;
-            default:
+            case 4:
                 child =
                     makeShared<IdleAbortWrapper<ComponentUpdateTask>>(ComponentUpdateTask::Mode::Resolution, Net::Mode::Offline, nullptr);
+                break;
+            default:
+                child = makeShared<IdleAbortWrapper<EnsureMetadataTask>>(static_cast<Resource*>(nullptr), QDir{});
                 break;
         }
         ConcurrentTask parent;
