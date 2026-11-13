@@ -1,150 +1,128 @@
 # Unattended task execution
 
-Status: proposed; implementation deferred at the Round 1 size gate.
-Inspected baseline: `bb2af1db4ebe4256737e349731b166d9bdb51c8f`.
-This note does not claim upstream acceptance or close HANDOFF findings 1 or 2.
+Status: reduced contract implemented locally after independent design review.
+This is an incremental CLI spike, not a claim of upstream acceptance.
 
-## Requirements and decision
+## Contract and scope
 
-An unattended operation must have a bounded response time, preserve CLI JSON and
-exit codes, prevent prompts in its task tree, and retain ownership until work
-actually stops. An unrelated GUI operation must keep its interaction policy.
-Qt network requests still require event delivery; a terminal value does not
-make async I/O safe to block.
+A caller marks an inactive Task with `setUnattended(true)` before starting it.
+The flag belongs to that task tree; no thread-local or process-wide interaction
+context is introduced. A running task rejects a change to its policy. Callers
+must check the return value when adopting tasks that might already be running.
 
-Use explicit task options and structured results, carried through the existing
-Task/composite APIs. Do not use ambient thread-local or process-global state.
-Only tasks audited for the contract may be submitted as unattended operations;
-an unsupported task is rejected before starting, with an error value. This
-capability check is necessary: Task cannot prevent a subclass from opening a
-QDialog directly. Imports need their own adapters before they can participate.
+ConcurrentTask propagates the flag to queued children when its policy changes,
+to children added later, and again before starting a child. Propagation through
+nested composites includes jobs created inside dependency-resolution callbacks.
+An incompatible running child is rejected rather than repurposed or cancelled
+as part of an unrelated operation. Failed policy changes can leave inactive
+children already configured; the caller must not start a rejected operation.
 
 ```mermaid
 flowchart LR
-    Caller --> Operation[Operation owner: options, deadline, result]
-    Operation --> Root[Audited root task]
-    Root --> Child[Audited child task]
-    Child --> Job[NetJob: inherited interaction policy]
-    Job --> Request[Request: cancellation acknowledgement]
+    CLI[mod install] --> Metadata[Project and version requests]
+    CLI --> Dependencies[Dependency task]
+    CLI --> Batch[Download composite]
+    Dependencies --> Late[Jobs added by callbacks]
+    Batch --> Resource[ResourceDownloadTask]
+    Resource --> Job[NetJob]
 ```
 
-## Interaction policy
+NetJob's effective `asksRetry()` is false when unattended, including after an
+explicit `setAskRetry(true)` and for jobs created before adoption. The failure
+path uses this policy instead of Application's headless-process flag. Automatic
+bounded retries still run; only the interactive retry decision is suppressed.
+An unrelated task's flag and retry preference are not changed by adoption.
 
-Use `InteractionPolicy { Interactive, Unattended }` in task execution options.
-The caller supplies Unattended when adopting an inactive root; ordinary GUI
-callers retain Interactive. Options are fixed before start. Reject attaching a
-running task with conflicting options; never silently repolicy existing GUI work.
-Composite adoption propagates options to already queued descendants, and to
-children added later, before starting them. Propagation must be transitive:
-setting the root flag alone is insufficient. Adopted children cannot loosen the
-policy. Provider factories must return inactive jobs, or accept options before
-starting any work. Constructors must not prompt, launch work, or publish failure.
+The old `setDefaultAskRetry` bracket in Application remains for unported CLI
+commands. It still changes constructor defaults process-wide while a command
+runs. Therefore this change does not yet close HANDOFF finding 2 globally.
+The new flag overrides explicit retry preferences in adopted trees; the legacy
+bracket alone cannot provide that guarantee for unported trees.
 
-NetJob checks its effective policy at the point where it would open a retry
-dialog: Unattended always suppresses interaction, even after `setAskRetry(true)`.
-`setAskRetry` remains an interactive preference, separate from the operation
-policy; automatic bounded network retries remain available. Remove
-`defaultAskRetry`, `setDefaultAskRetry`, their Application bracket, and the
-`isHeadlessRun()` branch only after callers have explicit propagation. Other CLI
-commands remain legacy until ported; removing their existing protection early
-would regress them. A mixed migration therefore cannot honestly eliminate the
-global workaround for every command in this round without additional coverage.
+This flag guards NetJob interaction, not arbitrary QDialog calls in subclasses.
+Imports and other command groups have not been comprehensively ported. Shared
+profile preparation remains on its existing launcher path. ModFolderModel has
+an explicit unattended toggle overload: it rejects running-instance mutations,
+skips dependency confirmation, and toggles only the supplied selection. CLI
+recursive toggles expand that selection themselves. GUI callers retain prompts.
 
-## Deadline, cancellation, and ownership
+## Cancellation and ownership
 
-`Task::finished` currently reports logical completion; it does not consistently
-prove that children stopped. Strengthen that contract for participating tasks:
-terminal completion acknowledges that no owned child, queued start, request,
-worker, or task callback can subsequently write files or touch the model.
-Composite cancellation clears queued work, prevents new descendants and retries,
-requests cancellation of active children, and waits for every acknowledgement.
-A failed abort request is not a completion acknowledgement.
+Task terminal notifications are idempotent: after success, failure or abortion,
+later terminal notifications log a warning without changing the result or
+emitting another finished signal. Finishing an inactive task remains a bug.
+A restart resets the failure code and message.
 
-The operation owner holds the root and any required instance/model lifetime
-lease. A deadline records Timeout exactly once and requests cancellation.
-For synchronous use it returns only after cancellation is acknowledged; a task
-without a bounded cancellation guarantee must be rejected before start. A grace
-period is a diagnostic bound, not permission to destroy a running task or release
-its model. The current Task API cannot provide this guarantee for arbitrary tasks.
+ConcurrentTask abort clears queued work, snapshots active children, and requests
+cancellation without iterating a container that callbacks mutate. Queued starts
+are checked again before execution. A shared child already started by another
+composite is observed rather than started twice.
 
-If asynchronous callers need a response at the deadline even when cancellation
-cannot finish, the operation owner must remain registered with the caller's
-existing lifetime owner, retaining the task tree and the instance mutation lease.
-The command is still busy until quiescence, and instance removal/conflicting
-mutations must remain blocked. Later completion releases leases and schedules
-task destruction through the existing deferred QObject deleter. It cannot emit a
-second result. Shutdown must drain or explicitly terminate this work before
-tearing down models. This is an alternative API, not a detached reaper list.
+The composite finishes cancellation only after its active set is empty.
+An abort returning false records failure but does not release a still-running
+child. Synchronous terminal callbacks cannot finish the parent before all abort
+requests have returned. SequentialTask normally has one active child and already
+records that child's completion before failing; it needs no separate drain API.
 
-For the first port prefer bounded cancellation and reject unsupported trees;
-do not introduce a registry of background operations merely to return sooner.
-Neither dropping a shared pointer nor disconnecting progress handlers cancels
-network, filesystem, or model callbacks. Previously committed file writes remain;
-this contract guarantees cessation, not rollback or atomic multi-file installation.
+NetJob uses this same cancellation path. Child aborted handlers are disconnected
+while finished acknowledgements are observed. An abort failure uses Task's
+noninteractive failure emitter, bypassing NetJob's retry-dialog override. An
+idle running job also transitions to a terminal state when aborted.
 
-## Failure values
+Cli::runTaskSync still delivers Qt events through a local nested event loop.
+At its deadline it requests abort and waits for the existing grace period.
+A task that stops during that period returns Timeout, regardless of its own
+terminal reason. If it is still running after the grace period, the runner returns Incomplete and
+retains it in `unfinishedTasks()`. The list releases the task when finished arrives, using
+the existing deferred QObject deleter. Its completion connection captures a raw
+identity, not another owning reference, so it cannot keep itself alive forever.
 
-Return `Result<void, TaskFailure>`, where TaskFailure contains an enum code and
-QString message. Initial codes: InvalidTask, UnsupportedTask, Failed, Cancelled,
-Timeout. A failure from legacy `emitFailed(QString)` maps to Failed without
-interpreting its text. More specific errors require producers to supply codes.
-Completion after a deadline still yields Timeout, including success during
-cancellation. No sentinel-string or translated-message matching is permitted.
+The list owns tasks, not instances or models. A noncooperative task can still
+write files or touch a raw instance/model pointer after the command returns.
+Other Task subclasses may also have weaker finished/cancellation semantics than
+ConcurrentTask. GUI reentrancy and conflicting mutations remain possible during
+the nested loop. HANDOFF finding 1 therefore remains open despite the composite
+cancellation and completed-task cleanup fixes. No rollback or atomic installation
+is promised. A task that never finishes stays retained until process exit.
 
-The CLI boundary maps these codes to its existing envelopes and exit codes;
-command-specific Failed becomes `download_failed`/Network for mod downloads.
-Preserve existing timeout/unfinished-operation public codes with explicit mapping
-where applicable. Metadata project-not-found handling also needs a typed HTTP
-status from its producer: porting just the final download leaves string parsing
-in the current `fetchProject` path and is not an end-to-end port.
+## Failure values and the first command port
 
-## Implementation boundary and alternatives
+Task stores a FailureCode beside its message. Ordinary failure sets Failed,
+abort sets Cancelled, and success clears the code. Producers can use the typed
+failure emitter for a more specific code. The CLI runner returns
+`Result<void, TaskError>` with an enum code and QString message; its own deadline,
+null-task and unfinished cases return Timeout, InvalidTask and Incomplete.
 
-The honest implementation exceeds the requested approximately 200-line shared
-code ceiling. Estimated changed shared lines (planning estimates, not a patch):
-Task options/capability/error contract 80–120; composite propagation, cancellation
-and terminal acknowledgement 100–150; NetJob policy and abort repair 40–60.
-That is roughly 220–330 lines before producer audits, tests, or CLI changes.
+CLI mapping examines codes, never translated text or sentinel strings.
+Incomplete retains the public `operation_did_not_finish` envelope code and exit
+1. A failure whose message happens to equal that string remains an ordinary
+failure. Other command-specific mappings and public JSON shapes are preserved.
 
-Concrete blockers found in this tree:
+Mod install marks its project/version requests, dependency tree and download
+tree unattended. Typed metadata helpers return NotFound from HTTP status 404;
+the command no longer searches a message for “was not found”. Version-response
+callbacks hold shared result storage so a timeout cannot leave a stack reference.
+The download phase emits one error envelope and returns immediately on failure:
+ordinary download failure maps to `download_failed` and exit 7. ResourceDownloadTask
+lets SequentialTask report a child failure once instead of emitting it twice.
 
-- ConcurrentTask abort emits finished with no state transition when no child is
-  active, and can report failure while a child could not be aborted.
-- SequentialTask failure immediately finishes its parent; it needs cancellation
-  and draining semantics rather than relying on the parent's finished signal.
-- NetJob abort can receive synchronous child terminal signals while iterating;
-  its completion must be coordinated with the composite state machine.
-- ResourceDownloadTask creates children in its constructor, stores a raw model
-  pointer, and has download callbacks that mutate that model. It also connects
-  failure directly in addition to SequentialTask's failure propagation.
-- GetModDependenciesTask adds further provider jobs inside success callbacks;
-  propagation must cover these late children, not just the initial queue.
+## Alternatives and verification
 
-ResourceDownloadTask and GetModDependenciesTask live outside this round's allowed
-shared paths. An end-to-end port also touches provider error production and
-profile preparation. These require an explicit scope decision.
+A global retry switch cannot isolate unrelated GUI jobs or override explicit
+preferences. A thread-local scope around a nested loop also leaks policy into
+reentrant GUI work. Deleting a running task is unsafe, and renaming the local
+loop would not solve sync-over-async. This reduced change deliberately retains
+the existing runner and timeout list; a fuller execution redesign is future work.
 
-Recommended next round: authorize the bounded, audited Task/composite contract
-and the mod-install producer files, then port only mod install. Retain legacy
-protection for unported commands and track its eventual removal separately.
-Alternative: a CLI-only download operation with explicit NetJob policy and no
-model callbacks can be smaller, but duplicates installation/dependency logic and
-does not repair the shared task contract. Rejected: a global retry flag, a scoped
-thread-local flag around a nested event loop (GUI reentrancy inherits it), a
-process-lifetime reaper, deleting unfinished tasks, and treating abort's bool or
-finished alone as proof of quiescence. Moving the nested loop into a new class
-does not resolve sync-over-async or ownership.
+Regression tests cover duplicate terminal emissions, queued and active aborts,
+refused and delayed cancellation, shared loaders, late-grandchild policy,
+explicit retry override, typed error mapping, and deferred timeout cleanup.
+The mod-install download-phase test uses an in-memory failing request with the
+real NetJob/composite runner, checks exit 7 and exactly one JSON envelope, and
+bounds completion to one second without external network access. Model-toggle coverage supplies a real dependency
+relationship and verifies the unattended path preserves the unselected dependent.
+A loopback-only metadata failure test covers the earlier refresh crash.
+Whole-command success paths are exercised separately by the three network smokes.
 
-## Baseline verification (2026-11-13)
-
-`./containers/spike-build.sh build`: PASS; test: 37/37 PASS (18.85 seconds).
-Each smoke ran in `prism-spike-dev` with `/repo` mounted, HOME=/tmp and
-QT_QPA_PLATFORM=offscreen, using the invocation in the Round 1 task.
-All scripts exited 1: mod smoke at `mod install` (exit 134), pack smoke at
-`resource install` (134), instance smoke at `version install-loader` (134).
-Each logged a ComponentUpdateTask metadata-load failure followed by the
-`Task::emitFailed` running-state assertion at Task.cpp:122; no JSON error was
-returned by the crashing command. Refresh causality and the exact duplicate
-completion source are unproven; no speculative fix was made. Network smoke
-failures are separate from the green offline suite. Both HANDOFF findings remain
-open; Steps 2 and 3 await the scope decision described above.
+Verification on the implementation: container build PASS; CTest 37/37 PASS;
+network mod, pack and instance smoke scripts each PASS.
