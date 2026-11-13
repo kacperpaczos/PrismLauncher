@@ -52,6 +52,16 @@ class ResourceFolderModelTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_unattendedToggleRejectsMissingRows()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        ModFolderModel model(QDir(dir.path()), nullptr, false, false);
+        QVERIFY(!model.setResourceEnabled({ QModelIndex{} }, EnableAction::ENABLE, true));
+        QVERIFY(!model.setResourceEnabled({ model.index(10, 0) }, EnableAction::DISABLE, true));
+        QCOMPARE(model.size(), qsizetype{ 0 });
+    }
+
     void test_unattendedToggleDoesNotPromptForDependents()
     {
         QTemporaryDir dir;

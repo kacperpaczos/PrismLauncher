@@ -458,6 +458,13 @@ bool ModFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAc
     if (unattended && instance() && instance()->isRunning()) {
         return false;
     }
+    if (unattended) {
+        for (const auto& index : indexes) {
+            if (!validateIndex(index)) {
+                return false;
+            }
+        }
+    }
     if (indexes.isEmpty()) {
         return {};
     }

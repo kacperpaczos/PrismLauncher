@@ -325,6 +325,12 @@ ExitCode runEnableDisable(CommandContext& ctx,
     QJsonArray changed;
     QJsonArray failed = resolved.failed;
     for (auto* resource : resolved.resources) {
+        const auto row = static_cast<int>(model->allResources().indexOf(resource));
+        if (row < 0) {
+            QJsonObject out{ { QStringLiteral("changed"), changed }, { QStringLiteral("failed"), failed } };
+            return outputError(QStringLiteral("model_changed"), QStringLiteral("The mod list changed before the operation completed"),
+                               ExitCode::Generic, out);
+        }
         const bool wantEnabled = action == EnableAction::ENABLE;
         if (resource->enabled() == wantEnabled) {
             // The mod is already in the wanted state - nothing to do. The
@@ -337,7 +343,6 @@ ExitCode runEnableDisable(CommandContext& ctx,
             failed.append(entry);
             continue;
         }
-        const auto row = static_cast<int>(model->allResources().indexOf(resource));
         if (!model->setResourceEnabled({ model->index(row, 0) }, action, true)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
