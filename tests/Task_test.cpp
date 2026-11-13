@@ -10,6 +10,7 @@
 
 #include "minecraft/ComponentUpdateTask.h"
 #include "modplatform/EnsureMetadataTask.h"
+#include "modplatform/modrinth/ModrinthCheckUpdate.h"
 #include "minecraft/update/AssetUpdateTask.h"
 #include "minecraft/update/LibrariesTask.h"
 #include "minecraft/update/LegacyFMLLibrariesTask.h"
@@ -175,12 +176,15 @@ class TaskTest : public QObject {
         QTest::newRow("java-archive") << 3;
         QTest::newRow("component-coordinator") << 4;
         QTest::newRow("metadata-generator") << 5;
+        QTest::newRow("modrinth-update") << 6;
     }
 
     void test_idleDownloadWrapperAbort()
     {
         QFETCH(int, kind);
         Task::Ptr child;
+        QList<Resource*> resources;
+        std::vector<Version> versions;
         switch (kind) {
             case 0:
                 child = makeShared<IdleAbortWrapper<AssetUpdateTask>>(nullptr);
@@ -198,8 +202,12 @@ class TaskTest : public QObject {
                 child =
                     makeShared<IdleAbortWrapper<ComponentUpdateTask>>(ComponentUpdateTask::Mode::Resolution, Net::Mode::Offline, nullptr);
                 break;
-            default:
+            case 5:
                 child = makeShared<IdleAbortWrapper<EnsureMetadataTask>>(static_cast<Resource*>(nullptr), QDir{});
+                break;
+            default:
+                child =
+                    makeShared<IdleAbortWrapper<ModrinthCheckUpdate>>(resources, versions, QList<ModPlatform::ModLoaderType>{}, nullptr);
                 break;
         }
         ConcurrentTask parent;

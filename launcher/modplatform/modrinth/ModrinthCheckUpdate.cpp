@@ -36,9 +36,16 @@ ModrinthCheckUpdate::ModrinthCheckUpdate(QList<Resource*>& resources,
 
 bool ModrinthCheckUpdate::abort()
 {
-    if (m_job) {
+    if (!isRunning()) {
+        return true;
+    }
+    if (m_job && m_job->isRunning()) {
+        // Cancellation must not advance to another loader or lose completion.
+        disconnect(m_job.get(), nullptr, this, nullptr);
+        connect(m_job.get(), &Task::finished, this, &ModrinthCheckUpdate::emitAborted);
         return m_job->abort();
     }
+    emitAborted();
     return true;
 }
 
