@@ -177,6 +177,42 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_inactiveAndFinishedAbortIsNoOp()
+    {
+        ConcurrentTask parent;
+        auto child = makeShared<ControlledAbortTask>(true, true);
+        QVERIFY(parent.addTask(child));
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(parent.abort());
+        QCOMPARE(parent.getState(), Task::State::Inactive);
+        QCOMPARE(finished.count(), 0);
+        parent.start();
+        QTRY_VERIFY(child->isRunning());
+        child->complete();
+        QTRY_VERIFY(parent.wasSuccessful());
+        QCOMPARE(child->starts, 1);
+        QVERIFY(parent.abort());
+        QCOMPARE(parent.getState(), Task::State::Succeeded);
+        QCOMPARE(finished.count(), 1);
+    }
+
+    void test_failedAbortIsAlsoNoOpAfterCompletion()
+    {
+        ConcurrentTask parent;
+        auto child = makeShared<ControlledAbortTask>(false, true);
+        QVERIFY(parent.addTask(child));
+        parent.start();
+        QTRY_VERIFY(child->isRunning());
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(!parent.abort());
+        QCOMPARE(parent.getState(), Task::State::Failed);
+        const auto reason = parent.failReason();
+        QVERIFY(parent.abort());
+        QCOMPARE(parent.getState(), Task::State::Failed);
+        QCOMPARE(parent.failReason(), reason);
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_cancelledFolderScanHasTerminalState()
     {
         QTemporaryDir dir;

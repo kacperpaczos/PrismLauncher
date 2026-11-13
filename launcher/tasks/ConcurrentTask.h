@@ -68,6 +68,10 @@ class ConcurrentTask : public Task {
     bool setUnattended(bool unattended) override;
 
    public slots:
+    // Only running tasks are cancelled. Inactive/terminal calls return true,
+    // preserve queued work and state, and emit no signals. For a running task,
+    // true accepts the request without a recorded failure; it does not prove
+    // completion, which is signalled only after active children finish.
     bool abort() override;
 
     /** Resets the internal state of the task.

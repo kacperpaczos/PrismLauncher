@@ -90,7 +90,10 @@ void ConcurrentTask::executeTask()
 
 bool ConcurrentTask::abort()
 {
-    if (!isRunning() || m_aborting) {
+    if (!isRunning()) {
+        return true;
+    }
+    if (m_aborting) {
         return !m_abortFailed;
     }
     m_aborting = true;
