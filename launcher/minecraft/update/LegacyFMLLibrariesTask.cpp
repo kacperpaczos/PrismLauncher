@@ -122,6 +122,9 @@ bool LegacyFMLLibrariesTask::abort()
     } else {
         qWarning() << "Prematurely aborted LegacyFMLLibrariesTask";
     }
+    if (isRunning()) {
+        emitAborted();
+    }
     return true;
 }
 

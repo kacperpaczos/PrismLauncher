@@ -8,6 +8,11 @@
 #include <tasks/SequentialTask.h>
 #include <tasks/Task.h>
 
+#include "minecraft/update/AssetUpdateTask.h"
+#include "minecraft/update/LibrariesTask.h"
+#include "minecraft/update/LegacyFMLLibrariesTask.h"
+#include "java/download/ArchiveDownloadTask.h"
+
 #include <array>
 
 /* Does nothing. Only used for testing. */
@@ -146,10 +151,57 @@ class LateGrandchildTask : public ConcurrentTask {
     Task::Ptr m_child;
 };
 
+template <typename Base>
+class IdleAbortWrapper : public Base {
+   public:
+    using Base::Base;
+
+   protected:
+    void executeTask() override {}
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_idleDownloadWrapperAbort_data()
+    {
+        QTest::addColumn<int>("kind");
+        QTest::newRow("assets") << 0;
+        QTest::newRow("libraries") << 1;
+        QTest::newRow("legacy-libraries") << 2;
+        QTest::newRow("java-archive") << 3;
+    }
+
+    void test_idleDownloadWrapperAbort()
+    {
+        QFETCH(int, kind);
+        Task::Ptr child;
+        switch (kind) {
+            case 0:
+                child = makeShared<IdleAbortWrapper<AssetUpdateTask>>(nullptr);
+                break;
+            case 1:
+                child = makeShared<IdleAbortWrapper<LibrariesTask>>(nullptr);
+                break;
+            case 2:
+                child = makeShared<IdleAbortWrapper<LegacyFMLLibrariesTask>>(nullptr);
+                break;
+            default:
+                child = makeShared<IdleAbortWrapper<Java::ArchiveDownloadTask>>(QUrl{}, QString{});
+                break;
+        }
+        ConcurrentTask parent;
+        QVERIFY(parent.addTask(child));
+        parent.start();
+        QTRY_VERIFY(child->isRunning());
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(parent.abort());
+        QCOMPARE(parent.getState(), Task::State::AbortedByUser);
+        QCOMPARE(child->getState(), Task::State::AbortedByUser);
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_abortToleratesSiblingCompletion()
     {
         ConcurrentTask parent;

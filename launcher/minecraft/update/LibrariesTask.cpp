@@ -88,5 +88,8 @@ bool LibrariesTask::abort()
     } else {
         qWarning() << "Prematurely aborted LibrariesTask";
     }
+    if (isRunning()) {
+        emitAborted();
+    }
     return true;
 }

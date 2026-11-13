@@ -16,15 +16,16 @@ class FakeTask : public Task {
     Q_OBJECT
 
    public:
-    enum class Outcome { Succeed, Fail, Hang, Abort };
+    enum class Outcome { Succeed, Fail, Hang, Abort, AcceptWithoutFinishing };
 
     explicit FakeTask(Outcome outcome) : m_outcome(outcome) {}
 
     void complete() { emitSucceeded(); }
+    bool abort() override { return m_outcome == Outcome::AcceptWithoutFinishing ? true : Task::abort(); }
 
     void executeTask() override
     {
-        if (m_outcome == Outcome::Hang) {
+        if (m_outcome == Outcome::Hang || m_outcome == Outcome::AcceptWithoutFinishing) {
             // The task never finishes and it cannot be aborted.
             return;
         }
@@ -50,6 +51,20 @@ class CliTaskRunnerTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_acceptedAbortStillRequiresTerminalAcknowledgement()
+    {
+        auto child = makeShared<FakeTask>(FakeTask::Outcome::AcceptWithoutFinishing);
+        auto parent = makeShared<ConcurrentTask>();
+        QVERIFY(parent->addTask(child));
+        const auto result = Cli::runTaskSync(parent, 20, 20);
+        QVERIFY(!result);
+        QCOMPARE(result.error().code, Task::FailureCode::Incomplete);
+        QVERIFY(parent->isRunning());
+        // A true return only accepts the request; retain ownership until completion.
+        child->complete();
+        QCOMPARE(parent->getState(), Task::State::AbortedByUser);
+    }
+
     void test_projectErrorUsesCode()
     {
         const std::array cases{ Cli::TaskError{ Task::FailureCode::Failed, "the project was not found" },

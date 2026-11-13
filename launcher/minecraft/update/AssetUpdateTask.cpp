@@ -109,6 +109,9 @@ bool AssetUpdateTask::abort()
     } else {
         qWarning() << "Prematurely aborted AssetUpdateTask";
     }
+    if (isRunning()) {
+        emitAborted();
+    }
     return true;
 }
 
