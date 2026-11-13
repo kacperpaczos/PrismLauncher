@@ -91,6 +91,8 @@ class ModFolderModel : public ResourceFolderModel {
     bool isValid();
 
     bool setResourceEnabled(const QModelIndexList& indexes, EnableAction action) override;
+    // Unattended calls toggle only the supplied selection and never prompt.
+    bool setResourceEnabled(const QModelIndexList& indexes, EnableAction action, bool unattended);
     bool deleteResources(const QModelIndexList& indexes) override;
 
     QModelIndexList getAffectedMods(const QModelIndexList& indexes, EnableAction action);

@@ -129,10 +129,10 @@ void ResourceDownloadTask::downloadSucceeded()
     }
 }
 
-void ResourceDownloadTask::downloadFailed(QString reason)
+void ResourceDownloadTask::downloadFailed(QString)
 {
+    // SequentialTask reports the child failure after recording its result.
     m_filesNetJob.reset();
-    emitFailed(std::move(reason));
 }
 
 void ResourceDownloadTask::downloadProgressChanged(qint64 current, qint64 total)

@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include "cli/TaskRunner.h"
+
 // NOTE: the helpers of the headless resource commands (mods, resource packs,
 // shader packs and texture packs). They are shared, so that every kind of
 // resource is reported in exactly the same way.
@@ -47,8 +49,6 @@ class Resource;
 class ResourceFolderModel;
 
 namespace Cli {
-
-struct TaskError;
 
 /**
  * @brief the working directory of the client
@@ -152,10 +152,14 @@ bool waitForModel(ResourceFolderModel* model);
 
 /// @brief resolve a project (slug or id) on Modrinth
 Result<ModPlatform::IndexedPack> fetchProject(const QString& project);
+Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project, bool unattended);
 
 /// @brief fetch all versions of a project
 Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
                                                                   ModPlatform::ResourceType resourceType);
+Result<QVector<ModPlatform::IndexedVersion>, TaskError> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
+                                                                             ModPlatform::ResourceType resourceType,
+                                                                             bool unattended);
 
 /**
  * @brief find the resources that match a user provided target

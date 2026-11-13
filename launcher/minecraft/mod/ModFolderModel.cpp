@@ -36,6 +36,7 @@
  */
 
 #include "ModFolderModel.h"
+#include "minecraft/MinecraftInstance.h"
 
 #include <FileSystem.h>
 #include <QAbstractButton>
@@ -449,6 +450,14 @@ QModelIndexList ModFolderModel::getAffectedMods(const QModelIndexList& indexes, 
 
 bool ModFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAction action)
 {
+    return setResourceEnabled(indexes, action, false);
+}
+
+bool ModFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAction action, bool unattended)
+{
+    if (unattended && instance() && instance()->isRunning()) {
+        return false;
+    }
     if (indexes.isEmpty()) {
         return {};
     }
@@ -494,7 +503,7 @@ bool ModFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAc
         return list;
     };
 
-    if (!requiredToEnable.isEmpty() || !requiredToDisable.isEmpty()) {
+    if (!unattended && (!requiredToEnable.isEmpty() || !requiredToDisable.isEmpty())) {
         const QString title = tr("Confirm toggle");
         const QString noButton = tr("Only Toggle Selected");
         const QString yesButton = tr("Toggle Required Mods");

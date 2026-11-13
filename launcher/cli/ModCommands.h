@@ -21,6 +21,9 @@
 
 #pragma once
 
+#include <memory>
+#include "tasks/Task.h"
+
 // NOTE: keep this header free of GUI includes - it is used by the headless
 // dispatch in Application and main.
 
@@ -66,6 +69,9 @@ QJsonArray restoreDisabledMods(const QDir& dir, const QList<DisabledModRename>& 
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModList& cmd);
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd);
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd);
+/// Execute the install download phase and emit one error envelope on failure.
+ExitCode runModInstallDownload(Task::Ptr download, const std::shared_ptr<QJsonArray>& failed, int timeoutMs);
+
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd);
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModRemove& cmd);
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModEnable& cmd);

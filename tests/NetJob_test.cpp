@@ -6,6 +6,9 @@
 #include <QTest>
 
 #include "net/NetJob.h"
+#include "cli/ModCommands.h"
+#include "cli/Output.h"
+#include <QElapsedTimer>
 
 namespace {
 class NetJobAbortRequest : public Net::Request {
@@ -56,6 +59,35 @@ class NetJobTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_modInstallDownloadFailureIsOneEnvelope()
+    {
+        auto job = makeShared<NetJob>("failed mod download", nullptr);
+        job->setAskRetry(true);
+        // Simulate download failure without Application or external network I/O.
+        auto request = makeShared<UnattendedFailureRequest>();
+        QVERIFY(job->addNetAction(request));
+        auto download = makeShared<ConcurrentTask>("mod install");
+        QVERIFY(download->addTask(job));
+        auto failed = std::make_shared<QJsonArray>();
+        connect(job.get(), &Task::failed, download.get(), [failed](const QString& reason) {
+            failed->append(QJsonObject{ { "slug", "test-mod" }, { "code", "download" }, { "reason", reason } });
+        });
+        Cli::OutputCapture capture;
+        QElapsedTimer timer;
+        timer.start();
+        const auto code = Cli::runModInstallDownload(download, failed, 1000);
+        QCOMPARE(code, Cli::ExitCode::Network);
+        QVERIFY(timer.elapsed() < 1000);
+        QCOMPARE(capture.documents().size(), std::size_t{ 1 });
+        const auto envelope = capture.documents().front().object();
+        QCOMPARE(envelope.value("ok").toBool(), false);
+        QCOMPARE(envelope.value("error").toObject().value("code").toString(), QString("download_failed"));
+        QCOMPARE(envelope.value("failed").toArray().size(), 1);
+        QVERIFY(job->isUnattended());
+        QVERIFY(request->isUnattended());
+        QVERIFY(!job->asksRetry());
+    }
+
     void test_unattendedOverridesExplicitRetry()
     {
         NetJob job("unattended", nullptr);

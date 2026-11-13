@@ -337,7 +337,8 @@ ExitCode runEnableDisable(CommandContext& ctx,
             failed.append(entry);
             continue;
         }
-        if (!resource->enable(action)) {
+        const auto row = static_cast<int>(model->allResources().indexOf(resource));
+        if (!model->setResourceEnabled({ model->index(row, 0) }, action, true)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
             entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
@@ -537,6 +538,21 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd)
     return ExitCode::OK;
 }
 
+ExitCode runModInstallDownload(Task::Ptr download, const std::shared_ptr<QJsonArray>& failed, int timeoutMs)
+{
+    if (!download || !download->setUnattended(true)) {
+        return outputError(QStringLiteral("invalid_task"), QStringLiteral("Could not configure the mod download"));
+    }
+    if (auto result = runTaskSync(download, timeoutMs); !result) {
+        const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
+        QJsonObject out;
+        out.insert(QStringLiteral("failed"), *failed);
+        out.insert(QStringLiteral("reason"), result.error().message);
+        return outputError(failure.code, result.error().message, failure.exitCode, out);
+    }
+    return ExitCode::OK;
+}
+
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
 {
     MinecraftInstance* instance = nullptr;
@@ -575,18 +591,18 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
                            ExitCode::Generic);
     }
 
-    auto project = fetchProject(cmd.project);
+    auto project = fetchProject(cmd.project, true);
     if (!project) {
-        if (project.error().contains(QStringLiteral("was not found"))) {
-            return outputError(QStringLiteral("project_not_found"), project.error(), ExitCode::NotFound);
+        if (project.error().code == Task::FailureCode::NotFound) {
+            return outputError(QStringLiteral("project_not_found"), project.error().message, ExitCode::NotFound);
         }
-        return outputError(QStringLiteral("network_error"), project.error(), ExitCode::Network);
+        return outputError(QStringLiteral("network_error"), project.error().message, ExitCode::Network);
     }
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(project.value());
 
-    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
+    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod, true);
     if (!versionsResult) {
-        return outputError(QStringLiteral("network_error"), versionsResult.error(), ExitCode::Network);
+        return outputError(QStringLiteral("network_error"), versionsResult.error().message, ExitCode::Network);
     }
     const auto allVersions = versionsResult.value();
 
@@ -659,6 +675,9 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         QList<std::shared_ptr<GetModDependenciesTask::PackDependency>> selectedDeps;
         selectedDeps.append(std::make_shared<GetModDependenciesTask::PackDependency>(packPtr, selected.value()));
         auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, selectedDeps);
+        if (!dependencyTask->setUnattended(true)) {
+            return outputError(QStringLiteral("invalid_task"), QStringLiteral("Could not configure dependency resolution"));
+        }
         if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
             const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
             return outputError(failure.code, QStringLiteral("Could not resolve the dependencies: %1").arg(result.error().message),
@@ -709,12 +728,8 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         addDownload(dependency->pack, dependency->version, true, selected.value().fileId.toString());
     }
 
-    if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
-        const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
-        QJsonObject out;
-        out.insert(QStringLiteral("failed"), *failed);
-        out.insert(QStringLiteral("reason"), result.error().message);
-        return outputError(failure.code, result.error().message, failure.exitCode, out);
+    if (auto code = runModInstallDownload(download, failed, g_NetworkTimeoutMs); code != ExitCode::OK) {
+        return code;
     }
 
     // Refresh the model so the freshly installed mods show up in the output.

@@ -52,6 +52,47 @@ class ResourceFolderModelTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_unattendedToggleDoesNotPromptForDependents()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        for (const auto& name : { "dependency.jar", "dependent.jar" }) {
+            QFile file(dir.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("fixture");
+        }
+        ModFolderModel model(QDir(dir.path()), nullptr, false, false);
+        QSignalSpy updated(&model, &ResourceFolderModel::updateFinished);
+        model.startWatching();
+        QVERIFY(updated.count() || updated.wait(10000));
+        QTRY_VERIFY(!model.hasPendingParseTasks());
+        model.stopWatching();
+        QCOMPARE(model.size(), qsizetype{ 2 });
+        int dependencyRow = -1;
+        Mod* dependent = nullptr;
+        for (int row = 0; row < model.rowCount(); ++row) {
+            auto& mod = model.at(row);
+            ModDetails details;
+            if (mod.fileinfo().fileName() == "dependency.jar") {
+                details.mod_id = "dependency";
+                dependencyRow = row;
+            } else {
+                details.mod_id = "dependent";
+                details.dependencies = { "dependency" };
+                dependent = &mod;
+            }
+            mod.setDetails(details);
+        }
+        QVERIFY(dependencyRow >= 0);
+        QVERIFY(dependent);
+        QVERIFY(QMetaObject::invokeMethod(&model, "onParseFinished", Qt::DirectConnection));
+        const QModelIndexList selected{ model.index(dependencyRow, 0) };
+        QVERIFY(!model.getAffectedMods(selected, EnableAction::DISABLE).isEmpty());
+        QVERIFY(model.setResourceEnabled(selected, EnableAction::DISABLE, true));
+        QVERIFY(!model.at(dependencyRow).enabled());
+        QVERIFY(dependent->enabled());
+    }
+
     // test for GH-1178 - install a folder with files to a mod list
     void test_1178()
     {
