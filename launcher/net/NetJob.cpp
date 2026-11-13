@@ -125,32 +125,9 @@ auto NetJob::canAbort() const -> bool
 
 auto NetJob::abort() -> bool
 {
-    // fail all downloads on the queue
-    for (const auto& task : m_queue) {
-        m_failed.insert(task.get(), task);
-    }
-    m_queue.clear();
-
-    if (m_doing.isEmpty()) {
-        // no downloads to abort, NetJob is not running
-        return true;
-    }
-
-    bool fullyAborted = true;
-
-    // abort active downloads
-    auto toKill = m_doing.values();
-    for (const auto& part : toKill) {
-        fullyAborted &= part->abort();
-    }
-
-    if (fullyAborted) {
-        emitAborted();
-    } else {
-        emitFailed(tr("Failed to abort all tasks in the NetJob!"));
-    }
-
-    return fullyAborted;
+    // The composite cancellation path disconnects child aborted handlers and
+    // waits for finished acknowledgements without invoking the retry dialog.
+    return ConcurrentTask::abort();
 }
 
 auto NetJob::getFailedActions() -> QList<Net::Request*>
