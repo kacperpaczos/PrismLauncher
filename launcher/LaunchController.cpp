@@ -489,7 +489,8 @@ void LaunchController::onProgressRequested(Task* task) const
 bool LaunchController::abort()
 {
     if (!m_launcher) {
-        return true;
+        // Preparation cannot yet be cancelled through a launch task.
+        return !isRunning();
     }
     if (!m_launcher->canAbort()) {
         return false;

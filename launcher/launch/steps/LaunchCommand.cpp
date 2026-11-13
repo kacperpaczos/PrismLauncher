@@ -101,6 +101,7 @@ bool LaunchCommand::abort()
     auto state = m_process.state();
     if (state == LoggedProcess::Running || state == LoggedProcess::Starting) {
         m_process.kill();
+        return true;
     }
-    return true;
+    return !isRunning();
 }

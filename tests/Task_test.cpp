@@ -8,6 +8,7 @@
 #include <tasks/SequentialTask.h>
 #include <tasks/Task.h>
 
+#include "LaunchController.h"
 #include "minecraft/ComponentUpdateTask.h"
 #include "modplatform/EnsureMetadataTask.h"
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
@@ -158,6 +159,7 @@ template <typename Base>
 class IdleAbortWrapper : public Base {
    public:
     using Base::Base;
+    void complete() { this->emitSucceeded(); }
 
    protected:
     void executeTask() override {}
@@ -167,6 +169,22 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_launchPreparationDoesNotClaimCancellation()
+    {
+        auto child = makeShared<IdleAbortWrapper<LaunchController>>();
+        ConcurrentTask parent;
+        QVERIFY(parent.addTask(child));
+        parent.start();
+        QTRY_VERIFY(child->isRunning());
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(!parent.abort());
+        QVERIFY(parent.isRunning());
+        QCOMPARE(finished.count(), 0);
+        child->complete();
+        QCOMPARE(parent.getState(), Task::State::Failed);
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_idleDownloadWrapperAbort_data()
     {
         QTest::addColumn<int>("kind");

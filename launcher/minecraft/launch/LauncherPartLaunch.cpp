@@ -226,15 +226,16 @@ void LauncherPartLaunch::proceed()
 
 bool LauncherPartLaunch::abort()
 {
+    const auto state = m_process.state();
+    if (state != LoggedProcess::Running && state != LoggedProcess::Starting) {
+        return !isRunning();
+    }
     if (mayProceed) {
         mayProceed = false;
         QString launchString("abort\n");
         m_process.write(launchString.toUtf8());
     } else {
-        auto state = m_process.state();
-        if (state == LoggedProcess::Running || state == LoggedProcess::Starting) {
-            m_process.kill();
-        }
+        m_process.kill();
     }
     return true;
 }
