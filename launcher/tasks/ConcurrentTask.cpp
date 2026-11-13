@@ -98,6 +98,9 @@ bool ConcurrentTask::abort()
     // abort() can synchronously emit a child's terminal signals and remove it.
     const auto active = m_doing.values();
     for (const auto& task : active) {
+        if (!m_doing.contains(task.get())) {
+            continue;
+        }
         if (!task->isRunning()) {
             subTaskFinished(task, TaskStepState::Failed);
             continue;

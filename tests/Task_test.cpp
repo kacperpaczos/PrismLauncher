@@ -109,10 +109,14 @@ class ControlledAbortTask : public Task {
     ControlledAbortTask(bool acceptsAbort, bool finishesOnAbort) : m_acceptsAbort(acceptsAbort), m_finishesOnAbort(finishesOnAbort) {}
     int starts = 0;
     int aborts = 0;
+    std::function<void()> beforeAbort;
     void complete() { emitSucceeded(); }
     bool abort() override
     {
         ++aborts;
+        if (beforeAbort) {
+            beforeAbort();
+        }
         if (m_finishesOnAbort) {
             emitAborted();
         }
@@ -146,6 +150,30 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_abortToleratesSiblingCompletion()
+    {
+        ConcurrentTask parent;
+        auto first = makeShared<ControlledAbortTask>(true, true);
+        auto second = makeShared<ControlledAbortTask>(true, true);
+        first->beforeAbort = [pointer = second.get()] {
+            if (pointer->isRunning())
+                pointer->complete();
+        };
+        second->beforeAbort = [pointer = first.get()] {
+            if (pointer->isRunning())
+                pointer->complete();
+        };
+        QVERIFY(parent.addTask(first));
+        QVERIFY(parent.addTask(second));
+        parent.start();
+        QTRY_VERIFY(first->isRunning() && second->isRunning());
+        QSignalSpy finished(&parent, &Task::finished);
+        QVERIFY(parent.abort());
+        QCOMPARE(parent.getState(), Task::State::AbortedByUser);
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(first->aborts + second->aborts, 1);
+    }
+
     void test_orderedCompositeAbort_data()
     {
         QTest::addColumn<bool>("multipleOptions");
