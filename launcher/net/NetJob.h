@@ -64,7 +64,7 @@ class NetJob : public ConcurrentTask {
     void setAskRetry(bool askRetry);
 
     /// Whether the job asks the user whether a failed request should be retried.
-    bool asksRetry() const { return m_askRetry; }
+    bool asksRetry() const { return m_askRetry && !isUnattended(); }
 
     /**
      * @brief whether the jobs that are created ask for a retry

@@ -166,9 +166,7 @@ void NetJob::emitFailed(QString reason)
 {
 #ifdef LAUNCHER_APPLICATION
 
-    // A headless process cannot answer the retry dialog - asking would block
-    // the command until it times out.
-    if (APPLICATION_DYN && !APPLICATION->isHeadlessRun() && m_askRetry && isOnline()) {
+    if (APPLICATION_DYN && asksRetry() && isOnline()) {
         auto failed = getFailedActions();
         QWidget* activeWindow = QApplication::activeWindow();
         auto* dialog = new NetworkJobFailedDialog(objectName(), m_try, m_done.size(), failed.size(), activeWindow);

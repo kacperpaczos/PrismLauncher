@@ -30,6 +30,14 @@ class NetJobAbortRequest : public Net::Request {
     bool m_finishesOnAbort;
 };
 
+class UnattendedFailureRequest : public Net::Request {
+   public:
+    UnattendedFailureRequest() : Net::Request(QUrl("http://localhost/unused")) {}
+
+   protected:
+    void executeTask() override { emitFailed("download failed"); }
+};
+
 class AbortNetJob : public NetJob {
    public:
     AbortNetJob() : NetJob("abort test", nullptr) {}
@@ -48,6 +56,36 @@ class NetJobTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_unattendedOverridesExplicitRetry()
+    {
+        NetJob job("unattended", nullptr);
+        NetJob unrelated("GUI", nullptr);
+        QVERIFY(job.setUnattended(true));
+        job.setAskRetry(true);
+        QVERIFY(!job.asksRetry());
+        QVERIFY(unrelated.asksRetry());
+        auto request = makeShared<UnattendedFailureRequest>();
+        QVERIFY(job.addNetAction(request));
+        QSignalSpy failed(&job, &Task::failed);
+        job.start();
+        QTRY_VERIFY_WITH_TIMEOUT(job.isFinished(), 1000);
+        QVERIFY(!job.wasSuccessful());
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(request->isUnattended());
+        QVERIFY(unrelated.asksRetry());
+    }
+
+    void test_existingJobInheritsOperationPolicy()
+    {
+        auto job = makeShared<NetJob>("created before adoption", nullptr);
+        QVERIFY(job->asksRetry());
+        ConcurrentTask operation;
+        QVERIFY(operation.addTask(job));
+        QVERIFY(operation.setUnattended(true));
+        job->setAskRetry(true);
+        QVERIFY(!job->asksRetry());
+    }
+
     void test_idleAbortFinishes()
     {
         AbortNetJob job;
