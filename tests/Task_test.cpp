@@ -1,5 +1,6 @@
 #include <QTest>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QThread>
 #include <QTimer>
 
@@ -10,6 +11,7 @@
 
 #include "LaunchController.h"
 #include "minecraft/ComponentUpdateTask.h"
+#include "minecraft/mod/tasks/ResourceFolderLoadTask.h"
 #include "modplatform/EnsureMetadataTask.h"
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
 #include "minecraft/update/AssetUpdateTask.h"
@@ -175,6 +177,28 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_cancelledFolderScanHasTerminalState()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        auto child = makeShared<ResourceFolderLoadTask>(QDir(dir.path()), QDir(dir.path()), false, false,
+                                                        [](const QFileInfo& info) { return new Resource(info); });
+        ConcurrentTask parent;
+        QVERIFY(parent.addTask(child));
+        bool accepted = false;
+        connect(child.get(), &Task::started, &parent, [&] { accepted = parent.abort(); });
+        QSignalSpy childFinished(child.get(), &Task::finished);
+        QSignalSpy parentFinished(&parent, &Task::finished);
+        parent.start();
+        QTRY_VERIFY(parent.isFinished());
+        QVERIFY(accepted);
+        QCOMPARE(child->getState(), Task::State::AbortedByUser);
+        QCOMPARE(child->failureCode(), Task::FailureCode::Cancelled);
+        QCOMPARE(parent.getState(), Task::State::AbortedByUser);
+        QCOMPARE(childFinished.count(), 1);
+        QCOMPARE(parentFinished.count(), 1);
+    }
+
     void test_policyRejectionIsRecordedAndWaitsForOwnedWork()
     {
         PolicyTrackedTask parent;

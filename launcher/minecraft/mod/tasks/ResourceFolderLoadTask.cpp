@@ -126,7 +126,7 @@ void ResourceFolderLoadTask::executeTask()
     }
 
     if (m_aborted) {
-        emit finished();
+        emitAborted();
     } else {
         emitSucceeded();
     }
