@@ -30,16 +30,11 @@
 
 namespace Cli {
 
-/// The reason of a task that did not finish in the grace period after the
-/// timeout - the command cannot tell what the task did, so it must not claim
-/// that it failed for another reason.
-inline constexpr auto g_TaskDidNotFinish = "operation_did_not_finish";
-
-/// Whether the reason of a failed task means that the task did not finish.
-inline bool taskDidNotFinish(const QString& reason)
-{
-    return reason == QLatin1String(g_TaskDidNotFinish);
-}
+/// A task result carries a machine-readable code independently of its message.
+struct TaskError {
+    Task::FailureCode code = Task::FailureCode::Failed;
+    QString message;
+};
 
 /// Run `task` to completion on a local event loop, blocking the calling thread.
 ///
@@ -50,7 +45,7 @@ inline bool taskDidNotFinish(const QString& reason)
 /// operation though, so the failure says that the operation was cancelled
 /// after the timeout. A task that does not even stop in the grace period is
 /// handed over to a process-lifetime reaper (its callbacks would point to
-/// freed memory otherwise) and the failure `operation_did_not_finish` is
+/// freed memory otherwise) and an Incomplete failure is
 /// reported; the reaper releases the task as soon as it eventually finishes.
 ///
 /// @param task          the task to run
@@ -58,6 +53,6 @@ inline bool taskDidNotFinish(const QString& reason)
 /// @param gracePeriodMs the time the task gets to finish after the timeout
 ///
 /// @returns an empty result on success, or the failure reason / timeout message.
-Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs = 300000, int gracePeriodMs = 5000);
+Result<void, TaskError> runTaskSync(Task::Ptr task, int timeoutMs = 300000, int gracePeriodMs = 5000);
 
 }  // namespace Cli

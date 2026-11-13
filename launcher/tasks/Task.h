@@ -91,6 +91,7 @@ class Task : public QObject, public QRunnable {
     using Ptr = shared_qobject_ptr<Task>;
 
     enum class State { Inactive, Running, Succeeded, Failed, AbortedByUser };
+    enum class FailureCode { None, Failed, Cancelled, Timeout, Incomplete, InvalidTask, NotFound };
 
    public:
     explicit Task(bool show_debug_log = true);
@@ -115,6 +116,7 @@ class Task : public QObject, public QRunnable {
      * If the task hasn't failed, returns an empty string.
      */
     QString failReason() const;
+    FailureCode failureCode() const { return m_failureCode; }
 
     virtual QStringList warnings() const;
 
@@ -195,6 +197,7 @@ class Task : public QObject, public QRunnable {
     virtual void emitAborted();
     //! The Task subclass must call this method when the task has failed
     virtual void emitFailed(QString reason = "");
+    void emitFailedWithCode(FailureCode code, QString reason);
 
     virtual void propagateStepProgress(const TaskStepProgress& task_progress);
 
@@ -220,4 +223,5 @@ class Task : public QObject, public QRunnable {
     bool m_can_abort = false;
     QUuid m_uid;
     bool m_unattended = false;
+    FailureCode m_failureCode = FailureCode::None;
 };

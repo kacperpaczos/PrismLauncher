@@ -581,8 +581,8 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInstall& cmd)
         const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
-        out.insert(QStringLiteral("reason"), result.error());
-        return outputError(failure.code, result.error(), failure.exitCode, out);
+        out.insert(QStringLiteral("reason"), result.error().message);
+        return outputError(failure.code, result.error().message, failure.exitCode, out);
     }
 
     // Refresh the model so the freshly installed pack shows up in the output.

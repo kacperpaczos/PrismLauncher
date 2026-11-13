@@ -48,6 +48,8 @@ class ResourceFolderModel;
 
 namespace Cli {
 
+struct TaskError;
+
 /**
  * @brief the working directory of the client
  *
@@ -250,10 +252,10 @@ struct TaskFailure {
 };
 
 /// @brief the code and the exit code of the failure of a task
-TaskFailure taskFailure(const QString& code, const QString& reason, ExitCode exitCode);
+TaskFailure taskFailure(const QString& code, const TaskError& reason, ExitCode exitCode);
 
 /// @brief the error of a failed task, with the code and the exit code of the failure
-CliError taskFailureError(const CliError& error, const QString& reason);
+CliError taskFailureError(const CliError& error, const TaskError& reason);
 
 /**
  * @brief resolve the targets of a remove/enable/disable command

@@ -48,10 +48,10 @@ std::vector<Task::Ptr>& unfinishedTasks()
 
 }  // namespace
 
-Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriodMs)
+Result<void, TaskError> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriodMs)
 {
     if (!task) {
-        return std::unexpected(QStringLiteral("cannot run a null task"));
+        return std::unexpected(TaskError{ Task::FailureCode::InvalidTask, QStringLiteral("cannot run a null task") });
     }
 
     // A task that was started by the launcher itself (the resolution of the
@@ -67,7 +67,7 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriod
         if (reason.isEmpty()) {
             reason = QStringLiteral("task failed");
         }
-        return std::unexpected(reason);
+        return std::unexpected(TaskError{ task->failureCode(), reason });
     }
 
     QEventLoop loop;
@@ -113,8 +113,7 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriod
 
         const QString status = task->getStatus();
         if (total > 0) {
-            std::fprintf(stderr, "\r%s: %lld/%lld   ", qPrintable(status), static_cast<long long>(current),
-                         static_cast<long long>(total));
+            std::fprintf(stderr, "\r%s: %lld/%lld   ", qPrintable(status), static_cast<long long>(current), static_cast<long long>(total));
         } else if (!status.isEmpty()) {
             std::fprintf(stderr, "\r%s   ", qPrintable(status));
         } else {
@@ -145,15 +144,18 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriod
         // it again. The reference of the reaper is the last one, so dropping
         // it deletes the task through its deferred deleter - from the event
         // loop, never inside the emission of its own finished signal.
-        QObject::connect(task.get(), &Task::finished, task.get(), [task] { std::erase(unfinishedTasks(), task); });
-        return std::unexpected(QString::fromLatin1(g_TaskDidNotFinish));
+        QObject::connect(task.get(), &Task::finished, task.get(), [pointer = task.get()] {
+            std::erase_if(unfinishedTasks(), [pointer](const auto& pending) { return pending.get() == pointer; });
+        });
+        return std::unexpected(TaskError{ Task::FailureCode::Incomplete, QStringLiteral("operation_did_not_finish") });
     }
 
     if (timedOut) {
         // The task stopped in the grace period, but the operation was not
         // completed - the command reports that it was cancelled, not that
         // it failed for the reason of the task.
-        return std::unexpected(QStringLiteral("the operation was cancelled after the timeout (%1 ms)").arg(timeoutMs));
+        return std::unexpected(TaskError{ Task::FailureCode::Timeout,
+                                          QStringLiteral("the operation was cancelled after the timeout (%1 ms)").arg(timeoutMs) });
     }
 
     if (!task->wasSuccessful()) {
@@ -161,7 +163,7 @@ Result<void, QString> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriod
         if (reason.isEmpty()) {
             reason = QStringLiteral("task failed");
         }
-        return std::unexpected(reason);
+        return std::unexpected(TaskError{ task->failureCode(), reason });
     }
 
     return {};

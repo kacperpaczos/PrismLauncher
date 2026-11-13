@@ -37,6 +37,7 @@
 #include "Task.h"
 
 #include <QDebug>
+#include <utility>
 
 #include "AssertHelpers.h"
 
@@ -122,11 +123,18 @@ void Task::start()
     }
     // NOTE: only fall through to here in end states
     m_state = State::Running;
+    m_failureCode = FailureCode::None;
+    m_failReason.clear();
     emit started();
     executeTask();
 }
 
 void Task::emitFailed(QString reason)
+{
+    emitFailedWithCode(FailureCode::Failed, std::move(reason));
+}
+
+void Task::emitFailedWithCode(FailureCode code, QString reason)
 {
     if (isFinished()) {
         qCWarning(taskLogC) << "Ignoring duplicate failure for task" << describe();
@@ -138,6 +146,7 @@ void Task::emitFailed(QString reason)
         return;
     }
     m_state = State::Failed;
+    m_failureCode = code;
     m_failReason = reason;
     qCCritical(taskLogC) << "Task" << describe() << "failed:" << reason;
     emit failed(reason);
@@ -156,6 +165,7 @@ void Task::emitAborted()
         return;
     }
     m_state = State::AbortedByUser;
+    m_failureCode = FailureCode::Cancelled;
     m_failReason = tr("Aborted");
     if (m_show_debug)
         qCDebug(taskLogC) << "Task" << describe() << "aborted.";
@@ -175,6 +185,7 @@ void Task::emitSucceeded()
         return;
     }
     m_state = State::Succeeded;
+    m_failureCode = FailureCode::None;
     if (m_show_debug)
         qCDebug(taskLogC) << "Task" << describe() << "succeeded";
     emit succeeded();

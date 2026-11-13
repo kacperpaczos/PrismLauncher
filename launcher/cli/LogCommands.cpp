@@ -411,7 +411,7 @@ ExitCode runLogCommand(CommandContext& ctx, const Cmd::LogUpload& cmd)
 
     if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
         const auto failure = taskFailure("upload_failed", result.error(), ExitCode::Network);
-        return outputError(failure.code, QStringLiteral("The log could not be uploaded: %1").arg(result.error()), failure.exitCode);
+        return outputError(failure.code, QStringLiteral("The log could not be uploaded: %1").arg(result.error().message), failure.exitCode);
     }
 
     QJsonObject out;

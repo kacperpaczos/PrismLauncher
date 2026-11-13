@@ -72,7 +72,7 @@ ExitCode resolveProfile(PackProfile* profile)
         if (auto result = runTaskSync(task, g_ResolveTimeoutMs); !result) {
             const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
             return outputError(failure.code,
-                               QStringLiteral("The components of the instance could not be resolved: %1").arg(result.error()),
+                               QStringLiteral("The components of the instance could not be resolved: %1").arg(result.error().message),
                                failure.exitCode);
         }
     }
@@ -487,7 +487,7 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionReinstall& cmd
     if (auto task = profile->getCurrentTask(); task) {
         if (auto result = runTaskSync(task, g_ResolveTimeoutMs); !result) {
             return outputError(QStringLiteral("network_error"),
-                               QStringLiteral("The components of the instance could not be resolved: %1").arg(result.error()),
+                               QStringLiteral("The components of the instance could not be resolved: %1").arg(result.error().message),
                                ExitCode::Network);
         }
     }
@@ -501,7 +501,7 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionReinstall& cmd
     if (auto result = runTaskSync(task, g_ResolveTimeoutMs); !result) {
         const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         return outputError(failure.code,
-                           QStringLiteral("The files of the instance could not be downloaded: %1").arg(result.error()),
+                           QStringLiteral("The files of the instance could not be downloaded: %1").arg(result.error().message),
                            failure.exitCode);
     }
 

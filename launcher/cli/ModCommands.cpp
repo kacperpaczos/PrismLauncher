@@ -170,7 +170,7 @@ Result<QList<ModPlatform::ModpackAuthor>> fetchProjectAuthors(const QString& pro
     job->addNetAction(action);
 
     if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-        return std::unexpected(result.error());
+        return std::unexpected(result.error().message);
     }
 
     QJsonParseError parseError;
@@ -661,8 +661,7 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, selectedDeps);
         if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
             const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
-            return outputError(failure.code,
-                               QStringLiteral("Could not resolve the dependencies: %1").arg(result.error()),
+            return outputError(failure.code, QStringLiteral("Could not resolve the dependencies: %1").arg(result.error().message),
                                failure.exitCode);
         }
         dependencies = dependencyTask->getDependecies();
@@ -714,8 +713,8 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
-        out.insert(QStringLiteral("reason"), result.error());
-        return outputError(failure.code, result.error(), failure.exitCode, out);
+        out.insert(QStringLiteral("reason"), result.error().message);
+        return outputError(failure.code, result.error().message, failure.exitCode, out);
     }
 
     // Refresh the model so the freshly installed mods show up in the output.
@@ -980,13 +979,13 @@ std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* m
             report.hasCheckFailures = true;
             QJsonObject out;
             out.insert(QStringLiteral("failed"), report.failed);
-            out.insert(QStringLiteral("reason"), result.error());
-            return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
-                                                              .error = QStringLiteral("metadata_failed"),
-                                                              .message = QStringLiteral("Could not generate the mod metadata: %1")
-                                                                  .arg(result.error()),
-                                                              .details = out },
-                                                            result.error()));
+            out.insert(QStringLiteral("reason"), result.error().message);
+            return std::unexpected(
+                taskFailureError(CliError{ .code = ExitCode::Network,
+                                           .error = QStringLiteral("metadata_failed"),
+                                           .message = QStringLiteral("Could not generate the mod metadata: %1").arg(result.error().message),
+                                           .details = out },
+                                 result.error()));
         }
     }
 
@@ -1058,13 +1057,14 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
     if (auto result = runTaskSync(checkTask, g_NetworkTimeoutMs); !result) {
         QJsonObject out;
         out.insert(QStringLiteral("failed"), report.failed);
-        out.insert(QStringLiteral("reason"), result.error());
+        out.insert(QStringLiteral("reason"), result.error().message);
         report.hasCheckFailures = true;
-        return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
-                                                          .error = QStringLiteral("check_failed"),
-                                                          .message = QStringLiteral("Could not check for updates: %1").arg(result.error()),
-                                                          .details = out },
-                                                result.error()));
+        return std::unexpected(
+            taskFailureError(CliError{ .code = ExitCode::Network,
+                                       .error = QStringLiteral("check_failed"),
+                                       .message = QStringLiteral("Could not check for updates: %1").arg(result.error().message),
+                                       .details = out },
+                             result.error()));
     }
 
     auto updates = checkTask->getUpdates();
@@ -1106,7 +1106,8 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
         auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, checkTask->getDependencies());
         if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
             QJsonObject entry;
-            entry.insert(QStringLiteral("reason"), QStringLiteral("the dependencies could not be resolved: %1").arg(result.error()));
+            entry.insert(QStringLiteral("reason"),
+                         QStringLiteral("the dependencies could not be resolved: %1").arg(result.error().message));
             report.failed.append(entry);
             report.hasCheckFailures = true;
         } else {
@@ -1265,12 +1266,13 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
         QJsonObject out;
         out.insert(QStringLiteral("updated"), report.updated);
         out.insert(QStringLiteral("failed"), report.failed);
-        out.insert(QStringLiteral("reason"), batchResult.error());
-        return std::unexpected(taskFailureError(CliError{ .code = ExitCode::Network,
-                                                          .error = QStringLiteral("download_failed"),
-                                                          .message = QStringLiteral("Could not download the updates: %1").arg(batchResult.error()),
-                                                          .details = out },
-                                                batchResult.error()));
+        out.insert(QStringLiteral("reason"), batchResult.error().message);
+        return std::unexpected(
+            taskFailureError(CliError{ .code = ExitCode::Network,
+                                       .error = QStringLiteral("download_failed"),
+                                       .message = QStringLiteral("Could not download the updates: %1").arg(batchResult.error().message),
+                                       .details = out },
+                             batchResult.error()));
     }
 
     waitForModel(model);

@@ -65,7 +65,7 @@ bool loadProfile(MinecraftInstance* instance)
         // versions of the components are not known, but the profile itself is
         // usable.
         if (auto result = runTaskSync(task); !result) {
-            qWarning() << "Could not resolve the component profile of the instance:" << result.error();
+            qWarning() << "Could not resolve the component profile of the instance:" << result.error().message;
         }
     }
     return true;
@@ -142,7 +142,7 @@ Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool
         // the list knows where its versions come from.
         if (auto task = list->getLoadTask(); task) {
             if (auto result = runTaskSync(task, g_MetadataTimeoutMs); !result) {
-                qWarning() << "Could not load the version list of" << uid << ":" << result.error();
+                qWarning() << "Could not load the version list of" << uid << ":" << result.error().message;
                 if (networkFailed) {
                     *networkFailed = true;
                 }

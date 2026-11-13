@@ -120,7 +120,7 @@ Result<QJsonObject, QString> modrinthSearchJson(ResourceAPI::SearchArgs args, in
         job->addNetAction(action);
 
         if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-            return std::unexpected(QStringLiteral("The Modrinth search failed: %1").arg(result.error()));
+            return std::unexpected(QStringLiteral("The Modrinth search failed: %1").arg(result.error().message));
         }
 
         QJsonParseError parseError;
@@ -385,7 +385,7 @@ Result<ModPlatform::IndexedPack> fetchProject(const QString& project)
         if (netStatusCode(job) == 404) {
             return std::unexpected(QStringLiteral("the project '%1' was not found").arg(project));
         }
-        return std::unexpected(result.error());
+        return std::unexpected(result.error().message);
     }
 
     return *response;
@@ -411,7 +411,7 @@ Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatf
     }
 
     if (auto result = runTaskSync(task, g_NetworkTimeoutMs); !result) {
-        return std::unexpected(result.error());
+        return std::unexpected(result.error().message);
     }
 
     return versions;
@@ -590,22 +590,22 @@ ExitCode reportFailures(const FailureOutcome& outcome, QJsonObject& out, const Q
     return outputError(outcome.error, message, outcome.code, out);
 }
 
-TaskFailure taskFailure(const QString& code, const QString& reason, ExitCode exitCode)
+TaskFailure taskFailure(const QString& code, const TaskError& reason, ExitCode exitCode)
 {
-    if (taskDidNotFinish(reason)) {
-        return { .code = QString::fromLatin1(g_TaskDidNotFinish), .exitCode = ExitCode::Generic };
+    if (reason.code == Task::FailureCode::Incomplete) {
+        return { .code = QStringLiteral("operation_did_not_finish"), .exitCode = ExitCode::Generic };
     }
     return { .code = code, .exitCode = exitCode };
 }
 
-CliError taskFailureError(const CliError& error, const QString& reason)
+CliError taskFailureError(const CliError& error, const TaskError& reason)
 {
-    if (!taskDidNotFinish(reason)) {
+    if (reason.code != Task::FailureCode::Incomplete) {
         return error;
     }
     auto adjusted = error;
     adjusted.code = ExitCode::Generic;
-    adjusted.error = QString::fromLatin1(g_TaskDidNotFinish);
+    adjusted.error = QStringLiteral("operation_did_not_finish");
     return adjusted;
 }
 
