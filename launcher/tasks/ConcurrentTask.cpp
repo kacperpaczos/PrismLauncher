@@ -63,37 +63,53 @@ void ConcurrentTask::addTask(Task::Ptr task)
 
 void ConcurrentTask::executeTask()
 {
+    m_aborting = false;
+    m_abortFailed = false;
     for (auto i = 0; i < m_total_max_size; i++)
         QMetaObject::invokeMethod(this, &ConcurrentTask::executeNextSubTask, Qt::QueuedConnection);
 }
 
 bool ConcurrentTask::abort()
 {
+    if (!isRunning() || m_aborting) {
+        return !m_abortFailed;
+    }
+    m_aborting = true;
+    m_abortInProgress = true;
     m_queue.clear();
 
-    if (m_doing.isEmpty()) {
-        // Don't call emitAborted() here, we want to bypass the 'is the task running' check
-        emit aborted();
-        emit finished();
-
-        return true;
+    // abort() can synchronously emit a child's terminal signals and remove it.
+    const auto active = m_doing.values();
+    for (const auto& task : active) {
+        if (!task->isRunning()) {
+            subTaskFinished(task, TaskStepState::Failed);
+            continue;
+        }
+        disconnect(task.get(), &Task::aborted, this, nullptr);
+        connect(task.get(), &Task::finished, this, [this, task] {
+            if (m_doing.contains(task.get())) {
+                subTaskFinished(task, TaskStepState::Failed);
+            }
+        });
+        if (!task->abort()) {
+            m_abortFailed = true;
+        }
     }
+    m_abortInProgress = false;
+    finishAbort();
+    return !m_abortFailed;
+}
 
-    bool suceedeed = true;
-
-    QMutableHashIterator<Task*, Task::Ptr> doing_iter(m_doing);
-    while (doing_iter.hasNext()) {
-        auto task = doing_iter.next();
-        disconnect(task->get(), &Task::aborted, this, 0);
-        suceedeed &= (task.value())->abort();
+void ConcurrentTask::finishAbort()
+{
+    if (m_abortInProgress || !m_doing.isEmpty()) {
+        return;
     }
-
-    if (suceedeed)
+    if (m_abortFailed) {
+        Task::emitFailed(tr("Failed to abort all running tasks."));
+    } else {
         emitAborted();
-    else
-        emitFailed(tr("Failed to abort all running tasks."));
-
-    return suceedeed;
+    }
 }
 
 void ConcurrentTask::clear()
@@ -110,7 +126,7 @@ void ConcurrentTask::clear()
 
 void ConcurrentTask::executeNextSubTask()
 {
-    if (!isRunning()) {
+    if (!isRunning() || m_aborting) {
         return;
     }
     if (m_doing.count() >= m_total_max_size) {
@@ -151,7 +167,13 @@ void ConcurrentTask::executeNextSubTask()
 void ConcurrentTask::startSubTask(Task::Ptr next)
 {
     connect(next.get(), &Task::succeeded, this, [this, next]() { subTaskSucceeded(next); });
-    connect(next.get(), &Task::failed, this, [this, next](QString msg) { subTaskFailed(next, msg); });
+    connect(next.get(), &Task::failed, this, [this, next](QString msg) {
+        if (m_aborting) {
+            subTaskFinished(next, TaskStepState::Failed);
+        } else {
+            subTaskFailed(next, msg);
+        }
+    });
     // this should never happen but if it does, it's better to fail the task than get stuck
     connect(next.get(), &Task::aborted, this, [this, next] { subTaskFailed(next, "Aborted"); });
 
@@ -195,7 +217,11 @@ void ConcurrentTask::subTaskFinished(Task::Ptr task, TaskStepState state)
 
     emit stepProgress(task_progress);
     updateState();
-    QMetaObject::invokeMethod(this, &ConcurrentTask::executeNextSubTask, Qt::QueuedConnection);
+    if (m_aborting) {
+        finishAbort();
+    } else {
+        QMetaObject::invokeMethod(this, &ConcurrentTask::executeNextSubTask, Qt::QueuedConnection);
+    }
 }
 
 void ConcurrentTask::subTaskSucceeded(Task::Ptr task)

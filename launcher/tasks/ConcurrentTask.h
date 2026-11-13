@@ -93,6 +93,7 @@ class ConcurrentTask : public Task {
     virtual void updateState();
 
     void startSubTask(Task::Ptr task);
+    void finishAbort();
 
    protected:
     QQueue<Task::Ptr> m_queue;
@@ -105,4 +106,7 @@ class ConcurrentTask : public Task {
     QHash<QUuid, std::shared_ptr<TaskStepProgress>> m_task_progress;
 
     int m_total_max_size;
+    bool m_aborting = false;
+    bool m_abortInProgress = false;
+    bool m_abortFailed = false;
 };

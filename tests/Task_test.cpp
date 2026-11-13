@@ -104,10 +104,87 @@ class TerminalSignalTask : public Task {
     void executeTask() override {}
 };
 
+class ControlledAbortTask : public Task {
+   public:
+    ControlledAbortTask(bool acceptsAbort, bool finishesOnAbort) : m_acceptsAbort(acceptsAbort), m_finishesOnAbort(finishesOnAbort) {}
+    int starts = 0;
+    int aborts = 0;
+    void complete() { emitSucceeded(); }
+    bool abort() override
+    {
+        ++aborts;
+        if (m_finishesOnAbort) {
+            emitAborted();
+        }
+        return m_acceptsAbort;
+    }
+
+   protected:
+    void executeTask() override { ++starts; }
+
+   private:
+    bool m_acceptsAbort;
+    bool m_finishesOnAbort;
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_abortBeforeChildrenStart()
+    {
+        ConcurrentTask parent;
+        auto child = makeShared<ControlledAbortTask>(true, true);
+        parent.addTask(child);
+        QSignalSpy finished(&parent, &Task::finished);
+        parent.start();
+        QVERIFY(parent.abort());
+        QCOMPARE(parent.getState(), Task::State::AbortedByUser);
+        QCOMPARE(finished.count(), 1);
+        QCoreApplication::processEvents();
+        QCOMPARE(child->starts, 0);
+        QCOMPARE(child->aborts, 0);
+    }
+
+    void test_abortWaitsForAllChildren_data()
+    {
+        QTest::addColumn<bool>("acceptsAbort");
+        QTest::addColumn<bool>("finishesOnAbort");
+        QTest::newRow("immediate") << true << true;
+        QTest::newRow("delayed") << true << false;
+        QTest::newRow("refused") << false << false;
+        QTest::newRow("failed-after-stopping") << false << true;
+    }
+
+    void test_abortWaitsForAllChildren()
+    {
+        QFETCH(bool, acceptsAbort);
+        QFETCH(bool, finishesOnAbort);
+        ConcurrentTask parent("abort", 2);
+        auto first = makeShared<ControlledAbortTask>(true, true);
+        auto second = makeShared<ControlledAbortTask>(acceptsAbort, finishesOnAbort);
+        auto queued = makeShared<ControlledAbortTask>(true, true);
+        parent.addTask(first);
+        parent.addTask(second);
+        parent.addTask(queued);
+        parent.start();
+        QTRY_VERIFY(first->isRunning() && second->isRunning());
+        QSignalSpy finished(&parent, &Task::finished);
+        QCOMPARE(parent.abort(), acceptsAbort);
+        QCOMPARE(first->aborts, 1);
+        QCOMPARE(second->aborts, 1);
+        if (!finishesOnAbort) {
+            QVERIFY(parent.isRunning());
+            QCOMPARE(finished.count(), 0);
+            second->complete();
+        }
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(parent.getState(), acceptsAbort ? Task::State::AbortedByUser : Task::State::Failed);
+        QCoreApplication::processEvents();
+        QCOMPARE(queued->starts, 0);
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_terminalSignalsAreIdempotent()
     {
         for (int first = 0; first < 3; ++first) {
