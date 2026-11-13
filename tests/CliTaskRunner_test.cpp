@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <QPointer>
+#include <array>
 #include <QTest>
 #include <QTimer>
 
@@ -49,6 +50,21 @@ class CliTaskRunnerTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_projectErrorUsesCode()
+    {
+        const std::array cases{ Cli::TaskError{ Task::FailureCode::Failed, "the project was not found" },
+                                Cli::TaskError{ Task::FailureCode::NotFound, "arbitrary message" },
+                                Cli::TaskError{ Task::FailureCode::Incomplete, "still running" } };
+        const std::array codes{ Cli::ExitCode::Network, Cli::ExitCode::NotFound, Cli::ExitCode::Generic };
+        const std::array names{ "network_error", "project_not_found", "operation_did_not_finish" };
+        for (std::size_t i = 0; i < cases.size(); ++i) {
+            Cli::OutputCapture output;
+            QCOMPARE(Cli::reportProjectError(cases[i]), codes[i]);
+            QCOMPARE(output.documents().size(), std::size_t{ 1 });
+            QCOMPARE(output.result().value("error").toObject().value("code").toString(), QString(names[i]));
+        }
+    }
+
     void test_cancelledTaskReturnsItsCode()
     {
         auto task = makeShared<FakeTask>(FakeTask::Outcome::Abort);

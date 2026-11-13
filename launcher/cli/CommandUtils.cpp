@@ -372,9 +372,13 @@ int netStatusCode(const NetJob::Ptr& job)
 
 }  // namespace
 
-Result<ModPlatform::IndexedPack> fetchProject(const QString& project)
+ExitCode reportProjectError(const TaskError& error)
 {
-    return fetchProject(project, false).transform_error([](const TaskError& error) { return error.message; });
+    if (error.code == Task::FailureCode::NotFound) {
+        return outputError(QStringLiteral("project_not_found"), error.message, ExitCode::NotFound);
+    }
+    const auto failure = taskFailure("network_error", error, ExitCode::Network);
+    return outputError(failure.code, error.message, failure.exitCode);
 }
 
 Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project, bool unattended)
@@ -391,12 +395,6 @@ Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project,
         return std::unexpected(result.error());
     }
     return *response;
-}
-
-Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
-                                                                  ModPlatform::ResourceType resourceType)
-{
-    return fetchProjectVersions(pack, resourceType, false).transform_error([](const TaskError& error) { return error.message; });
 }
 
 Result<QVector<ModPlatform::IndexedVersion>, TaskError> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,

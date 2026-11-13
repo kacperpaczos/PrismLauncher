@@ -150,16 +150,15 @@ bool loadComponentProfile(MinecraftInstance* instance);
  */
 bool waitForModel(ResourceFolderModel* model);
 
+ExitCode reportProjectError(const TaskError& error);
+
 /// @brief resolve a project (slug or id) on Modrinth
-Result<ModPlatform::IndexedPack> fetchProject(const QString& project);
-Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project, bool unattended);
+Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project, bool unattended = false);
 
 /// @brief fetch all versions of a project
-Result<QVector<ModPlatform::IndexedVersion>> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
-                                                                  ModPlatform::ResourceType resourceType);
 Result<QVector<ModPlatform::IndexedVersion>, TaskError> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
                                                                              ModPlatform::ResourceType resourceType,
-                                                                             bool unattended);
+                                                                             bool unattended = false);
 
 /**
  * @brief find the resources that match a user provided target

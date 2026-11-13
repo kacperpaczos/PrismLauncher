@@ -437,17 +437,15 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd)
 {
     auto project = fetchProject(cmd.project);
     if (!project) {
-        if (project.error().contains(QStringLiteral("was not found"))) {
-            return outputError(QStringLiteral("project_not_found"), project.error(), ExitCode::NotFound);
-        }
-        return outputError(QStringLiteral("network_error"), project.error(), ExitCode::Network);
+        return reportProjectError(project.error());
     }
     const auto pack = project.value();
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(pack);
 
     auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
     if (!versionsResult) {
-        return outputError(QStringLiteral("network_error"), versionsResult.error(), ExitCode::Network);
+        const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
+        return outputError(failure.code, versionsResult.error().message, failure.exitCode);
     }
 
     QJsonArray versions;
@@ -593,16 +591,14 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
 
     auto project = fetchProject(cmd.project, true);
     if (!project) {
-        if (project.error().code == Task::FailureCode::NotFound) {
-            return outputError(QStringLiteral("project_not_found"), project.error().message, ExitCode::NotFound);
-        }
-        return outputError(QStringLiteral("network_error"), project.error().message, ExitCode::Network);
+        return reportProjectError(project.error());
     }
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(project.value());
 
     auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod, true);
     if (!versionsResult) {
-        return outputError(QStringLiteral("network_error"), versionsResult.error().message, ExitCode::Network);
+        const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
+        return outputError(failure.code, versionsResult.error().message, failure.exitCode);
     }
     const auto allVersions = versionsResult.value();
 
