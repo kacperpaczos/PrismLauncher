@@ -38,6 +38,21 @@ class UnattendedFailureRequest : public Net::Request {
     void executeTask() override { emitFailed("download failed"); }
 };
 
+class PromptTrackedJob : public NetJob {
+   public:
+    PromptTrackedJob() : NetJob("prompt decision", nullptr) {}
+    bool headless = false;
+    int prompts = 0;
+
+   protected:
+    bool isHeadlessRun() const override { return headless; }
+    bool askRetry(const QString&) override
+    {
+        ++prompts;
+        return false;
+    }
+};
+
 class AbortNetJob : public NetJob {
    public:
     AbortNetJob() : NetJob("abort test", nullptr) {}
@@ -56,6 +71,31 @@ class NetJobTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_failurePathPromptDecision_data()
+    {
+        QTest::addColumn<bool>("headless");
+        QTest::addColumn<bool>("unattended");
+        QTest::newRow("GUI") << false << false;
+        QTest::newRow("headless-preexisting-job") << true << false;
+        QTest::newRow("unattended-operation") << false << true;
+    }
+
+    void test_failurePathPromptDecision()
+    {
+        QFETCH(bool, headless);
+        QFETCH(bool, unattended);
+        PromptTrackedJob job;
+        job.headless = headless;
+        QVERIFY(job.setUnattended(unattended));
+        job.setAskRetry(true);
+        QVERIFY(job.addNetAction(makeShared<UnattendedFailureRequest>()));
+        QSignalSpy failed(&job, &Task::failed);
+        job.start();
+        QTRY_VERIFY(job.isFinished());
+        QCOMPARE(job.prompts, headless || unattended ? 0 : 1);
+        QCOMPARE(failed.count(), 1);
+    }
+
     void test_retryDecisionRetainsHeadlessFallback()
     {
         NetJob beforeBracket("created before CLI", nullptr);

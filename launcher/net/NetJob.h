@@ -87,6 +87,8 @@ class NetJob : public ConcurrentTask {
    protected:
     void updateState() override;
     bool isOnline();
+    virtual bool isHeadlessRun() const;
+    virtual bool askRetry(const QString& reason);
 
    private:
     QNetworkAccessManager* m_network;

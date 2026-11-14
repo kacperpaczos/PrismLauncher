@@ -155,36 +155,51 @@ bool NetJob::isOnline()
     });
 }
 
-void NetJob::emitFailed(QString reason)
+bool NetJob::isHeadlessRun() const
 {
 #ifdef LAUNCHER_APPLICATION
+    return APPLICATION_DYN && APPLICATION->isHeadlessRun();
+#else
+    return false;
+#endif
+}
 
-    if (APPLICATION_DYN && shouldAskRetry(APPLICATION->isHeadlessRun()) && isOnline()) {
-        auto failed = getFailedActions();
-        QWidget* activeWindow = QApplication::activeWindow();
-        auto* dialog = new NetworkJobFailedDialog(objectName(), m_try, m_done.size(), failed.size(), activeWindow);
-        dialog->setAttribute(Qt::WA_DeleteOnClose);
-
-        for (const auto& request : failed) {
-            dialog->addFailedRequest(request->url(), request->errorString());
-        }
-
-        dialog->open();
-
-        connect(dialog, &QDialog::finished, this, [this, reason = std::move(reason)](int result) {
-            if (result == QDialog::Accepted) {
-                m_maxTries++;
-                executeNextSubTask();
-            } else {
-                ConcurrentTask::emitFailed(reason);
-            }
-        });
-
+void NetJob::emitFailed(QString reason)
+{
+    if (shouldAskRetry(isHeadlessRun()) && isOnline() && askRetry(reason)) {
         return;
     }
-#endif
-
     ConcurrentTask::emitFailed(reason);
+}
+
+bool NetJob::askRetry(const QString& reason)
+{
+#ifdef LAUNCHER_APPLICATION
+    if (!APPLICATION_DYN) {
+        return false;
+    }
+    auto failed = getFailedActions();
+    QWidget* activeWindow = QApplication::activeWindow();
+    auto* dialog = new NetworkJobFailedDialog(objectName(), m_try, m_done.size(), failed.size(), activeWindow);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+
+    for (const auto& request : failed) {
+        dialog->addFailedRequest(request->url(), request->errorString());
+    }
+    dialog->open();
+    connect(dialog, &QDialog::finished, this, [this, reason](int result) {
+        if (result == QDialog::Accepted) {
+            m_maxTries++;
+            executeNextSubTask();
+        } else {
+            ConcurrentTask::emitFailed(reason);
+        }
+    });
+    return true;
+#else
+    Q_UNUSED(reason);
+    return false;
+#endif
 }
 
 void NetJob::setAskRetry(bool askRetry)
