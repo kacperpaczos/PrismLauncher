@@ -22,6 +22,7 @@ struct ComponentUpdateTaskData {
     PackProfile* m_profile = nullptr;
     QList<RemoteLoadStatus> remoteLoadStatusList;
     bool remoteLoadSuccessful = true;
+    bool aborting = false;
     size_t remoteTasksInProgress = 0;
     ComponentUpdateTask::Mode mode;
     Net::Mode netmode;

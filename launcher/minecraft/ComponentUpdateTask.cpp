@@ -67,6 +67,7 @@ bool ComponentUpdateTask::abort()
     if (!isRunning()) {
         return true;
     }
+    d->aborting = true;
     bool aborted = true;
     // Completion callbacks can clear the original status list synchronously.
     const auto pending = d->remoteLoadStatusList;
@@ -88,6 +89,7 @@ Net::Mode ComponentUpdateTask::netMode()
 
 void ComponentUpdateTask::executeTask()
 {
+    d->aborting = false;
     qCDebug(instanceProfileResolveC) << "Loading components";
     setStatus(tr("Loading components"));
     loadComponents();
@@ -787,6 +789,11 @@ void ComponentUpdateTask::checkIfAllFinished()
     setProgress(m_progress + 1, m_progressTotal);
     if (d->remoteTasksInProgress) {
         // not yet...
+        return;
+    }
+    if (d->aborting) {
+        d->remoteLoadStatusList.clear();
+        emitAborted();
         return;
     }
     if (d->remoteLoadSuccessful) {

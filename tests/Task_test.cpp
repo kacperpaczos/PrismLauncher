@@ -266,15 +266,18 @@ class TaskTest : public QObject {
     {
         QTest::addColumn<bool>("cached");
         QTest::addColumn<bool>("metadataSucceeds");
-        QTest::newRow("cache-miss-success") << false << true;
-        QTest::newRow("cache-miss-failure") << false << false;
-        QTest::newRow("already-cached") << true << true;
+        QTest::addColumn<bool>("cancel");
+        QTest::newRow("cache-miss-success") << false << true << false;
+        QTest::newRow("cache-miss-failure") << false << false << false;
+        QTest::newRow("already-cached") << true << true << false;
+        QTest::newRow("cancel-pending-load") << false << false << true;
     }
 
     void test_offlineMetadataCacheMiss()
     {
         QFETCH(bool, cached);
         QFETCH(bool, metadataSucceeds);
+        QFETCH(bool, cancel);
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         INISettingsObject globals(dir.filePath("global.cfg"));
@@ -308,6 +311,18 @@ class TaskTest : public QObject {
             QVERIFY(operation.isRunning());
             QCOMPARE(finished.count(), 0);
             QCOMPARE(operation.metadata->startAttempts, 1);
+            if (cancel) {
+                operation.metadata->setAbortable(true);
+                QSignalSpy failed(&operation, &Task::failed);
+                QSignalSpy aborted(&operation, &Task::aborted);
+                QVERIFY(operation.abort());
+                QCOMPARE(operation.getState(), Task::State::AbortedByUser);
+                QCOMPARE(operation.failureCode(), Task::FailureCode::Cancelled);
+                QCOMPARE(aborted.count(), 1);
+                QCOMPARE(failed.count(), 0);
+                QCOMPARE(finished.count(), 1);
+                return;
+            }
             if (metadataSucceeds) {
                 operation.metadata->complete();
             } else {
