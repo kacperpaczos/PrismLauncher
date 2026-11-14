@@ -105,9 +105,9 @@ Legacy emitters that bypass these paths may be uncoded; composites treat that as
 Failed. The CLI currently originates Timeout, InvalidTask, NotFound and Incomplete.
 Its runner returns `Result<void, TaskError>` with the observed code and message.
 
-CLI mapping examines codes, never translated text or sentinel strings.
-Incomplete retains the public `operation_did_not_finish` envelope code and exit
-1, including project/version metadata and download failures in mod install.
+The CLI's typed mapping helpers examine codes, never translated text or sentinel
+strings. They map Incomplete to `operation_did_not_finish` and exit 1, including
+project/version metadata and download failures in mod install.
 PolicyConflict maps to `task_policy_conflict` and exit 1. A failure whose message
 happens to equal an error-code string remains an ordinary failure. No CLI command
 classifies errors by translated message text. Other command-specific mappings
