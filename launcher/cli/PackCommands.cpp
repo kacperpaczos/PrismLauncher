@@ -378,14 +378,14 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackSearch& cmd)
 
 ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInfo& cmd)
 {
-    auto project = fetchProject(cmd.project);
+    auto project = fetchProject(cmd.project, true);
     if (!project) {
         return reportProjectError(project.error());
     }
     const auto pack = project.value();
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(pack);
 
-    auto versionsResult = fetchProjectVersions(packPtr, packKind(cmd.group).resourceType);
+    auto versionsResult = fetchProjectVersions(packPtr, packKind(cmd.group).resourceType, true);
     if (!versionsResult) {
         const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
         return outputError(failure.code, versionsResult.error().message, failure.exitCode);
@@ -497,13 +497,13 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInstall& cmd)
                            ExitCode::Generic);
     }
 
-    auto project = fetchProject(cmd.project);
+    auto project = fetchProject(cmd.project, true);
     if (!project) {
         return reportProjectError(project.error());
     }
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(project.value());
 
-    auto versionsResult = fetchProjectVersions(packPtr, packKind(cmd.group).resourceType);
+    auto versionsResult = fetchProjectVersions(packPtr, packKind(cmd.group).resourceType, true);
     if (!versionsResult) {
         const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
         return outputError(failure.code, versionsResult.error().message, failure.exitCode);
@@ -574,7 +574,7 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackInstall& cmd)
                          .releaseType = selected.value().versionType.isValid() ? selected.value().versionType.toString() : QString(),
                          .source = sourceName(packPtr->provider) };
 
-    if (auto result = runTaskSync(download, g_NetworkTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(download, g_NetworkTimeoutMs); !result) {
         const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
