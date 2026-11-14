@@ -258,10 +258,12 @@ void AutoInstallJava::tryNextMajorJava()
 }
 bool AutoInstallJava::abort()
 {
-    if (m_current_task && m_current_task->canAbort()) {
-        auto status = m_current_task->abort();
+    if (m_current_task) {
+        if (!m_current_task->canAbort() || !m_current_task->abort()) {
+            return false;
+        }
         emitAborted();
-        return status;
+        return true;
     }
     return Task::abort();
 }

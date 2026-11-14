@@ -58,9 +58,10 @@ class AutoInstallJava : public LaunchStep {
     void downloadJava(Meta::Version::Ptr version, QString javaName);
     void tryNextMajorJava();
 
+    Task::Ptr m_current_task;
+
    private:
     MinecraftInstance* m_instance;
-    Task::Ptr m_current_task;
 
     qsizetype m_majorJavaVersionIndex = 0;
     const QString m_supported_arch;

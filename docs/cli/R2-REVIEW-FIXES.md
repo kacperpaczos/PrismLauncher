@@ -57,7 +57,8 @@ Other routes checked:
 | LocalResourceUpdateTask | Direct abort emitter. |
 | AuthFlow, TextPrint, LookupServerAddress | Direct abort emitter. |
 | InstanceTask, InstanceImportTask, InstanceStaging | Delegate to current work with existing terminal callbacks; non-abortable branches return false. Staging retry completion remains timer-driven. |
-| MinecraftLoadAndCheck, AutoInstallJava | Delegate or use the base/direct emitter. |
+| MinecraftLoadAndCheck | Delegate or use the base/direct emitter. |
+| AutoInstallJava | Preserve child cancellation refusal without emitting a terminal signal; acknowledge accepted requests. |
 | LaunchTask | Current step's completion/finalization callbacks. |
 | Java::ManifestDownloadTask | Direct abort emitter with delegated request. |
 | FlameCheckUpdate | Finished-driven phase chain has a terminal reporting path. |

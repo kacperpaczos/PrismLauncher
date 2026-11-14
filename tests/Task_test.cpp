@@ -14,6 +14,7 @@
 #include "LaunchController.h"
 #include "launch/LaunchTask.h"
 #include "launch/TaskStepWrapper.h"
+#include "minecraft/launch/AutoInstallJava.h"
 #include "minecraft/ComponentUpdateTask.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
@@ -220,10 +221,35 @@ class EmptyLaunchOwner : public LaunchTask {
     EmptyLaunchOwner() : LaunchTask(nullptr) {}
 };
 
+class TestJavaInstall : public AutoInstallJava {
+   public:
+    TestJavaInstall(LaunchTask* owner, Task::Ptr child) : AutoInstallJava(owner) { m_current_task = child; }
+
+   protected:
+    void executeTask() override {}
+};
+
 class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_javaInstallRefusedAbortKeepsRunning()
+    {
+        EmptyLaunchOwner launch;
+        auto child = makeShared<ControlledAbortTask>(false, false);
+        child->setAbortable(true);
+        TestJavaInstall task(&launch, child);
+        disconnect(&task, nullptr, &launch, nullptr);
+        child->start();
+        task.start();
+        QSignalSpy finished(&task, &Task::finished);
+        QVERIFY(!task.abort());
+        QVERIFY(task.isRunning());
+        QVERIFY(child->isRunning());
+        QCOMPARE(child->aborts, 1);
+        QCOMPARE(finished.count(), 0);
+    }
+
     void test_offlineMetadataCacheMiss_data()
     {
         QTest::addColumn<bool>("cached");
