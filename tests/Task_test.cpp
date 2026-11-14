@@ -257,6 +257,17 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_emptyMetadataEnrichmentNeedsNoNetwork()
+    {
+        QHash<QString, Resource*> resources;
+        EnsureMetadataTask task(resources, QDir());
+        QVERIFY(task.setUnattended(true));
+        QSignalSpy finished(&task, &Task::finished);
+        task.start();
+        QVERIFY(task.wasSuccessful());
+        QCOMPARE(finished.count(), 1);
+    }
+
     void test_resourceToggleRefusesLateRunningStateWithoutDialog()
     {
         QTemporaryDir dir;

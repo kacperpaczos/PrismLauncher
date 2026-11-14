@@ -99,6 +99,10 @@ bool EnsureMetadataTask::abort()
 
 void EnsureMetadataTask::executeTask()
 {
+    if (m_resources.isEmpty()) {
+        emitSucceeded();
+        return;
+    }
     setStatus(tr("Checking if resources have metadata..."));
 
     for (auto* resource : m_resources) {
