@@ -123,6 +123,8 @@ class CliTaskRunnerTest : public QObject {
         auto child = makeShared<FakeTask>(FakeTask::Outcome::AcceptWithoutFinishing);
         auto parent = makeShared<ConcurrentTask>();
         QVERIFY(parent->addTask(child));
+        parent->start();
+        QTRY_VERIFY(child->isRunning());
         const auto result = Cli::runTaskSync(parent, 200, 200);
         QVERIFY(!result);
         QCOMPARE(result.error().code, Task::FailureCode::Incomplete);
