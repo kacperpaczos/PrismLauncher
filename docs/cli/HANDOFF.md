@@ -104,9 +104,12 @@ mogły rozwiązać część uwag. Potwierdzaj na nowym, dokładnie oznaczonym SH
    `askRetry=true`, istniejące joby i późne dzieci; brak globalnego defaultu,
    bracketu oraz fallbacku headless w NetJob. Niezwiązane joby GUI zachowują politykę.
 3. **Import (polityka bez dialogów zaimplementowana):** optional są disabled;
-   blocked i niebuforowany recommended-loader zwracają `unsupported_unattended`.
+   blocked i recommended-loader bez listy już załadowanej w pamięci zwracają
+   `unsupported_unattended`.
    MultiMC/Technic korzystają ze wspólnej ścieżki pobierania gry na żądanie.
-   Pozostaje końcowa weryfikacja offline i smoke dla bieżącego kodu.
+   Offline CTest obejmuje wszystkie grupy, błąd downloadu Modrinth, optional
+   disabled i pary MultiMC/Technic z pobieraniem/bez. Końcowe smoke są uruchamiane
+   osobno; stan ownership z findingu 1 pozostaje częściowo otwarty.
 4. **Ścieżki IPC:** GUI potrzebuje cwd klienta lub ścieżek rozwiązanych po stronie
    klienta. `325556829` dotyczy URL-i; nie uznawać go za dowód naprawy całego IPC.
 5. **ServersDat:** zachowanie nieznanych pól każdego serwera, nie tylko roota,

@@ -8,8 +8,9 @@ MinecraftLoadAndCheck::MinecraftLoadAndCheck(MinecraftInstance* inst, Net::Mode 
 void MinecraftLoadAndCheck::executeTask()
 {
     if (isUnattended() && m_netmode == Net::Mode::Online && m_inst->settings()->get("UseLatestMinecraftVersion").toBool()) {
-        emitFailedWithCode(FailureCode::UnsupportedUnattended,
-                           tr("Automatic latest-version selection is unsupported unattended; select an explicit Minecraft version."));
+        emitFailedWithCode(
+            FailureCode::UnsupportedUnattended,
+            tr("Automatic latest-version selection is unsupported unattended; disable it and use an explicit Minecraft version."));
         return;
     }
     // add offline metadata load task

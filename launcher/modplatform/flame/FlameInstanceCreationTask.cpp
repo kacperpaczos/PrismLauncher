@@ -303,8 +303,8 @@ QString FlameCreationTask::getVersionForLoader(const QString& uid,
 
         if (!vlist->isLoaded()) {
             if (isUnattended()) {
-                emitFailedWithCode(FailureCode::UnsupportedUnattended,
-                                   tr("Uncached recommended-loader selection is unsupported unattended; use an explicit loader version."));
+                emitFailedWithCode(FailureCode::UnsupportedUnattended, tr("Recommended-loader selection needs an already loaded version "
+                                                                          "list; use an explicit loader version for unattended import."));
                 return {};
             }
             QEventLoop loadVersionLoop;

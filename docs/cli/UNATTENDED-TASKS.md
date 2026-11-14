@@ -33,9 +33,10 @@ index request already suppresses retry explicitly, independently of CLI tasks.
 
 The flag guards NetJob interaction. Reachable non-network dialogs have explicit
 unattended paths: resource/mod toggles reject running instances without prompting,
-and mod toggles affect only the requested selection. Imports disable optional
-files, keep existing names and saves, and warn about untrusted override files.
-Blocked files requiring manual download and uncached recommended-loader selection
+and mod toggles affect only the requested selection. Optional import files default
+to disabled; name-change and save-removal prompts choose keep. Untrusted override
+files produce warnings. Blocked files requiring manual download and recommended-loader
+selection without an already loaded version list
 return UnsupportedUnattended. Automatic latest-version selection also returns
 that code because its existing hidden metadata wait cannot report typed errors.
 GUI callers retain their prompts. Task-free world, settings, notes and status
@@ -89,7 +90,7 @@ the nested loop. HANDOFF finding 1 therefore remains open despite the composite
 cancellation and completed-task cleanup fixes. No rollback or atomic installation
 is promised. A task that never finishes stays retained until process exit.
 
-## Failure values and the first command port
+## Failure values and command ports
 
 Task stores a FailureCode beside its message. Base failure/abort emitters set
 Failed/Cancelled, and success clears the code. The protected typed emitter is
@@ -110,13 +111,35 @@ happens to equal an error-code string remains an ordinary failure. No CLI comman
 classifies errors by translated message text. Other command-specific mappings
 and public JSON shapes are preserved.
 
-Mod install marks its project/version requests, dependency tree and download
-tree unattended. Typed metadata helpers return NotFound from HTTP status 404;
-all metadata callers now use typed results rather than searching messages. Version-response
-callbacks hold shared result storage so a timeout cannot leave a stack reference.
-The download phase emits one error envelope and returns immediately on failure:
-ordinary download failure maps to `download_failed` and exit 7. ResourceDownloadTask
-lets SequentialTask report a child failure once instead of emitting it twice.
+All CLI task roots and metadata helpers adopt the policy before starting.
+Typed metadata helpers return NotFound from HTTP status 404; version-response
+callbacks hold shared result storage so timeout cannot leave a stack reference.
+ResourceDownloadTask lets SequentialTask report download failure once.
+An ordinary mod-install download failure remains `download_failed` and exit 7;
+Incomplete maps to `operation_did_not_finish` and exit 1 in every phase.
+
+| Command groups | Task and error handling |
+| --- | --- |
+| mod | Search/info, author lookup, metadata enrichment, checks, dependencies, downloads and scans use the flag; optional author enrichment still warns on failure. |
+| resource, shader, texture | Metadata and download roots use the flag; scans carry it to late parsers; model toggles refuse a running instance without prompting. |
+| instance | Staging, copy, import extraction and creation propagate policy; typed metadata results replace hidden synchronous version helpers. Requested game downloads use one typed path for vanilla, MultiMC, Technic, Flame and Modrinth imports. |
+| version | Resolution receives policy before auto-start; version lists, loaders and game downloads preserve codes. |
+| server | Optional pings return TaskError until serialization; ping failure retains `players:null` in a successful list. |
+| log, screenshot | Uploads and album creation use unattended roots and the existing upload error mapping. |
+| world, settings, notes, status | No Task launches in these command paths; file, validation and parser errors retain existing envelopes. |
+
+Every group has an offline failure-envelope case. Local import tests verify
+Modrinth optional files become `.disabled`, failed file downloads produce one
+error, and MultiMC/Technic honor requested game downloads. Optional enrichment
+and cached-profile fallbacks retain their best-effort behaviour.
+
+Unsupported paths return `unsupported_unattended`, exit 1, before interaction:
+manual blocked-file acquisition, recommended-loader selection without an already
+loaded version list, and automatic latest-version selection. A disk cache alone
+does not make a loader list loaded in memory. Use explicit loader versions in
+import manifests; disable automatic selection with
+`settings set INSTANCE minecraft.latest=false` before downloading an explicit
+Minecraft version. Other command groups were not skipped.
 
 ## Alternatives and verification
 
@@ -137,10 +160,12 @@ relationship and verifies the unattended path preserves the unselected dependent
 An isolated subprocess checks inactive-task emission rejection. The prompt-policy
 failure path is tested with interactive and unattended jobs. A loopback-only
 metadata failure test covers the earlier refresh failure that aborts Debug builds.
-Whole-command success paths are exercised separately by the three network smokes.
+Whole-command success paths are exercised separately by network mod, pack and
+instance smokes and the domain/IPC smokes.
 
 The CLI contract source check rejects global retry settings and direct task
 starts outside the unattended runner. Verification uses the container wrappers.
+The configured Debug build is exercised; no separate Release build is claimed.
 
 ## Cancellation producers
 
