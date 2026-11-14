@@ -68,6 +68,7 @@ void LibrariesTask::executeTask()
     connect(downloadJob.get(), &NetJob::progress, this, &LibrariesTask::progress);
     connect(downloadJob.get(), &NetJob::stepProgress, this, &LibrariesTask::propagateStepProgress);
 
+    downloadJob->setUnattended(isUnattended());
     downloadJob->start();
 }
 

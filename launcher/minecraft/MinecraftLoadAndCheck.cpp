@@ -22,7 +22,7 @@ void MinecraftLoadAndCheck::executeTask()
             m_inst->settings()->set("JavaPath", "");
         }
     }
-    if (auto result = components->reload(m_netmode); !result) {
+    if (auto result = components->reload(m_netmode, isUnattended()); !result) {
         emitFailed(result.error());
         return;
     }

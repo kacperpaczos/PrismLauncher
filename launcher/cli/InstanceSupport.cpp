@@ -56,7 +56,7 @@ bool loadProfile(MinecraftInstance* instance)
     if (!profile) {
         return false;
     }
-    if (auto result = profile->reload(Net::Mode::Offline); !result) {
+    if (auto result = profile->reload(Net::Mode::Offline, true); !result) {
         qWarning() << "Could not load the component profile of the instance:" << result.error();
         return false;
     }
@@ -64,7 +64,7 @@ bool loadProfile(MinecraftInstance* instance)
         // The resolution needs the metadata of the components - without it the
         // versions of the components are not known, but the profile itself is
         // usable.
-        if (auto result = runTaskSync(task); !result) {
+        if (auto result = runUnattendedTask(task); !result) {
             qWarning() << "Could not resolve the component profile of the instance:" << result.error().message;
         }
     }
@@ -130,27 +130,60 @@ std::vector<QString> versionsForMinecraft(Meta::VersionList* list, const QString
     return versions;
 }
 
-Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool* networkFailed)
+Result<Meta::VersionList*, TaskError> fetchVersionList(CommandContext& ctx, const QString& uid)
 {
-    auto* index = ctx.app.metadataIndex();
-    auto list = index->get(uid);
+    auto list = ctx.app.metadataIndex()->get(uid);
     if (!list) {
-        return nullptr;
+        return std::unexpected(TaskError{ Task::FailureCode::InvalidTask, QStringLiteral("No version list is available.") });
     }
     if (!list->isLoaded()) {
-        // The load task of the version list also loads the index itself, so
-        // the list knows where its versions come from.
         if (auto task = list->getLoadTask(); task) {
-            if (auto result = runTaskSync(task, g_MetadataTimeoutMs); !result) {
-                qWarning() << "Could not load the version list of" << uid << ":" << result.error().message;
-                if (networkFailed) {
-                    *networkFailed = true;
-                }
-                return nullptr;
+            if (auto result = runUnattendedTask(task, g_MetadataTimeoutMs); !result) {
+                return std::unexpected(result.error());
             }
         }
     }
     return list.get();
+}
+
+Result<QString, TaskError> fetchLoaderVersion(CommandContext& ctx,
+                                              const QString& loaderUid,
+                                              const QString& wanted,
+                                              const QString& mcVersion)
+{
+    auto loaded = fetchVersionList(ctx, loaderUid);
+    if (!loaded) {
+        auto error = loaded.error();
+        error.message = QStringLiteral("the versions of the mod loader could not be loaded");
+        return std::unexpected(error);
+    }
+    const auto versions = versionsForMinecraft(*loaded, mcVersion, loaderUid);
+    if (versions.empty()) {
+        return std::unexpected(
+            TaskError{ Task::FailureCode::NotFound, QStringLiteral("the mod loader has no version for Minecraft %1").arg(mcVersion) });
+    }
+    if (wanted.compare(QStringLiteral("latest"), Qt::CaseInsensitive) == 0) {
+        return versions.front();
+    }
+    for (const auto& version : versions) {
+        if (version == wanted) {
+            return version;
+        }
+    }
+    return std::unexpected(TaskError{ Task::FailureCode::NotFound,
+                                      QStringLiteral("the mod loader has no version '%1' for Minecraft %2").arg(wanted, mcVersion) });
+}
+
+Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool* networkFailed)
+{
+    auto result = fetchVersionList(ctx, uid);
+    if (!result) {
+        if (networkFailed) {
+            *networkFailed = result.error().code != Task::FailureCode::InvalidTask;
+        }
+        return nullptr;
+    }
+    return *result;
 }
 
 Result<QString, QString> resolveLoaderVersion(CommandContext& ctx,
@@ -159,27 +192,12 @@ Result<QString, QString> resolveLoaderVersion(CommandContext& ctx,
                                               const QString& mcVersion,
                                               bool& networkFailed)
 {
-    auto* list = loadVersionList(ctx, loaderUid, &networkFailed);
-    if (!list) {
-        return std::unexpected(QStringLiteral("the versions of the mod loader could not be loaded"));
+    auto result = fetchLoaderVersion(ctx, loaderUid, wanted, mcVersion);
+    if (!result) {
+        networkFailed = result.error().code != Task::FailureCode::NotFound && result.error().code != Task::FailureCode::InvalidTask;
+        return std::unexpected(result.error().message);
     }
-
-    const auto versions = versionsForMinecraft(list, mcVersion, loaderUid);
-    if (versions.empty()) {
-        return std::unexpected(QStringLiteral("the mod loader has no version for Minecraft %1").arg(mcVersion));
-    }
-
-    if (wanted.compare(QStringLiteral("latest"), Qt::CaseInsensitive) == 0) {
-        // The list is sorted by the release date, the newest one is first.
-        return versions.front();
-    }
-
-    for (const auto& version : versions) {
-        if (version == wanted) {
-            return version;
-        }
-    }
-    return std::unexpected(QStringLiteral("the mod loader has no version '%1' for Minecraft %2").arg(wanted, mcVersion));
+    return *result;
 }
 
 std::optional<LoaderInfo> findLoader(PackProfile* profile)

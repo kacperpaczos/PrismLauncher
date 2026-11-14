@@ -74,6 +74,7 @@ void LegacyFMLLibrariesTask::executeTask()
     connect(dljob.get(), &NetJob::progress, this, &LegacyFMLLibrariesTask::progress);
     connect(dljob.get(), &NetJob::stepProgress, this, &LegacyFMLLibrariesTask::propagateStepProgress);
     downloadJob.reset(dljob);
+    downloadJob->setUnattended(isUnattended());
     downloadJob->start();
 }
 

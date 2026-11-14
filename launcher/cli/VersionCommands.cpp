@@ -67,9 +67,11 @@ ExitCode resolveProfile(PackProfile* profile)
                            QStringLiteral("The instance has no component profile"),
                            ExitCode::Generic);
     }
-    profile->resolve(Net::Mode::Online);
+    if (!profile->getCurrentTask()) {
+        profile->resolve(Net::Mode::Online, true);
+    }
     if (auto task = profile->getCurrentTask(); task) {
-        if (auto result = runTaskSync(task, g_ResolveTimeoutMs); !result) {
+        if (auto result = runUnattendedTask(task, g_ResolveTimeoutMs); !result) {
             const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
             return outputError(failure.code,
                                QStringLiteral("The components of the instance could not be resolved: %1").arg(result.error().message),
@@ -171,13 +173,14 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionListAvailable&
                                ExitCode::Usage);
         }
 
-        bool networkFailed = false;
-        auto* list = loadVersionList(ctx, uid, &networkFailed);
-        if (!list) {
-            return outputError(networkFailed ? QStringLiteral("network_error") : QStringLiteral("no_versions"),
-                               QStringLiteral("The versions of the mod loader could not be loaded"),
-                               networkFailed ? ExitCode::Network : ExitCode::Generic);
+        auto loaded = fetchVersionList(ctx, uid);
+        if (!loaded) {
+            const bool unavailable = loaded.error().code == Task::FailureCode::InvalidTask;
+            const auto failure = taskFailure(unavailable ? "no_versions" : "network_error", loaded.error(),
+                                             unavailable ? ExitCode::Generic : ExitCode::Network);
+            return outputError(failure.code, QStringLiteral("The versions of the mod loader could not be loaded"), failure.exitCode);
         }
+        auto* list = *loaded;
 
         QJsonArray versions;
         for (const auto& version : list->versions()) {
@@ -208,13 +211,14 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionListAvailable&
     }
 
     // The versions of Minecraft.
-    bool networkFailed = false;
-    auto* list = loadVersionList(ctx, QString::fromLatin1(g_MinecraftUid), &networkFailed);
-    if (!list) {
-        return outputError(networkFailed ? QStringLiteral("network_error") : QStringLiteral("no_versions"),
-                           QStringLiteral("The versions of Minecraft could not be loaded"),
-                           networkFailed ? ExitCode::Network : ExitCode::Generic);
+    auto loaded = fetchVersionList(ctx, QString::fromLatin1(g_MinecraftUid));
+    if (!loaded) {
+        const bool unavailable = loaded.error().code == Task::FailureCode::InvalidTask;
+        const auto failure =
+            taskFailure(unavailable ? "no_versions" : "network_error", loaded.error(), unavailable ? ExitCode::Generic : ExitCode::Network);
+        return outputError(failure.code, QStringLiteral("The versions of Minecraft could not be loaded"), failure.exitCode);
     }
+    auto* list = *loaded;
 
     QJsonArray versions;
     for (const auto& version : list->versions()) {
@@ -243,13 +247,14 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionChangeMc& cmd)
     }
 
     // The version has to exist, otherwise the instance would be broken.
-    bool networkFailed = false;
-    auto* mcList = loadVersionList(ctx, QString::fromLatin1(g_MinecraftUid), &networkFailed);
-    if (!mcList) {
-        return outputError(networkFailed ? QStringLiteral("network_error") : QStringLiteral("no_versions"),
-                           QStringLiteral("The versions of Minecraft could not be loaded"),
-                           networkFailed ? ExitCode::Network : ExitCode::Generic);
+    auto loaded = fetchVersionList(ctx, QString::fromLatin1(g_MinecraftUid));
+    if (!loaded) {
+        const bool unavailable = loaded.error().code == Task::FailureCode::InvalidTask;
+        const auto failure =
+            taskFailure(unavailable ? "no_versions" : "network_error", loaded.error(), unavailable ? ExitCode::Generic : ExitCode::Network);
+        return outputError(failure.code, QStringLiteral("The versions of Minecraft could not be loaded"), failure.exitCode);
     }
+    auto* mcList = *loaded;
     if (!mcList->hasVersion(cmd.version)) {
         return outputError(QStringLiteral("version_not_found"),
                            QStringLiteral("There is no Minecraft version '%1'").arg(cmd.version),
@@ -279,7 +284,7 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionChangeMc& cmd)
         settings->set(QStringLiteral("UseLatestMinecraftVersion"), false);
     }
 
-    if (!profile->setComponentVersion(QString::fromLatin1(g_MinecraftUid), cmd.version, /*important=*/true)) {
+    if (!profile->setComponentVersion(QString::fromLatin1(g_MinecraftUid), cmd.version, /*important=*/true, /*unattended=*/true)) {
         return outputError(QStringLiteral("version_change_failed"),
                            QStringLiteral("The Minecraft version of the instance could not be changed"),
                            ExitCode::Conflict);
@@ -332,12 +337,13 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionInstallLoader&
                            ExitCode::Conflict);
     }
 
-    bool networkFailed = false;
-    auto resolved = resolveLoaderVersion(ctx, uid, cmd.version, mcVersion, networkFailed);
+    auto resolved = fetchLoaderVersion(ctx, uid, cmd.version, mcVersion);
     if (!resolved) {
-        return outputError(networkFailed ? QStringLiteral("network_error") : QStringLiteral("version_not_found"),
-                           resolved.error(),
-                           networkFailed ? ExitCode::Network : ExitCode::NotFound);
+        const bool missing =
+            resolved.error().code == Task::FailureCode::NotFound || resolved.error().code == Task::FailureCode::InvalidTask;
+        const auto failure = taskFailure(missing ? "version_not_found" : "network_error", resolved.error(),
+                                         missing ? ExitCode::NotFound : ExitCode::Network);
+        return outputError(failure.code, resolved.error().message, failure.exitCode);
     }
     const auto loaderVersion = resolved.value();
 
@@ -479,16 +485,17 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionReinstall& cmd
 
     // The components of the instance are loaded again, so the metadata of the
     // components is fetched from the network.
-    if (auto result = profile->reload(Net::Mode::Online); !result) {
+    if (auto result = profile->reload(Net::Mode::Online, true); !result) {
         return outputError(QStringLiteral("network_error"),
                            QStringLiteral("The components of the instance could not be loaded: %1").arg(result.error()),
                            ExitCode::Network);
     }
     if (auto task = profile->getCurrentTask(); task) {
-        if (auto result = runTaskSync(task, g_ResolveTimeoutMs); !result) {
-            return outputError(QStringLiteral("network_error"),
+        if (auto result = runUnattendedTask(task, g_ResolveTimeoutMs); !result) {
+            const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
+            return outputError(failure.code,
                                QStringLiteral("The components of the instance could not be resolved: %1").arg(result.error().message),
-                               ExitCode::Network);
+                               failure.exitCode);
         }
     }
 
@@ -498,7 +505,7 @@ ExitCode runVersionCommand(CommandContext& ctx, const Cmd::VersionReinstall& cmd
     for (const auto& updateTask : instance->createUpdateTask()) {
         task->addTask(updateTask);
     }
-    if (auto result = runTaskSync(task, g_ResolveTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(task, g_ResolveTimeoutMs); !result) {
         const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         return outputError(failure.code,
                            QStringLiteral("The files of the instance could not be downloaded: %1").arg(result.error().message),

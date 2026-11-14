@@ -34,6 +34,7 @@
 #include "Result.h"
 #include "cli/Commands.h"
 #include "cli/Output.h"
+#include "cli/TaskRunner.h"
 
 class InstanceList;
 class MinecraftInstance;
@@ -90,6 +91,12 @@ std::vector<QString> versionsForMinecraft(Meta::VersionList* list, const QString
  * Load the version list of a component. Returns nullptr when the list could
  * not be loaded.
  */
+Result<Meta::VersionList*, TaskError> fetchVersionList(CommandContext& ctx, const QString& uid);
+Result<QString, TaskError> fetchLoaderVersion(CommandContext& ctx,
+                                              const QString& loaderUid,
+                                              const QString& wanted,
+                                              const QString& mcVersion);
+
 Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool* networkFailed = nullptr);
 
 /**

@@ -44,6 +44,7 @@ void AssetUpdateTask::executeTask()
     connect(downloadJob.get(), &NetJob::stepProgress, this, &AssetUpdateTask::propagateStepProgress);
 
     qDebug() << "Starting asset index download for" << m_inst->name();
+    downloadJob->setUnattended(isUnattended());
     downloadJob->start();
 }
 
@@ -85,6 +86,7 @@ void AssetUpdateTask::assetIndexFinished()
         connect(downloadJob.get(), &NetJob::aborted, this, &AssetUpdateTask::emitAborted);
         connect(downloadJob.get(), &NetJob::progress, this, &AssetUpdateTask::progress);
         connect(downloadJob.get(), &NetJob::stepProgress, this, &AssetUpdateTask::propagateStepProgress);
+        downloadJob->setUnattended(isUnattended());
         downloadJob->start();
         return;
     }
