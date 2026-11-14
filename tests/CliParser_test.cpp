@@ -21,6 +21,7 @@
 
 #include <CLI/CLI.hpp>
 
+#include "archive/ArchiveWriter.h"
 #include "cli/Parser.h"
 #include "cli/Output.h"
 
@@ -162,6 +163,32 @@ class CliParserTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_uncachedRecommendedImportIsOneTypedError()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile settings(dir.filePath("prismlauncher.cfg"));
+        QVERIFY(settings.open(QIODevice::WriteOnly));
+        settings.write("[General]\nMetaURLOverride=http://127.0.0.1:1/\n");
+        settings.close();
+        const auto path = dir.filePath("recommended.zip");
+        MMCZip::ArchiveWriter archive(path);
+        QVERIFY(archive.open());
+        const QByteArray manifest = R"({"manifestType":"minecraftModpack","manifestVersion":1,
+            "name":"recommended","version":"1","minecraft":{"version":"1.21.1",
+            "modLoaders":[{"id":"forge-recommended","primary":true}]},"files":[]})";
+        QVERIFY(archive.addFile(QStringLiteral("manifest.json"), manifest));
+        QVERIFY(archive.close());
+        const auto result = runLauncher({ "-d", dir.path(), "instance", "create", "--name", "recommended", "--from", path });
+        QCOMPARE(result.exitCode, static_cast<int>(Cli::ExitCode::Generic));
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson(result.out, &parseError);
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        QVERIFY(document.isObject());
+        QCOMPARE(errorCode(result.out), QString("unsupported_unattended"));
+        QCOMPARE(document.object().value("ok").toBool(), false);
+    }
+
     void test_metadataFailureReturnsOneError()
     {
         QTemporaryDir dir;

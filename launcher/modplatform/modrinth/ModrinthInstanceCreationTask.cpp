@@ -144,7 +144,7 @@ void ModrinthCreationTask::executeTask()
         }
     } else {
         // We don't have an old index file, so we may duplicate stuff!
-        if (m_interactive) {
+        if (isInteractive()) {
             auto* dialog = CustomMessageBox::selectable(m_parent, tr("No index file."),
                                                         tr("We couldn't find a suitable index file for the older version. This may cause some "
                                                            "of the files to be duplicated. Do you want to continue?"),
@@ -179,7 +179,7 @@ void ModrinthCreationTask::createInstance()
     QString indexPath = FS::PathCombine(m_stagingPath, "modrinth.index.json");
     // A headless run cannot answer the question of the optional files - the
     // defaults are taken then.
-    if (m_files.empty() && !parseManifest(indexPath, m_files, true, m_interactive)) {
+    if (m_files.empty() && !parseManifest(indexPath, m_files, true, isInteractive())) {
         return;
     }
 
@@ -323,6 +323,7 @@ void ModrinthCreationTask::createInstance()
     setStatus(tr("Downloading mods..."));
     m_task = downloadMods;
     setAbortable(true);
+    downloadMods->setUnattended(isUnattended());
     downloadMods->start();
 }
 
@@ -419,7 +420,7 @@ bool ModrinthCreationTask::parseManifest(const QString& indexPath, std::vector<F
         return false;
     }
     if (!optionalFiles.empty()) {
-        if (showOptionalDialog) {
+        if (showOptionalDialog && isInteractive()) {
             QStringList oFiles;
             for (const auto& file : optionalFiles) {
                 oFiles.push_back(file.path);
@@ -464,6 +465,7 @@ void ModrinthCreationTask::ensureMetaLoop()
     });
     connect(ensureMetadataTask.get(), &Task::stepProgress, this, &ModrinthCreationTask::propagateStepProgress);
 
+    ensureMetadataTask->setUnattended(isUnattended());
     ensureMetadataTask->start();
     m_task = ensureMetadataTask;
 }
@@ -499,7 +501,7 @@ bool ModrinthCreationTask::promptForUntrustedMods()
         return true;
     }
 
-    if (!m_interactive) {
+    if (!isInteractive()) {
         // A headless run cannot answer the question - the mods are written to
         // the standard error and the import continues.
         qWarning() << tr("The modpack contains files that are not hosted on Modrinth:");
@@ -560,7 +562,7 @@ void ModrinthCreationTask::finishInstall()
             // A headless run cannot answer the question - the name of the
             // instance is kept then.
             bool changeName = true;
-            if (m_interactive) {
+            if (isInteractive()) {
                 changeName = askForChangingInstanceName(m_parent, inst->name(), name()) == InstanceNameChange::ShouldChange;
             } else {
                 changeName = false;

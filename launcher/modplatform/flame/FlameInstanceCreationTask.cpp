@@ -154,7 +154,7 @@ void FlameCreationTask::executeTask()
 
     auto warnUser = [this, createInst](const QString& title,
                                        const QString& text) {  // We don't have an old index file, so we may duplicate stuff!
-        if (!m_interactive) {
+        if (!isInteractive()) {
             // A headless run cannot answer the question - the warning is
             // written to the standard error and the import continues.
             qWarning() << title << ":" << text;
@@ -281,6 +281,7 @@ void FlameCreationTask::executeTask()
         });
 
         m_processUpdateFileInfoJob = job;
+        job->setUnattended(isUnattended());
         job->start();
         return;
     }
@@ -301,10 +302,16 @@ QString FlameCreationTask::getVersionForLoader(const QString& uid,
         }
 
         if (!vlist->isLoaded()) {
+            if (isUnattended()) {
+                emitFailedWithCode(FailureCode::UnsupportedUnattended,
+                                   tr("Uncached recommended-loader selection is unsupported unattended; use an explicit loader version."));
+                return {};
+            }
             QEventLoop loadVersionLoop;
             auto task = vlist->getLoadTask();
             connect(task.get(), &Task::finished, &loadVersionLoop, &QEventLoop::quit);
             if (!task->isRunning()) {
+                task->setUnattended(isUnattended());
                 task->start();
             }
 
@@ -376,6 +383,10 @@ bool FlameCreationTask::promptForUntrustedMods()
         return true;
     }
 
+    if (!isInteractive()) {
+        qWarning() << tr("The imported pack contains untrusted files:") << untrustedMods;
+        return true;
+    }
     UntrustedModsDialog dialog{ untrustedMods, m_parent };
     return dialog.exec() == QDialog::Accepted;
 }
@@ -543,6 +554,7 @@ void FlameCreationTask::createInstance()
     connect(m_modIdResolver.get(), &Flame::FileResolvingTask::status, this, &FlameCreationTask::setStatus);
     connect(m_modIdResolver.get(), &Flame::FileResolvingTask::stepProgress, this, &FlameCreationTask::propagateStepProgress);
     connect(m_modIdResolver.get(), &Flame::FileResolvingTask::details, this, &FlameCreationTask::setDetails);
+    m_modIdResolver->setUnattended(isUnattended());
     m_modIdResolver->start();
 }
 
@@ -557,7 +569,7 @@ void FlameCreationTask::idResolverSucceeded()
         }
     }
 
-    if (!optionalFiles.empty()) {
+    if (!optionalFiles.empty() && isInteractive()) {
         OptionalModDialog optionalModDialog(m_parent, optionalFiles);
         if (optionalModDialog.exec() == QDialog::Rejected) {
             emitAborted();
@@ -593,6 +605,11 @@ void FlameCreationTask::idResolverSucceeded()
 
             anyBlocked = true;
         }
+    }
+    if (anyBlocked && !isInteractive()) {
+        emitFailedWithCode(FailureCode::UnsupportedUnattended,
+                           tr("Blocked files require manual download; this pack cannot be installed unattended."));
+        return;
     }
     if (anyBlocked) {
         qWarning() << "Blocked mods found, displaying mod list";
@@ -663,6 +680,7 @@ void FlameCreationTask::setupDownloadJob()
     connect(m_filesJob.get(), &NetJob::stepProgress, this, &FlameCreationTask::propagateStepProgress);
 
     setStatus(tr("Downloading mods..."));
+    m_filesJob->setUnattended(isUnattended());
     m_filesJob->start();
 }
 
@@ -789,6 +807,7 @@ void FlameCreationTask::validateOtherResources()
     }
     connect(task.get(), &Task::finished, this, &FlameCreationTask::finishInstall);
     m_processUpdateFileInfoJob = task;
+    task->setUnattended(isUnattended());
     task->start();
 }
 

@@ -1017,6 +1017,10 @@ class InstanceStaging : public Task {
             return;
         }
 
+        if (!m_child->setUnattended(isUnattended())) {
+            emitFailedWithCode(FailureCode::PolicyConflict, tr("Cannot adopt an interactive instance task already running."));
+            return;
+        }
         m_child->start();
     }
     QStringList warnings() const override { return m_child->warnings() + m_Warnings; }
@@ -1064,7 +1068,7 @@ class InstanceStaging : public Task {
     {
         m_backoffTimer.stop();
         FS::deletePath(m_stagingPath);
-        emitFailed(reason);
+        emitFailedWithCode(m_child->failureCode(), reason);
     }
 
     void childAborted()

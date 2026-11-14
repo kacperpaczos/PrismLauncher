@@ -83,6 +83,7 @@ void Flame::FileResolvingTask::executeTask()
         stepProgress(*stepProgress2);
     });
 
+    m_task->setUnattended(isUnattended());
     m_task->start();
 }
 
@@ -184,6 +185,7 @@ void Flame::FileResolvingTask::netJobFinished(QByteArray* response)
         stepProgress2->status = std::move(status);
         stepProgress(*stepProgress2);
     });
+    m_task->setUnattended(isUnattended());
     m_task->start();
 }
 
@@ -253,5 +255,6 @@ void Flame::FileResolvingTask::getFlameProjects()
         stepProgress(*stepProgress2);
     });
 
+    m_task->setUnattended(isUnattended());
     m_task->start();
 }

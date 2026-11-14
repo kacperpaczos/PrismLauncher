@@ -12,6 +12,7 @@
 #include <tasks/Task.h>
 
 #include "LaunchController.h"
+#include "InstanceTask.h"
 #include "launch/LaunchTask.h"
 #include "launch/TaskStepWrapper.h"
 #include "launch/steps/LaunchCommand.h"
@@ -255,6 +256,21 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_instanceInteractionFollowsTaskPolicy()
+    {
+        IdleAbortWrapper<InstanceTask> task;
+        QVERIFY(task.isInteractive());
+        QVERIFY(task.shouldConfirmUpdate());
+        QVERIFY(task.setUnattended(true));
+        task.setInteractive(true);
+        task.setConfirmUpdate(true);
+        QVERIFY(!task.isInteractive());
+        QVERIFY(!task.shouldConfirmUpdate());
+        QVERIFY(task.setUnattended(false));
+        QVERIFY(task.isInteractive());
+        QVERIFY(task.shouldConfirmUpdate());
+    }
+
     void test_automaticVersionSelectionRejectsUnattendedExecution()
     {
         QTemporaryDir dir;

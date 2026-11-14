@@ -33,7 +33,7 @@ class InstanceTask : public Task {
     void setTargetDir(const QString& dir) { m_targetDir = dir; }
     QString targetDir() const { return m_targetDir; }
 
-    bool shouldConfirmUpdate() const { return m_confirmUpdate; }
+    bool shouldConfirmUpdate() const { return m_confirmUpdate && !isUnattended(); }
     void setConfirmUpdate(bool confirm) { m_confirmUpdate = confirm; }
 
     /// Whether the creation task downloads the game files itself. Defaults to
@@ -50,7 +50,7 @@ class InstanceTask : public Task {
      * warnings are written to the standard error instead of being shown in a
      * dialog. It is on by default, so that the GUI keeps its behaviour.
      */
-    bool isInteractive() const { return m_interactive; }
+    bool isInteractive() const { return m_interactive && !isUnattended(); }
     void setInteractive(bool interactive) { m_interactive = interactive; }
 
     bool shouldOverride() const { return m_overrideExisting; }

@@ -109,6 +109,7 @@ void InstanceImportTask::downloadFromUrl()
     connect(filesNetJob.get(), &NetJob::failed, this, &InstanceImportTask::emitFailed);
     connect(filesNetJob.get(), &NetJob::aborted, this, &InstanceImportTask::emitAborted);
     m_task.reset(filesNetJob);
+    filesNetJob->setUnattended(isUnattended());
     filesNetJob->start();
 }
 namespace {
@@ -208,6 +209,7 @@ void InstanceImportTask::processZipPack()
     });
     connect(zipTask.get(), &Task::warningLogged, this, [this](const QString& line) { m_Warnings.append(line); });
     m_task.reset(zipTask);
+    zipTask->setUnattended(isUnattended());
     zipTask->start();
 }
 
@@ -328,7 +330,13 @@ void InstanceImportTask::processFlame()
         }
         emitSucceeded();
     });
-    connect(instCreationTask.get(), &Task::failed, this, &InstanceImportTask::emitFailed);
+    connect(instCreationTask.get(), &Task::failed, this, [this, weak](const QString& reason) {
+        if (auto child = weak.lock()) {
+            emitFailedWithCode(child->failureCode(), reason);
+        } else {
+            emitFailed(reason);
+        }
+    });
     connect(instCreationTask.get(), &Task::progress, this, &InstanceImportTask::setProgress);
     connect(instCreationTask.get(), &Task::stepProgress, this, &InstanceImportTask::propagateStepProgress);
     connect(instCreationTask.get(), &Task::status, this, &InstanceImportTask::setStatus);
@@ -342,6 +350,7 @@ void InstanceImportTask::processFlame()
 
     m_task.reset(instCreationTask);
     setAbortable(true);
+    m_task->setUnattended(isUnattended());
     m_task->start();
 }
 
@@ -438,7 +447,13 @@ void InstanceImportTask::processModrinth()
         }
         emitSucceeded();
     });
-    connect(instCreationTask.get(), &Task::failed, this, &InstanceImportTask::emitFailed);
+    connect(instCreationTask.get(), &Task::failed, this, [this, weak](const QString& reason) {
+        if (auto child = weak.lock()) {
+            emitFailedWithCode(child->failureCode(), reason);
+        } else {
+            emitFailed(reason);
+        }
+    });
     connect(instCreationTask.get(), &Task::progress, this, &InstanceImportTask::setProgress);
     connect(instCreationTask.get(), &Task::stepProgress, this, &InstanceImportTask::propagateStepProgress);
     connect(instCreationTask.get(), &Task::status, this, &InstanceImportTask::setStatus);
@@ -452,5 +467,6 @@ void InstanceImportTask::processModrinth()
 
     m_task.reset(instCreationTask);
     setAbortable(true);
+    m_task->setUnattended(isUnattended());
     m_task->start();
 }

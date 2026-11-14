@@ -174,31 +174,6 @@ Result<QString, TaskError> fetchLoaderVersion(CommandContext& ctx,
                                       QStringLiteral("the mod loader has no version '%1' for Minecraft %2").arg(wanted, mcVersion) });
 }
 
-Meta::VersionList* loadVersionList(CommandContext& ctx, const QString& uid, bool* networkFailed)
-{
-    auto result = fetchVersionList(ctx, uid);
-    if (!result) {
-        if (networkFailed) {
-            *networkFailed = result.error().code != Task::FailureCode::InvalidTask;
-        }
-        return nullptr;
-    }
-    return *result;
-}
-
-Result<QString, QString> resolveLoaderVersion(CommandContext& ctx,
-                                              const QString& loaderUid,
-                                              const QString& wanted,
-                                              const QString& mcVersion,
-                                              bool& networkFailed)
-{
-    auto result = fetchLoaderVersion(ctx, loaderUid, wanted, mcVersion);
-    if (!result) {
-        networkFailed = result.error().code != Task::FailureCode::NotFound && result.error().code != Task::FailureCode::InvalidTask;
-        return std::unexpected(result.error().message);
-    }
-    return *result;
-}
 
 std::optional<LoaderInfo> findLoader(PackProfile* profile)
 {

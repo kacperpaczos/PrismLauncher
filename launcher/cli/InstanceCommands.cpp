@@ -188,7 +188,7 @@ ExitCode downloadInstanceFiles(CommandContext& ctx, MinecraftInstance* instance,
         task->addTask(updateTask);
     }
 
-    if (auto result = runTaskSync(task, g_DownloadTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(task, g_DownloadTimeoutMs); !result) {
         const auto failure = taskFailure("download_failed", result.error(), failureCode);
         QJsonObject out;
         out.insert(QStringLiteral("reason"), result.error().message);
@@ -321,11 +321,11 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
         // the defaults are taken and the warnings are written to the
         // standard error.
         task->setInteractive(false);
-        // The files of the game are downloaded when the command asks for it.
-        task->setDownloadDuringCreation(cmd.download);
+        // Download game files through the same typed path for every import type.
+        task->setDownloadDuringCreation(false);
 
         shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
-        if (auto result = runTaskSync(wrapped, g_DownloadTimeoutMs); !result) {
+        if (auto result = runUnattendedTask(wrapped, g_DownloadTimeoutMs); !result) {
             const auto failure = taskFailure("create_failed", result.error(), ExitCode::Conflict);
             return outputError(failure.code, QStringLiteral("The instance could not be imported: %1").arg(result.error().message),
                                failure.exitCode);
@@ -342,6 +342,11 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
                                ExitCode::Generic);
         }
 
+        if (cmd.download) {
+            if (auto code = downloadInstanceFiles(ctx, instance, ExitCode::Conflict); code != ExitCode::OK) {
+                return code;
+            }
+        }
         QJsonObject out;
         out.insert(QStringLiteral("id"), instance->id());
         out.insert(QStringLiteral("name"), instance->name());
@@ -355,20 +360,26 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
     }
 
     // ---- create a vanilla instance ----
-    bool networkFailed = false;
-    auto* mcList = loadVersionList(ctx, "net.minecraft", &networkFailed);
-    if (!mcList) {
-        return outputError(networkFailed ? QStringLiteral("network_error") : QStringLiteral("no_versions"),
-                           QStringLiteral("The versions of Minecraft could not be loaded"),
-                           networkFailed ? ExitCode::Network : ExitCode::Generic);
+    auto loaded = fetchVersionList(ctx, "net.minecraft");
+    if (!loaded) {
+        const bool unavailable = loaded.error().code == Task::FailureCode::InvalidTask;
+        const auto failure =
+            taskFailure(unavailable ? "no_versions" : "network_error", loaded.error(), unavailable ? ExitCode::Generic : ExitCode::Network);
+        return outputError(failure.code, QStringLiteral("The versions of Minecraft could not be loaded"), failure.exitCode);
     }
+    auto* mcList = *loaded;
     if (!mcList->hasVersion(cmd.mcVersion)) {
         return outputError(QStringLiteral("version_not_found"),
                            QStringLiteral("There is no Minecraft version '%1'").arg(cmd.mcVersion),
                            ExitCode::NotFound);
     }
 
-    auto mcVersion = ctx.app.metadataIndex()->getLoadedVersion("net.minecraft", cmd.mcVersion);
+    auto minecraftTask = ctx.app.metadataIndex()->loadVersion("net.minecraft", cmd.mcVersion);
+    if (auto result = runUnattendedTask(minecraftTask, g_DownloadTimeoutMs); !result) {
+        const auto failure = taskFailure("version_not_found", result.error(), ExitCode::Network);
+        return outputError(failure.code, result.error().message, failure.exitCode);
+    }
+    auto mcVersion = ctx.app.metadataIndex()->get("net.minecraft", cmd.mcVersion);
     if (!mcVersion) {
         return outputError(QStringLiteral("version_not_found"),
                            QStringLiteral("The metadata of the Minecraft version '%1' could not be loaded").arg(cmd.mcVersion),
@@ -387,13 +398,20 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
         }
 
         const auto wanted = cmd.loaderVersion.value_or(QStringLiteral("latest"));
-        auto resolved = resolveLoaderVersion(ctx, loaderUid, wanted, cmd.mcVersion, networkFailed);
+        auto resolved = fetchLoaderVersion(ctx, loaderUid, wanted, cmd.mcVersion);
         if (!resolved) {
-            return outputError(networkFailed ? QStringLiteral("network_error") : QStringLiteral("version_not_found"),
-                               resolved.error(),
-                               networkFailed ? ExitCode::Network : ExitCode::NotFound);
+            const bool missing =
+                resolved.error().code == Task::FailureCode::NotFound || resolved.error().code == Task::FailureCode::InvalidTask;
+            const auto failure = taskFailure(missing ? "version_not_found" : "network_error", resolved.error(),
+                                             missing ? ExitCode::NotFound : ExitCode::Network);
+            return outputError(failure.code, resolved.error().message, failure.exitCode);
         }
-        loaderVersion = ctx.app.metadataIndex()->getLoadedVersion(loaderUid, resolved.value());
+        auto loaderTask = ctx.app.metadataIndex()->loadVersion(loaderUid, resolved.value());
+        if (auto result = runUnattendedTask(loaderTask, g_DownloadTimeoutMs); !result) {
+            const auto failure = taskFailure("version_not_found", result.error(), ExitCode::Network);
+            return outputError(failure.code, result.error().message, failure.exitCode);
+        }
+        loaderVersion = ctx.app.metadataIndex()->get(loaderUid, resolved.value());
         if (!loaderVersion) {
             return outputError(QStringLiteral("version_not_found"),
                                QStringLiteral("The metadata of the mod loader version '%1' could not be loaded").arg(resolved.value()),
@@ -401,9 +419,7 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
         }
     }
 
-    // The files of the instance are downloaded by the command itself - the
-    // download of the creation task cannot report its failures (it shows a
-    // dialog, which a headless run cannot answer).
+    // Keep game-file downloads on the same typed path as imported instances.
     auto* task = loaderUid.isEmpty() ? new VanillaCreationTask(mcVersion) : new VanillaCreationTask(mcVersion, loaderUid, loaderVersion);
     task->setDownloadDuringCreation(false);
     task->setName(cmd.name);
@@ -412,7 +428,7 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceCreate& cmd)
     task->setTargetDir(instances->primaryDir());
 
     shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
-    auto result = runTaskSync(wrapped, g_DownloadTimeoutMs);
+    auto result = runUnattendedTask(wrapped, g_DownloadTimeoutMs);
 
     if (!result) {
         const auto failure = taskFailure("create_failed", result.error(), ExitCode::Conflict);
@@ -503,7 +519,7 @@ ExitCode runInstanceCommand(CommandContext& ctx, const Cmd::InstanceDuplicate& c
 
     const auto expectedId = expectedInstanceId(ctx, name);
     shared_qobject_ptr<Task> wrapped(instances->wrapInstanceTask(task));
-    if (auto result = runTaskSync(wrapped, g_DownloadTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(wrapped, g_DownloadTimeoutMs); !result) {
         const auto failure = taskFailure("duplicate_failed", result.error(), ExitCode::Conflict);
         return outputError(failure.code, QStringLiteral("The instance could not be duplicated: %1").arg(result.error().message),
                            failure.exitCode);

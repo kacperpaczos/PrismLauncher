@@ -58,7 +58,9 @@ ShouldUpdate askIfShouldUpdate(QWidget* parent, const QString& originalVersionNa
 
 InstanceTask::InstanceTask()
 {
-    m_downloadDuringCreation = APPLICATION->settings()->get("DownloadGameFilesDuringInstanceCreation").toBool();
+    if (APPLICATION_DYN) {
+        m_downloadDuringCreation = APPLICATION->settings()->get("DownloadGameFilesDuringInstanceCreation").toBool();
+    }
 }
 
 QString InstanceTask::name() const
@@ -121,7 +123,7 @@ void InstanceTask::scheduleToDelete(QWidget* parent, const QDir& dir, const QStr
     }
     if (path.startsWith("saves/")) {
         if (m_shouldDeleteSaves == ShouldDeleteSaves::NotAsked) {
-            if (m_interactive) {
+            if (isInteractive()) {
                 m_shouldDeleteSaves = askIfShouldDeleteSaves(parent);
             } else {
                 // A headless run cannot answer the question - the saves are
@@ -169,7 +171,7 @@ void InstanceTask::downloadFiles(MinecraftInstance* inst)
             return;
         }
         if (!task->wasSuccessful()) {
-            if (!m_interactive) {
+            if (!isInteractive()) {
                 // A headless run cannot show the error - the task fails, so
                 // that the failure is not reported as a success.
                 emitFailed(tr("Could not download game files: %1").arg(task->failReason()));
@@ -185,6 +187,7 @@ void InstanceTask::downloadFiles(MinecraftInstance* inst)
     setDetails(tr("Downloading game files"));
 
     m_gameFilesTask = task;
+    m_gameFilesTask->setUnattended(isUnattended());
     m_gameFilesTask->start();
 }
 
