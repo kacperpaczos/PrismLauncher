@@ -278,6 +278,6 @@ NetJob::Ptr makeCliNetJob(const QString& name);
 /// the results have to be requested page by page - and builds the JSON
 /// envelope shared by the search commands: {offset, limit, total, results}.
 /// `args.type` decides which project type is searched.
-Result<QJsonObject, QString> modrinthSearchJson(ResourceAPI::SearchArgs args, int limit, int offset);
+Result<QJsonObject, TaskError> modrinthSearchJson(ResourceAPI::SearchArgs args, int limit, int offset);
 
 }  // namespace Cli

@@ -83,6 +83,7 @@ void ModrinthCheckUpdate::executeTask()
     if (startHasing) {
         connect(hashingTask.get(), &Task::finished, this, &ModrinthCheckUpdate::checkNextLoader);
         m_job = hashingTask;
+        hashingTask->setUnattended(isUnattended());
         hashingTask->start();
     } else {
         checkNextLoader();
@@ -119,6 +120,7 @@ void ModrinthCheckUpdate::getUpdateModsForLoader(std::optional<ModPlatform::ModL
     connect(job.get(), &Task::failed, this, &ModrinthCheckUpdate::checkNextLoader);
 
     m_job = job;
+    job->setUnattended(isUnattended());
     job->start();
 }
 

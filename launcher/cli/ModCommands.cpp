@@ -162,21 +162,21 @@ Resource* findResourceByFileName(ResourceFolderModel* model, const QString& file
  * the author, it only carries the id of the team, so the members have to be
  * fetched separately.
  */
-Result<QList<ModPlatform::ModpackAuthor>> fetchProjectAuthors(const QString& projectId)
+Result<QList<ModPlatform::ModpackAuthor>, TaskError> fetchProjectAuthors(const QString& projectId)
 {
     const auto url = QUrl(BuildConfig.MODRINTH_PROD_URL + "/project/" + projectId + "/members");
     auto [action, response] = Net::ApiRequest::makeByteArray(url);
     auto job = makeCliNetJob(QStringLiteral("Modrinth::ProjectMembers"));
     job->addNetAction(action);
 
-    if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-        return std::unexpected(result.error().message);
+    if (auto result = runUnattendedTask(job, g_NetworkTimeoutMs); !result) {
+        return std::unexpected(result.error());
     }
 
     QJsonParseError parseError;
     auto document = QJsonDocument::fromJson(*response, &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
-        return std::unexpected(QStringLiteral("the Modrinth team response is not a JSON array"));
+        return std::unexpected(TaskError{ Task::FailureCode::Failed, QStringLiteral("the Modrinth team response is not a JSON array") });
     }
 
     QList<ModPlatform::ModpackAuthor> authors;
@@ -432,7 +432,8 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd)
 
     auto envelope = modrinthSearchJson(args, cmd.limit, cmd.offset);
     if (!envelope) {
-        return outputError(QStringLiteral("network_error"), envelope.error(), ExitCode::Network);
+        const auto failure = taskFailure("network_error", envelope.error(), ExitCode::Network);
+        return outputError(failure.code, envelope.error().message, failure.exitCode);
     }
     outputJson(QJsonDocument(envelope.value()));
     return ExitCode::OK;
@@ -440,14 +441,14 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd)
 
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd)
 {
-    auto project = fetchProject(cmd.project);
+    auto project = fetchProject(cmd.project, true);
     if (!project) {
         return reportProjectError(project.error());
     }
     const auto pack = project.value();
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(pack);
 
-    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
+    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod, true);
     if (!versionsResult) {
         const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
         return outputError(failure.code, versionsResult.error().message, failure.exitCode);
@@ -487,7 +488,7 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd)
         if (auto fetched = fetchProjectAuthors(pack.addonId.toString()); fetched) {
             projectAuthors = fetched.value();
         } else {
-            qWarning() << "Could not fetch the team of the project:" << fetched.error();
+            qWarning() << "Could not fetch the team of the project:" << fetched.error().message;
         }
     }
 
@@ -546,7 +547,7 @@ ExitCode runModInstallDownload(Task::Ptr download, const std::shared_ptr<QJsonAr
     if (!download || !download->setUnattended(true)) {
         return outputError(QStringLiteral("invalid_task"), QStringLiteral("Could not configure the mod download"));
     }
-    if (auto result = runTaskSync(download, timeoutMs); !result) {
+    if (auto result = runUnattendedTask(download, timeoutMs); !result) {
         const auto failure = taskFailure("download_failed", result.error(), ExitCode::Network);
         QJsonObject out;
         out.insert(QStringLiteral("failed"), *failed);
@@ -679,7 +680,7 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
         if (!dependencyTask->setUnattended(true)) {
             return outputError(QStringLiteral("invalid_task"), QStringLiteral("Could not configure dependency resolution"));
         }
-        if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
+        if (auto result = runUnattendedTask(dependencyTask, g_NetworkTimeoutMs); !result) {
             const auto failure = taskFailure("network_error", result.error(), ExitCode::Network);
             return outputError(failure.code, QStringLiteral("Could not resolve the dependencies: %1").arg(result.error().message),
                                failure.exitCode);
@@ -886,6 +887,7 @@ struct ModUpdateReport {
     QJsonArray failed;
     bool hasUnresolvedTargets = false;
     bool hasCheckFailures = false;
+    std::optional<TaskError> dependencyFailure;
     /// Whether the disabled state of at least one updated mod could not be
     /// restored after the download.
     bool hasRestoreFailures = false;
@@ -988,7 +990,7 @@ std::expected<QList<Resource*>, CliError> ensureUpdateMetadata(ModFolderModel* m
         // hashing task would run and nothing else (the same way the GUI does
         // it, see `ResourceUpdateDialog`).
         sequence->addTask(metadataTask);
-        if (auto result = runTaskSync(sequence, g_NetworkTimeoutMs); !result) {
+        if (auto result = runUnattendedTask(sequence, g_NetworkTimeoutMs); !result) {
             // The outcome flag travels in the report as well - a metadata
             // failure must never end in a success envelope, even if the
             // command went on after the phase.
@@ -1070,7 +1072,7 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
                          report.failed.append(entry);
                      });
 
-    if (auto result = runTaskSync(checkTask, g_NetworkTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(checkTask, g_NetworkTimeoutMs); !result) {
         QJsonObject out;
         out.insert(QStringLiteral("failed"), report.failed);
         out.insert(QStringLiteral("reason"), result.error().message);
@@ -1120,12 +1122,13 @@ std::expected<QList<shared_qobject_ptr<ResourceDownloadTask>>, CliError> checkUp
     // it is the input of the dependency resolution.
     if (!cmd.noDeps && !checkTask->getDependencies().isEmpty()) {
         auto dependencyTask = makeShared<GetModDependenciesTask>(instance, model, checkTask->getDependencies());
-        if (auto result = runTaskSync(dependencyTask, g_NetworkTimeoutMs); !result) {
+        if (auto result = runUnattendedTask(dependencyTask, g_NetworkTimeoutMs); !result) {
             QJsonObject entry;
             entry.insert(QStringLiteral("reason"),
                          QStringLiteral("the dependencies could not be resolved: %1").arg(result.error().message));
             report.failed.append(entry);
             report.hasCheckFailures = true;
+            report.dependencyFailure = result.error();
         } else {
             const auto extraInfo = dependencyTask->getExtraInfo();
             for (const auto& dependency : dependencyTask->getDependecies()) {
@@ -1253,7 +1256,7 @@ std::expected<bool, CliError> applyUpdates(ModFolderModel* model,
 
     // The outcome of the batch as a whole - the restoration below runs no
     // matter how the batch ended, the result is evaluated after it.
-    const auto batchResult = runTaskSync(download, g_NetworkTimeoutMs);
+    const auto batchResult = runUnattendedTask(download, g_NetworkTimeoutMs);
 
     for (const auto& entry : *failed) {
         report.failed.append(entry);
@@ -1381,10 +1384,8 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModUpdate& cmd)
     if (report.hasCheckFailures) {
         // The update of at least one mod could not be checked - the command
         // reports the failure.
-        return outputError(QStringLiteral("check_failed"),
-                           QStringLiteral("The update of at least one mod could not be checked"),
-                           ExitCode::Network,
-                           out);
+        const auto failure = taskFailure("check_failed", report.dependencyFailure.value_or(TaskError{}), ExitCode::Network);
+        return outputError(failure.code, QStringLiteral("The update of at least one mod could not be checked"), failure.exitCode, out);
     }
     if (report.hasRestoreFailures) {
         // The updated mods are in place, but the disabled state of at least

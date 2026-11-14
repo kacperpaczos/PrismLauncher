@@ -369,7 +369,8 @@ ExitCode runPackCommand(CommandContext& ctx, const Cmd::PackSearch& cmd)
 
     auto envelope = modrinthSearchJson(args, cmd.limit, cmd.offset);
     if (!envelope) {
-        return outputError(QStringLiteral("network_error"), envelope.error(), ExitCode::Network);
+        const auto failure = taskFailure("network_error", envelope.error(), ExitCode::Network);
+        return outputError(failure.code, envelope.error().message, failure.exitCode);
     }
     outputJson(QJsonDocument(envelope.value()));
     return ExitCode::OK;

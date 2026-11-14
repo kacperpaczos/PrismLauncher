@@ -67,7 +67,7 @@ constexpr int g_ModelWaitMs = 180000;
 NetJob::Ptr makeCliNetJob(const QString& name)
 {
     auto job = makeShared<NetJob>(name, APPLICATION->network());
-    job->setAskRetry(false);
+    job->setUnattended(true);
     return job;
 }
 
@@ -104,8 +104,7 @@ QString resolveClientPath(const QString& path)
     return QDir(dir).absoluteFilePath(path);
 }
 
-
-Result<QJsonObject, QString> modrinthSearchJson(ResourceAPI::SearchArgs args, int limit, int offset)
+Result<QJsonObject, TaskError> modrinthSearchJson(ResourceAPI::SearchArgs args, int limit, int offset)
 {
     const int requestedOffset = offset;
     QJsonArray results;
@@ -120,14 +119,17 @@ Result<QJsonObject, QString> modrinthSearchJson(ResourceAPI::SearchArgs args, in
         job->addNetAction(action);
 
         if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
-            return std::unexpected(QStringLiteral("The Modrinth search failed: %1").arg(result.error().message));
+            auto error = result.error();
+            error.message = QStringLiteral("The Modrinth search failed: %1").arg(error.message);
+            return std::unexpected(error);
         }
 
         QJsonParseError parseError;
         auto document = QJsonDocument::fromJson(*response, &parseError);
         if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
             return std::unexpected(
-                QStringLiteral("The Modrinth search returned an invalid response: %1").arg(parseError.errorString()));
+                TaskError{ Task::FailureCode::Failed,
+                           QStringLiteral("The Modrinth search returned an invalid response: %1").arg(parseError.errorString()) });
         }
 
         auto object = document.object();
@@ -313,7 +315,7 @@ bool loadComponentProfile(MinecraftInstance* instance)
         // The profile was already loaded.
         return true;
     }
-    if (auto result = profile->reload(Net::Mode::Offline); !result) {
+    if (auto result = profile->reload(Net::Mode::Offline, true); !result) {
         qWarning() << "Could not load the component profile of the instance:" << result.error();
         return false;
     }

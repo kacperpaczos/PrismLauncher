@@ -168,6 +168,7 @@ void EnsureMetadataTask::executeTask()
         connect(projectTask.get(), &Task::failed, this, &EnsureMetadataTask::emitFailed);
 
         m_currentTask = projectTask;
+        projectTask->setUnattended(isUnattended());
         projectTask->start();
     });
 
@@ -179,6 +180,7 @@ void EnsureMetadataTask::executeTask()
     }
 
     m_currentTask = versionTask;
+    versionTask->setUnattended(isUnattended());
     versionTask->start();
 }
 
@@ -519,6 +521,7 @@ void EnsureMetadataTask::updateMetadata(ModPlatform::IndexedPack& pack, ModPlatf
     connect(task.get(), &Task::finished, this, [this, &pack, resource] { updateMetadataCallback(pack, resource); });
 
     m_updateMetadataTasks[ModPlatform::ProviderCapabilities::name(pack.provider) + pack.addonId.toString()] = task;
+    task->setUnattended(isUnattended());
     task->start();
 }
 
