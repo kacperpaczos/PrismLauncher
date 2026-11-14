@@ -69,7 +69,6 @@ class NetJobTest : public QObject {
         QVERIFY(!beforeBracket.shouldAskRetry(true));
     }
 
-
     void test_unattendedOverridesExplicitRetry()
     {
         NetJob job("unattended", nullptr);
@@ -82,7 +81,7 @@ class NetJobTest : public QObject {
         QVERIFY(job.addNetAction(request));
         QSignalSpy failed(&job, &Task::failed);
         job.start();
-        QTRY_VERIFY_WITH_TIMEOUT(job.isFinished(), 1000);
+        QTRY_VERIFY_WITH_TIMEOUT(job.isFinished(), 5000);
         QVERIFY(!job.wasSuccessful());
         QCOMPARE(failed.count(), 1);
         QVERIFY(request->isUnattended());

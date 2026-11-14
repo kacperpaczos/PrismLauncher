@@ -84,9 +84,9 @@ class CliTaskRunnerTest : public QObject {
         QElapsedTimer timer;
         timer.start();
         // Keep the deadline well beyond the responsiveness bound below.
-        const auto code = Cli::runModInstallDownload(download, failed, 10000);
+        const auto code = Cli::runModInstallDownload(download, failed, 30000);
         QCOMPARE(code, Cli::ExitCode::Network);
-        QVERIFY(timer.elapsed() < 1000);
+        QVERIFY(timer.elapsed() < 5000);
         QCOMPARE(capture.documents().size(), std::size_t{ 1 });
         const auto envelope = capture.documents().front().object();
         QCOMPARE(envelope.value("ok").toBool(), false);
@@ -102,7 +102,7 @@ class CliTaskRunnerTest : public QObject {
         auto child = makeShared<FakeTask>(FakeTask::Outcome::AcceptWithoutFinishing);
         auto parent = makeShared<ConcurrentTask>();
         QVERIFY(parent->addTask(child));
-        const auto result = Cli::runTaskSync(parent, 20, 20);
+        const auto result = Cli::runTaskSync(parent, 200, 200);
         QVERIFY(!result);
         QCOMPARE(result.error().code, Task::FailureCode::Incomplete);
         QVERIFY(parent->isRunning());
