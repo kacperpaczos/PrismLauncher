@@ -118,7 +118,7 @@ Result<QJsonObject, TaskError> modrinthSearchJson(ResourceAPI::SearchArgs args, 
         auto job = makeCliNetJob(QStringLiteral("Modrinth::Search"));
         job->addNetAction(action);
 
-        if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
+        if (auto result = runUnattendedTask(job, g_NetworkTimeoutMs); !result) {
             auto error = result.error();
             error.message = QStringLiteral("The Modrinth search failed: %1").arg(error.message);
             return std::unexpected(error);
@@ -383,14 +383,14 @@ ExitCode reportProjectError(const TaskError& error)
     return outputError(failure.code, error.message, failure.exitCode);
 }
 
-Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project, bool unattended)
+Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project)
 {
     auto [job, response] = ModrinthAPI::get().getProjectTask(project, false, false);
-    if (!job || !response || !job->setUnattended(unattended)) {
+    if (!job || !response) {
         return std::unexpected(
             TaskError{ Task::FailureCode::InvalidTask, QStringLiteral("could not create the request for '%1'").arg(project) });
     }
-    if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(job, g_NetworkTimeoutMs); !result) {
         if (netStatusCode(job) == 404) {
             return std::unexpected(TaskError{ Task::FailureCode::NotFound, QStringLiteral("the project '%1' was not found").arg(project) });
         }
@@ -400,8 +400,7 @@ Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project,
 }
 
 Result<QVector<ModPlatform::IndexedVersion>, TaskError> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
-                                                                             ModPlatform::ResourceType resourceType,
-                                                                             bool unattended)
+                                                                             ModPlatform::ResourceType resourceType)
 {
     auto versions = std::make_shared<QVector<ModPlatform::IndexedVersion>>();
     ResourceAPI::VersionSearchArgs args;
@@ -413,10 +412,10 @@ Result<QVector<ModPlatform::IndexedVersion>, TaskError> fetchProjectVersions(con
     callbacks.onSucceed = [versions](auto& result) { *versions = result; };
     callbacks.onFail = [](const QString& reason, int) { qWarning() << "Could not load the project versions:" << reason; };
     auto task = ModrinthAPI::get().getProjectVersions(args, callbacks, false);
-    if (!task || !task->setUnattended(unattended)) {
+    if (!task) {
         return std::unexpected(TaskError{ Task::FailureCode::InvalidTask, QStringLiteral("could not create the version request") });
     }
-    if (auto result = runTaskSync(task, g_NetworkTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(task, g_NetworkTimeoutMs); !result) {
         return std::unexpected(result.error());
     }
     return *versions;

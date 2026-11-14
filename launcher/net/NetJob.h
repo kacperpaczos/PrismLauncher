@@ -65,20 +65,6 @@ class NetJob : public ConcurrentTask {
 
     /// Whether the job asks the user whether a failed request should be retried.
     bool asksRetry() const { return m_askRetry && !isUnattended(); }
-    bool shouldAskRetry(bool headlessRun) const { return !headlessRun && asksRetry(); }
-
-    /**
-     * @brief whether the jobs that are created ask for a retry
-     *
-     * The jobs of the GUI ask the user whether a failed request should be
-     * retried - a dialog cannot be answered in a headless run, so the CLI
-     * turns the default off for the duration of its operations. The default
-     * is on, so that the GUI keeps its behaviour.
-     */
-    static bool defaultAskRetry();
-
-    /// @brief set the default for the jobs that are created afterwards
-    static void setDefaultAskRetry(bool askRetry);
 
    protected slots:
     void emitFailed(QString reason) override;
@@ -87,7 +73,6 @@ class NetJob : public ConcurrentTask {
    protected:
     void updateState() override;
     bool isOnline();
-    virtual bool isHeadlessRun() const;
     virtual bool askRetry(const QString& reason);
 
    private:
@@ -97,6 +82,4 @@ class NetJob : public ConcurrentTask {
     int m_maxTries = 3;
     bool m_askRetry = true;
 
-    // The default of the `m_askRetry` of the jobs that are created.
-    static bool s_defaultAskRetry;
 };

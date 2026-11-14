@@ -41,11 +41,9 @@ class UnattendedFailureRequest : public Net::Request {
 class PromptTrackedJob : public NetJob {
    public:
     PromptTrackedJob() : NetJob("prompt decision", nullptr) {}
-    bool headless = false;
     int prompts = 0;
 
    protected:
-    bool isHeadlessRun() const override { return headless; }
     bool askRetry(const QString&) override
     {
         ++prompts;
@@ -73,40 +71,23 @@ class NetJobTest : public QObject {
    private slots:
     void test_failurePathPromptDecision_data()
     {
-        QTest::addColumn<bool>("headless");
         QTest::addColumn<bool>("unattended");
-        QTest::newRow("GUI") << false << false;
-        QTest::newRow("headless-preexisting-job") << true << false;
-        QTest::newRow("unattended-operation") << false << true;
+        QTest::newRow("GUI") << false;
+        QTest::newRow("unattended-operation") << true;
     }
 
     void test_failurePathPromptDecision()
     {
-        QFETCH(bool, headless);
         QFETCH(bool, unattended);
         PromptTrackedJob job;
-        job.headless = headless;
         QVERIFY(job.setUnattended(unattended));
         job.setAskRetry(true);
         QVERIFY(job.addNetAction(makeShared<UnattendedFailureRequest>()));
         QSignalSpy failed(&job, &Task::failed);
         job.start();
         QTRY_VERIFY(job.isFinished());
-        QCOMPARE(job.prompts, headless || unattended ? 0 : 1);
+        QCOMPARE(job.prompts, unattended ? 0 : 1);
         QCOMPARE(failed.count(), 1);
-    }
-
-    void test_retryDecisionRetainsHeadlessFallback()
-    {
-        NetJob beforeBracket("created before CLI", nullptr);
-        NetJob::setDefaultAskRetry(false);
-        beforeBracket.setAskRetry(true);
-        QVERIFY(beforeBracket.asksRetry());
-        QVERIFY(beforeBracket.shouldAskRetry(false));
-        QVERIFY(!beforeBracket.shouldAskRetry(true));
-        QVERIFY(beforeBracket.setUnattended(true));
-        QVERIFY(!beforeBracket.shouldAskRetry(false));
-        QVERIFY(!beforeBracket.shouldAskRetry(true));
     }
 
     void test_unattendedOverridesExplicitRetry()
@@ -186,39 +167,18 @@ class NetJobTest : public QObject {
         QCOMPARE(job.interactiveFailures, 0);
     }
 
-    void cleanup()
+    void test_retryPreferencesAreLocal()
     {
-        // The default is global - every test restores it.
-        NetJob::setDefaultAskRetry(true);
+        NetJob first("first", nullptr);
+        NetJob unrelated("GUI", nullptr);
+        QVERIFY(first.asksRetry());
+        first.setAskRetry(false);
+        QVERIFY(!first.asksRetry());
+        QVERIFY(unrelated.asksRetry());
+        first.setAskRetry(true);
+        QVERIFY(first.asksRetry());
     }
 
-    void test_theDefaultIsOn()
-    {
-        // The GUI asks the user whether a failed request should be retried.
-        QCOMPARE(NetJob::defaultAskRetry(), true);
-    }
-
-    void test_aJobUsesTheDefault()
-    {
-        NetJob::setDefaultAskRetry(false);
-        NetJob job("test", nullptr);
-        QCOMPARE(job.asksRetry(), false);
-
-        NetJob::setDefaultAskRetry(true);
-        NetJob other("test", nullptr);
-        QCOMPARE(other.asksRetry(), true);
-    }
-
-    void test_anExplicitValueWins()
-    {
-        NetJob::setDefaultAskRetry(false);
-        NetJob job("test", nullptr);
-        QCOMPARE(job.asksRetry(), false);
-
-        // The job itself decides - the default does not change it any more.
-        job.setAskRetry(true);
-        QCOMPARE(job.asksRetry(), true);
-    }
 };
 
 QTEST_GUILESS_MAIN(NetJobTest)

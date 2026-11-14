@@ -16,9 +16,9 @@ Bieżące drzewo: `/home/user/orca/PrismLauncher-kacperpaczos`, gałąź
 Aktualny kontrakt i ścieżki anulowania opisuje [UNATTENDED-TASKS.md](UNATTENDED-TASKS.md).
 Timeout/lifetime (1) pozostaje częściowo otwarty: zakończone taski są zwalniane,
 kompozyty czekają na dzieci, ale surowe wskaźniki modeli i zagnieżdżona pętla
-zdarzeń nadal wymagają szerszego projektu. Retry per operacja (2) działa w
-adoptowanych drzewach; jawne preferencje i istniejące joby respektują flagę.
-Globalny bracket i fallback headless pozostają do migracji reszty komend.
+zdarzeń nadal wymagają szerszego projektu. Retry per operacja (2) jest przeniesione
+na flagę tasków we wszystkich ścieżkach CLI; usunięto globalny default, bracket
+i fallback headless. Jawne preferencje i istniejące adoptowane joby respektują flagę.
 
 ## Wejście dla następnego agenta
 
@@ -100,11 +100,13 @@ mogły rozwiązać część uwag. Potwierdzaj na nowym, dokładnie oznaczonym SH
 1. **Timeout/lifetime:** zatrzymanie oczekiwania nadal pozwala na dalsze działanie
    taska i kolejne operacje na jego modelu/instancji. `unfinishedTasks()` zwalnia
    taski po zakończeniu; brak ownership instancji/modelu i koordynacji mutacji.
-2. **Retry per operacja (częściowo):** flaga taska obejmuje jawne `askRetry=true`
-   i istniejące adoptowane joby; globalny default pozostaje dla nieprzeniesionych
-   komend i nadal może wpływać na niezwiązane joby GUI.
-3. **Import:** pozostałe dialogi Flame optional/blocked oraz pobieranie gry
-   w importach MultiMC/Technic. Sprawdzić politykę bez interakcji dla wszystkich typów.
+2. **Retry per operacja (zamknięte w CLI):** flagi tasków obejmują jawne
+   `askRetry=true`, istniejące joby i późne dzieci; brak globalnego defaultu,
+   bracketu oraz fallbacku headless w NetJob. Niezwiązane joby GUI zachowują politykę.
+3. **Import (polityka bez dialogów zaimplementowana):** optional są disabled;
+   blocked i niebuforowany recommended-loader zwracają `unsupported_unattended`.
+   MultiMC/Technic korzystają ze wspólnej ścieżki pobierania gry na żądanie.
+   Pozostaje końcowa weryfikacja offline i smoke dla bieżącego kodu.
 4. **Ścieżki IPC:** GUI potrzebuje cwd klienta lub ścieżek rozwiązanych po stronie
    klienta. `325556829` dotyczy URL-i; nie uznawać go za dowód naprawy całego IPC.
 5. **ServersDat:** zachowanie nieznanych pól każdego serwera, nie tylko roota,

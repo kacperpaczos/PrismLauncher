@@ -17,27 +17,29 @@ An incompatible running child is recorded as failed without being cancelled.
 The parent reports PolicyConflict after its owned active work has stopped. Failed policy changes can leave inactive
 children already configured; the caller must not start a rejected operation.
 
-
-
 NetJob's effective `asksRetry()` is false when unattended, including after an
-explicit `setAskRetry(true)` and for jobs created before adoption. The failure
-path uses the tested `shouldAskRetry(headlessRun)` predicate. The headless-process
-fallback also remains until legacy job creation is migrated. Automatic
+explicit `setAskRetry(true)` and for jobs created before adoption. The tested
+failure path reaches its prompt hook only for interactive jobs. Automatic
 bounded retries still run; only the interactive retry decision is suppressed.
-Adoption does not change an existing unrelated task's flag or retry preference.
+Adoption leaves unrelated GUI jobs' flags and retry preferences unchanged.
 
-The old `setDefaultAskRetry` bracket in Application remains for unported CLI
-commands. It still changes constructor defaults process-wide while a command
-runs. Therefore this change does not yet close HANDOFF finding 2 globally.
-The new flag overrides explicit retry preferences in adopted trees; the legacy
-bracket alone cannot provide that guarantee for unported trees.
+CLI task roots use `runUnattendedTask`, which sets the flag before execution
+and returns PolicyConflict for an incompatible running task. Metadata helpers
+also use this boundary. Profile resolution receives the flag before starting;
+component loads, model scans, late parsers and import phases carry it onward.
+The constructor default switch and Application bracket have been removed.
+NetJob no longer consults the process's headless status. The startup translations
+index request already suppresses retry explicitly, independently of CLI tasks.
 
-This flag guards NetJob interaction, not arbitrary QDialog calls in subclasses.
-Imports and other command groups have not been comprehensively ported. Shared
-profile preparation remains on its existing launcher path. ModFolderModel has
-an explicit unattended toggle overload: it rejects running-instance mutations,
-skips dependency confirmation, and toggles only the supplied selection. CLI
-recursive toggles expand that selection themselves. GUI callers retain prompts.
+The flag guards NetJob interaction. Reachable non-network dialogs have explicit
+unattended paths: resource/mod toggles reject running instances without prompting,
+and mod toggles affect only the requested selection. Imports disable optional
+files, keep existing names and saves, and warn about untrusted override files.
+Blocked files requiring manual download and uncached recommended-loader selection
+return UnsupportedUnattended. Automatic latest-version selection also returns
+that code because its existing hidden metadata wait cannot report typed errors.
+GUI callers retain their prompts. Task-free world, settings, notes and status
+commands use their existing file/value paths; notes stdin is intentional input.
 
 ## Cancellation and ownership
 
@@ -95,13 +97,15 @@ used for composite propagation and PolicyConflict. A lone structured child failu
 retains its code through ConcurrentTask or SequentialTask without retry hooks;
 aggregate failures stay Failed and use the ordinary virtual failure hook.
 Legacy emitters that bypass these paths may be uncoded; composites treat that as
-Failed. The CLI currently originates Timeout, InvalidTask, NotFound and Incomplete.
+Failed. The CLI originates Timeout, InvalidTask, NotFound and Incomplete; task producers
+can also report UnsupportedUnattended.
 Its runner returns `Result<void, TaskError>` with the observed code and message.
 
 The CLI's typed mapping helpers examine codes, never translated text or sentinel
 strings. They map Incomplete to `operation_did_not_finish` and exit 1, including
 project/version metadata and download failures in mod install.
-PolicyConflict maps to `task_policy_conflict` and exit 1. A failure whose message
+PolicyConflict maps to `task_policy_conflict` and exit 1. UnsupportedUnattended
+maps to `unsupported_unattended` and exit 1. A failure whose message
 happens to equal an error-code string remains an ordinary failure. No CLI command
 classifies errors by translated message text. Other command-specific mappings
 and public JSON shapes are preserved.
@@ -131,12 +135,12 @@ bounds completion to five seconds against a thirty-second operation deadline wit
 external network access. Model-toggle coverage supplies a real dependency
 relationship and verifies the unattended path preserves the unselected dependent.
 An isolated subprocess checks inactive-task emission rejection. The prompt-policy
-failure path is tested with pre-existing headless and unattended jobs. A loopback-only
+failure path is tested with interactive and unattended jobs. A loopback-only
 metadata failure test covers the earlier refresh failure that aborts Debug builds.
 Whole-command success paths are exercised separately by the three network smokes.
 
-Verification on the implementation: container build PASS; CTest 37/37 PASS;
-network mod, pack and instance smoke scripts each PASS.
+The CLI contract source check rejects global retry settings and direct task
+starts outside the unattended runner. Verification uses the container wrappers.
 
 ## Cancellation producers
 

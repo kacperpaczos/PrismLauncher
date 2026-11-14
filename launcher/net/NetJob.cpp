@@ -46,20 +46,7 @@
 #include "ui/dialogs/NetworkJobFailedDialog.h"
 #endif
 
-bool NetJob::s_defaultAskRetry = true;
-
-bool NetJob::defaultAskRetry()
-{
-    return s_defaultAskRetry;
-}
-
-void NetJob::setDefaultAskRetry(bool askRetry)
-{
-    s_defaultAskRetry = askRetry;
-}
-
-NetJob::NetJob(const QString& jobName, QNetworkAccessManager* network, int maxConcurrent)
-    : ConcurrentTask(jobName), m_network(network), m_askRetry(s_defaultAskRetry)
+NetJob::NetJob(const QString& jobName, QNetworkAccessManager* network, int maxConcurrent) : ConcurrentTask(jobName), m_network(network)
 {
 #ifdef LAUNCHER_APPLICATION
     if (APPLICATION_DYN) {
@@ -155,18 +142,9 @@ bool NetJob::isOnline()
     });
 }
 
-bool NetJob::isHeadlessRun() const
-{
-#ifdef LAUNCHER_APPLICATION
-    return APPLICATION_DYN && APPLICATION->isHeadlessRun();
-#else
-    return false;
-#endif
-}
-
 void NetJob::emitFailed(QString reason)
 {
-    if (shouldAskRetry(isHeadlessRun()) && isOnline() && askRetry(reason)) {
+    if (asksRetry() && isOnline() && askRetry(reason)) {
         return;
     }
     ConcurrentTask::emitFailed(reason);

@@ -153,12 +153,11 @@ bool waitForModel(ResourceFolderModel* model);
 ExitCode reportProjectError(const TaskError& error);
 
 /// @brief resolve a project (slug or id) on Modrinth
-Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project, bool unattended = false);
+Result<ModPlatform::IndexedPack, TaskError> fetchProject(const QString& project);
 
 /// @brief fetch all versions of a project
 Result<QVector<ModPlatform::IndexedVersion>, TaskError> fetchProjectVersions(const ModPlatform::IndexedPack::Ptr& pack,
-                                                                             ModPlatform::ResourceType resourceType,
-                                                                             bool unattended = false);
+                                                                             ModPlatform::ResourceType resourceType);
 
 /**
  * @brief find the resources that match a user provided target

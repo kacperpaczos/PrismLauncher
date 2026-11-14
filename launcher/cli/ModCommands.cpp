@@ -441,14 +441,14 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModSearch& cmd)
 
 ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInfo& cmd)
 {
-    auto project = fetchProject(cmd.project, true);
+    auto project = fetchProject(cmd.project);
     if (!project) {
         return reportProjectError(project.error());
     }
     const auto pack = project.value();
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(pack);
 
-    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod, true);
+    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
     if (!versionsResult) {
         const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
         return outputError(failure.code, versionsResult.error().message, failure.exitCode);
@@ -595,13 +595,13 @@ ExitCode runModCommand(CommandContext& ctx, const Cmd::ModInstall& cmd)
                            ExitCode::Generic);
     }
 
-    auto project = fetchProject(cmd.project, true);
+    auto project = fetchProject(cmd.project);
     if (!project) {
         return reportProjectError(project.error());
     }
     auto packPtr = std::make_shared<ModPlatform::IndexedPack>(project.value());
 
-    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod, true);
+    auto versionsResult = fetchProjectVersions(packPtr, ModPlatform::ResourceType::Mod);
     if (!versionsResult) {
         const auto failure = taskFailure("network_error", versionsResult.error(), ExitCode::Network);
         return outputError(failure.code, versionsResult.error().message, failure.exitCode);

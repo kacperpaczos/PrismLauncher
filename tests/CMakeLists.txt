@@ -85,6 +85,8 @@ discover_tests(
 if(UNIX)
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_FOUND)
+        add_test(NAME CliUnattendedContract
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/cli/check-unattended-contract.py ${CMAKE_SOURCE_DIR})
         add_test(NAME CliDomainSmoke
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/cli/spike-domain-smoke.sh $<TARGET_FILE:${Launcher_Name}>)
         set_tests_properties(CliDomainSmoke PROPERTIES TIMEOUT 300)
