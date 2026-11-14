@@ -48,6 +48,14 @@ std::vector<Task::Ptr>& unfinishedTasks()
 
 }  // namespace
 
+Result<void, TaskError> runUnattendedTask(Task::Ptr task, int timeoutMs, int gracePeriodMs)
+{
+    if (task && !task->setUnattended(true)) {
+        return std::unexpected(TaskError{ Task::FailureCode::PolicyConflict, QStringLiteral("cannot adopt a running interactive task") });
+    }
+    return runTaskSync(task, timeoutMs, gracePeriodMs);
+}
+
 Result<void, TaskError> runTaskSync(Task::Ptr task, int timeoutMs, int gracePeriodMs)
 {
     if (!task) {

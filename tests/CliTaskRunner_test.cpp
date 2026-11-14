@@ -67,6 +67,27 @@ class CliTaskRunnerTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_unattendedRunnerAdoptsBeforeStarting()
+    {
+        auto task = makeShared<FakeTask>(FakeTask::Outcome::Succeed);
+        bool unattendedAtStart = false;
+        connect(task.get(), &Task::started, task.get(), [&] { unattendedAtStart = task->isUnattended(); });
+        QVERIFY(Cli::runUnattendedTask(task, 5000));
+        QVERIFY(unattendedAtStart);
+    }
+
+    void test_unattendedRunnerRejectsRunningInteractiveTask()
+    {
+        auto task = makeShared<FakeTask>(FakeTask::Outcome::Hang);
+        task->start();
+        const auto result = Cli::runUnattendedTask(task, 5000);
+        QVERIFY(!result);
+        QCOMPARE(result.error().code, Task::FailureCode::PolicyConflict);
+        QVERIFY(task->isRunning());
+        QVERIFY(!task->isUnattended());
+        task->complete();
+    }
+
     void test_modInstallDownloadFailureIsOneEnvelope()
     {
         auto job = makeShared<NetJob>("failed mod download", nullptr);

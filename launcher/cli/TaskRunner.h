@@ -55,4 +55,7 @@ struct TaskError {
 /// @returns an empty result on success, or the failure reason / timeout message.
 Result<void, TaskError> runTaskSync(Task::Ptr task, int timeoutMs = 300000, int gracePeriodMs = 5000);
 
+/// Adopt an operation as unattended before running it; reject a conflicting running task.
+Result<void, TaskError> runUnattendedTask(Task::Ptr task, int timeoutMs = 300000, int gracePeriodMs = 5000);
+
 }  // namespace Cli
