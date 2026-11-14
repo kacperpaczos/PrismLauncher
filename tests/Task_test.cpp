@@ -14,6 +14,8 @@
 #include "LaunchController.h"
 #include "launch/LaunchTask.h"
 #include "launch/TaskStepWrapper.h"
+#include "launch/steps/LaunchCommand.h"
+#include "minecraft/launch/LauncherPartLaunch.h"
 #include "minecraft/launch/AutoInstallJava.h"
 #include "minecraft/ComponentUpdateTask.h"
 #include "minecraft/MinecraftInstance.h"
@@ -230,7 +232,14 @@ class FailureHookTask : public ConcurrentTask {
 
 class EmptyLaunchOwner : public LaunchTask {
    public:
-    EmptyLaunchOwner() : LaunchTask(nullptr) {}
+    explicit EmptyLaunchOwner(MinecraftInstance* instance = nullptr) : LaunchTask(instance) {}
+};
+
+class EnvironmentlessInstance : public MinecraftInstance {
+   public:
+    using MinecraftInstance::MinecraftInstance;
+    QProcessEnvironment createEnvironment() override { return {}; }
+    void loadSpecificSettings() override {}
 };
 
 class TestJavaInstall : public AutoInstallJava {
@@ -245,6 +254,35 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_launchProcessesRefuseAbortBeforeStarting()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        INISettingsObject globals(dir.filePath("global.cfg"));
+        for (const auto* name :
+             { "ShowGameTime", "RecordGameTime", "PreLoadCommand", "PreLaunchCommand", "WrapperCommand", "PostExitCommand", "ShowConsole",
+               "AutoCloseConsole", "ShowConsoleOnError", "LogPrePostOutput", "ConsoleMaxLines", "ConsoleOverflowStop" }) {
+            globals.registerSetting(name, false);
+        }
+        auto settings = std::make_unique<INISettingsObject>(dir.filePath("instance.cfg"));
+        settings->registerSetting("JavaVersion", "17");
+        settings->registerSetting("CloseAfterLaunch", false);
+        EnvironmentlessInstance instance(&globals, std::move(settings), dir.path());
+        EmptyLaunchOwner launch(&instance);
+        IdleAbortWrapper<LaunchCommand> command(&launch, QString());
+        IdleAbortWrapper<LauncherPartLaunch> game(&launch);
+        for (Task* task : { static_cast<Task*>(&command), static_cast<Task*>(&game) }) {
+            disconnect(task, nullptr, &launch, nullptr);
+            task->start();
+            QSignalSpy finished(task, &Task::finished);
+            QVERIFY(!task->abort());
+            QVERIFY(task->isRunning());
+            QCOMPARE(finished.count(), 0);
+        }
+        command.complete();
+        game.complete();
+    }
+
     void test_javaInstallRefusedAbortKeepsRunning()
     {
         EmptyLaunchOwner launch;
