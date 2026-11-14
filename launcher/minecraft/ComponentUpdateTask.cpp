@@ -207,6 +207,10 @@ void ComponentUpdateTask::loadComponents()
             result = singleResult;
         }
         if (loadTask) {
+            if (!loadTask->setUnattended(isUnattended())) {
+                emitFailedWithCode(FailureCode::PolicyConflict, tr("Cannot adopt an interactive metadata load already in progress."));
+                return;
+            }
             qCDebug(instanceProfileResolveC) << d->m_profile->d->m_instance->name() << "|"
                                              << "Remote loading is being run for" << component->getName();
             connect(loadTask.get(), &Task::succeeded, this, [this, taskIndex]() { remoteLoadSucceeded(taskIndex); });

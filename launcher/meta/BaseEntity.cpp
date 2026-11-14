@@ -174,6 +174,7 @@ void BaseEntityLoadTask::executeTask()
     connect(m_task.get(), &Task::status, this, &Task::setStatus);
     connect(m_task.get(), &Task::details, this, &Task::setDetails);
 
+    m_task->setUnattended(isUnattended());
     m_task->start();
 }
 

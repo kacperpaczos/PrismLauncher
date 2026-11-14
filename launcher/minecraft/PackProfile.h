@@ -103,10 +103,10 @@ class PackProfile : public QAbstractListModel {
     bool revertToBase(int index);
 
     /// reload the list, reload all components, resolve dependencies
-    Result<> reload(Net::Mode netmode);
+    Result<> reload(Net::Mode netmode, bool unattended = false);
 
     // reload all components, resolve dependencies
-    void resolve(Net::Mode netmode);
+    void resolve(Net::Mode netmode, bool unattended = false);
 
     /// get current running task...
     Task::Ptr getCurrentTask();
@@ -118,7 +118,7 @@ class PackProfile : public QAbstractListModel {
 
     QString getComponentVersion(const QString& uid) const;
 
-    bool setComponentVersion(const QString& uid, const QString& version, bool important = false);
+    bool setComponentVersion(const QString& uid, const QString& version, bool important = false, bool unattended = false);
 
     bool installEmpty(const QString& uid, const QString& name);
 

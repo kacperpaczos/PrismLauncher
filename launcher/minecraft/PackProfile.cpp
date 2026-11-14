@@ -327,10 +327,13 @@ Result<> PackProfile::load()
     return {};
 }
 
-Result<> PackProfile::reload(Net::Mode netmode)
+Result<> PackProfile::reload(Net::Mode netmode, bool unattended)
 {
     // Do not reload when the update/resolve task is running. It is in control.
     if (d->m_updateTask) {
+        if (!d->m_updateTask->setUnattended(unattended)) {
+            return std::unexpected(QStringLiteral("Cannot adopt an interactive component update already in progress."));
+        }
         if (d->m_updateTask->netMode() == netmode) {
             return {};
         }
@@ -351,7 +354,7 @@ Result<> PackProfile::reload(Net::Mode netmode)
     if (auto result = load(); !result) {
         return result;
     }
-    resolve(netmode);
+    resolve(netmode, unattended);
     return {};
 }
 
@@ -360,9 +363,10 @@ Task::Ptr PackProfile::getCurrentTask()
     return d->m_updateTask;
 }
 
-void PackProfile::resolve(Net::Mode netmode)
+void PackProfile::resolve(Net::Mode netmode, bool unattended)
 {
     auto updateTask = new ComponentUpdateTask(ComponentUpdateTask::Mode::Resolution, netmode, this);
+    updateTask->setUnattended(unattended);
     d->m_updateTask.reset(updateTask);
     connect(updateTask, &ComponentUpdateTask::succeeded, this, &PackProfile::updateSucceeded);
     connect(updateTask, &ComponentUpdateTask::failed, this, &PackProfile::updateFailed);
@@ -976,7 +980,7 @@ std::shared_ptr<LaunchProfile> PackProfile::getProfile() const
     return d->m_profile;
 }
 
-bool PackProfile::setComponentVersion(const QString& uid, const QString& version, bool important)
+bool PackProfile::setComponentVersion(const QString& uid, const QString& version, bool important, bool unattended)
 {
     auto iter = d->componentIndex.find(uid);
     if (iter != d->componentIndex.end()) {
@@ -990,7 +994,7 @@ bool PackProfile::setComponentVersion(const QString& uid, const QString& version
 
             if (important) {
                 component->setUpdateAction(UpdateAction{ UpdateActionImportantChanged{ oldVersion } });
-                resolve(Net::Mode::Online);
+                resolve(Net::Mode::Online, unattended);
             }
 
             return true;

@@ -339,6 +339,7 @@ class TaskTest : public QObject {
         }
         profile->appendComponent(component);
         OfflineComponentLoadTask operation(profile);
+        QVERIFY(operation.setUnattended(true));
         if (!cached) {
             connect(operation.metadata.get(), &Task::succeeded, &operation, [component, payload] { component->m_file = payload; });
         }
@@ -349,6 +350,7 @@ class TaskTest : public QObject {
             QVERIFY(operation.isRunning());
             QCOMPARE(finished.count(), 0);
             QCOMPARE(operation.metadata->startAttempts, 1);
+            QVERIFY(operation.metadata->isUnattended());
             if (cancel) {
                 operation.metadata->setAbortable(true);
                 QSignalSpy failed(&operation, &Task::failed);
