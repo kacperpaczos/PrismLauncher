@@ -159,7 +159,7 @@ ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotUpload& 
         auto [request, result] = ImgurAPI::makeUpload(screenshot);
         job->addNetAction(request);
     }
-    if (auto result = runTaskSync(job, g_NetworkTimeoutMs); !result) {
+    if (auto result = runUnattendedTask(job, g_NetworkTimeoutMs); !result) {
         const auto failure = taskFailure("upload_failed", result.error(), ExitCode::Network);
         return outputError(failure.code, QStringLiteral("The screenshot could not be uploaded: %1").arg(result.error().message),
                            failure.exitCode);
@@ -172,7 +172,7 @@ ExitCode runScreenshotCommand(CommandContext& ctx, const Cmd::ScreenshotUpload& 
         auto [request, result] = ImgurAPI::makeAlbum(selected);
         auto albumJob = makeCliNetJob(QStringLiteral("Imgur album creation"));
         albumJob->addNetAction(request);
-        if (auto albumResult = runTaskSync(albumJob, g_NetworkTimeoutMs); !albumResult) {
+        if (auto albumResult = runUnattendedTask(albumJob, g_NetworkTimeoutMs); !albumResult) {
             const auto failure = taskFailure("upload_failed", albumResult.error(), ExitCode::Network);
             return outputError(failure.code,
                                QStringLiteral("The album of the screenshots could not be created: %1").arg(albumResult.error().message),
