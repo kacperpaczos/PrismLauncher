@@ -174,6 +174,17 @@ class CliTaskRunnerTest : public QObject {
         QVERIFY(pointer.isNull());
     }
 
+    void test_unsupportedTaskProducesOneEnvelope()
+    {
+        Cli::OutputCapture capture;
+        const Cli::TaskError error{ Task::FailureCode::UnsupportedUnattended, "requires interactive version selection" };
+        const auto failure = Cli::taskFailure("download_failed", error, Cli::ExitCode::Network);
+        const auto result = Cli::outputError(failure.code, error.message, failure.exitCode);
+        QCOMPARE(result, Cli::ExitCode::Generic);
+        QCOMPARE(capture.documents().size(), std::size_t{ 1 });
+        QCOMPARE(capture.result().value("error").toObject().value("code").toString(), QString("unsupported_unattended"));
+    }
+
     void test_messageDoesNotDetermineCode()
     {
         const Cli::TaskError failure{ Task::FailureCode::Failed, "operation_did_not_finish" };

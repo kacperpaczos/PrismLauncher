@@ -91,7 +91,7 @@ class Task : public QObject, public QRunnable {
     using Ptr = shared_qobject_ptr<Task>;
 
     enum class State { Inactive, Running, Succeeded, Failed, AbortedByUser };
-    enum class FailureCode { None, Failed, Cancelled, Timeout, Incomplete, InvalidTask, NotFound, PolicyConflict };
+    enum class FailureCode { None, Failed, Cancelled, Timeout, Incomplete, InvalidTask, NotFound, PolicyConflict, UnsupportedUnattended };
 
    public:
     explicit Task(bool show_debug_log = true);

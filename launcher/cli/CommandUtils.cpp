@@ -600,6 +600,9 @@ TaskFailure taskFailure(const QString& code, const TaskError& reason, ExitCode e
     if (reason.code == Task::FailureCode::Incomplete) {
         return { .code = QStringLiteral("operation_did_not_finish"), .exitCode = ExitCode::Generic };
     }
+    if (reason.code == Task::FailureCode::UnsupportedUnattended) {
+        return { .code = QStringLiteral("unsupported_unattended"), .exitCode = ExitCode::Generic };
+    }
     if (reason.code == Task::FailureCode::PolicyConflict) {
         return { .code = QStringLiteral("task_policy_conflict"), .exitCode = ExitCode::Generic };
     }

@@ -19,6 +19,7 @@
 #include "minecraft/launch/AutoInstallJava.h"
 #include "minecraft/ComponentUpdateTask.h"
 #include "minecraft/MinecraftInstance.h"
+#include "minecraft/MinecraftLoadAndCheck.h"
 #include "minecraft/PackProfile.h"
 #include "minecraft/VersionFile.h"
 #include "settings/INISettingsObject.h"
@@ -254,6 +255,28 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_automaticVersionSelectionRejectsUnattendedExecution()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        INISettingsObject globals(dir.filePath("global.cfg"));
+        for (const auto* name :
+             { "ShowGameTime", "RecordGameTime", "PreLoadCommand", "PreLaunchCommand", "WrapperCommand", "PostExitCommand", "ShowConsole",
+               "AutoCloseConsole", "ShowConsoleOnError", "LogPrePostOutput", "ConsoleMaxLines", "ConsoleOverflowStop" }) {
+            globals.registerSetting(name, false);
+        }
+        auto settings = std::make_unique<INISettingsObject>(dir.filePath("instance.cfg"));
+        settings->registerSetting("UseLatestMinecraftVersion", true);
+        EnvironmentlessInstance instance(&globals, std::move(settings), dir.path());
+        MinecraftLoadAndCheck task(&instance, Net::Mode::Online);
+        QVERIFY(task.setUnattended(true));
+        QSignalSpy failed(&task, &Task::failed);
+        task.start();
+        QCOMPARE(task.failureCode(), Task::FailureCode::UnsupportedUnattended);
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(task.isFinished());
+    }
+
     void test_launchProcessesRefuseAbortBeforeStarting()
     {
         QTemporaryDir dir;
