@@ -264,6 +264,21 @@ void ResourceFolderModel::deleteMetadata(const QModelIndexList& indexes)
 
 bool ResourceFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAction action)
 {
+    return setResourceEnabled(indexes, action, false);
+}
+
+bool ResourceFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAction action, bool unattended)
+{
+    if (unattended) {
+        if (m_instance && m_instance->isRunning()) {
+            return false;
+        }
+        for (const auto& index : indexes) {
+            if (!validateIndex(index) || index.column() != 0) {
+                return false;
+            }
+        }
+    }
     if (m_instance != nullptr && m_instance->isRunning()) {
         auto response =
             CustomMessageBox::selectable(nullptr, tr("Confirm toggle"),

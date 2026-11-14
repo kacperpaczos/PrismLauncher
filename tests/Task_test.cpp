@@ -25,6 +25,7 @@
 #include "minecraft/VersionFile.h"
 #include "settings/INISettingsObject.h"
 #include "minecraft/mod/tasks/ResourceFolderLoadTask.h"
+#include "minecraft/mod/ResourceFolderModel.h"
 #include "modplatform/EnsureMetadataTask.h"
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
 #include "minecraft/update/AssetUpdateTask.h"
@@ -256,6 +257,26 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_resourceToggleRefusesLateRunningStateWithoutDialog()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        INISettingsObject globals(dir.filePath("global.cfg"));
+        for (const auto* name :
+             { "ShowGameTime", "RecordGameTime", "PreLoadCommand", "PreLaunchCommand", "WrapperCommand", "PostExitCommand", "ShowConsole",
+               "AutoCloseConsole", "ShowConsoleOnError", "LogPrePostOutput", "ConsoleMaxLines", "ConsoleOverflowStop" }) {
+            globals.registerSetting(name, false);
+        }
+        auto settings = std::make_unique<INISettingsObject>(dir.filePath("instance.cfg"));
+        EnvironmentlessInstance instance(&globals, std::move(settings), dir.path());
+        ResourceFolderModel model(QDir(dir.path()), &instance, false, false);
+        instance.setRunning(true);
+        QVERIFY(!model.setResourceEnabled({}, EnableAction::DISABLE, true));
+        instance.setRunning(false);
+        QVERIFY(!model.setResourceEnabled({ QModelIndex{} }, EnableAction::DISABLE, true));
+        QVERIFY(model.setResourceEnabled({}, EnableAction::DISABLE, true));
+    }
+
     void test_instanceInteractionFollowsTaskPolicy()
     {
         IdleAbortWrapper<InstanceTask> task;

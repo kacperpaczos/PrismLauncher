@@ -552,8 +552,8 @@ bool ModFolderModel::setResourceEnabled(const QModelIndexList& indexes, EnableAc
         }
     }
 
-    auto disableStatus = ResourceFolderModel::setResourceEnabled(toList(toDisable), EnableAction::DISABLE);
-    auto enableStatus = ResourceFolderModel::setResourceEnabled(toList(toEnable), EnableAction::ENABLE);
+    auto disableStatus = ResourceFolderModel::setResourceEnabled(toList(toDisable), EnableAction::DISABLE, unattended);
+    auto enableStatus = ResourceFolderModel::setResourceEnabled(toList(toEnable), EnableAction::ENABLE, unattended);
     return disableStatus && enableStatus;
 }
 

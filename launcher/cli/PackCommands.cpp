@@ -297,7 +297,7 @@ ExitCode runEnableDisable(CommandContext& ctx,
             continue;
         }
         const int row = rowOfResource(model, resource);
-        if (row < 0 || !model->setResourceEnabled({ model->index(row, 0) }, action)) {
+        if (row < 0 || !model->setResourceEnabled({ model->index(row, 0) }, action, true)) {
             QJsonObject entry;
             entry.insert(QStringLiteral("target"), resource->fileinfo().fileName());
             entry.insert(QStringLiteral("code"), QString::fromLatin1(FailureCode::Io));
