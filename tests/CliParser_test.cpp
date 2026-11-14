@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -163,6 +164,149 @@ class CliParserTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_groupFailureIsOneEnvelope_data()
+    {
+        QTest::addColumn<QStringList>("arguments");
+        QTest::addColumn<QString>("expectedError");
+        QTest::addColumn<int>("expectedExit");
+        for (const auto* group : { "mod", "resource", "shader", "texture", "world", "server", "log", "screenshot" }) {
+            QTest::newRow(group) << QStringList{ group, "list", "-i", "missing-instance" } << QString("instance_not_found")
+                                 << int(Cli::ExitCode::NotFound);
+        }
+        QTest::newRow("instance") << QStringList{ "instance", "duplicate", "missing-instance" } << QString("instance_not_found")
+                                  << int(Cli::ExitCode::NotFound);
+        QTest::newRow("version") << QStringList{ "version", "reinstall", "missing-instance" } << QString("instance_not_found")
+                                 << int(Cli::ExitCode::NotFound);
+        QTest::newRow("settings") << QStringList{ "settings", "get", "missing-instance", "memory.max" } << QString("instance_not_found")
+                                  << int(Cli::ExitCode::NotFound);
+        QTest::newRow("notes") << QStringList{ "notes", "show", "-i", "missing-instance" } << QString("instance_not_found")
+                               << int(Cli::ExitCode::NotFound);
+        QTest::newRow("status") << QStringList{ "status", "--invalid-option" } << QString("parse_error") << int(Cli::ExitCode::Usage);
+    }
+
+    void test_groupFailureIsOneEnvelope()
+    {
+        QFETCH(QStringList, arguments);
+        QFETCH(QString, expectedError);
+        QFETCH(int, expectedExit);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        arguments.prepend(dir.path());
+        arguments.prepend("--dir");
+        const auto result = runLauncher(arguments);
+        QCOMPARE(result.exitCode, expectedExit);
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson(result.out, &parseError);
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        QVERIFY(document.isObject());
+        QCOMPARE(document.object().value("ok").toBool(), false);
+        QCOMPARE(errorCode(result.out), expectedError);
+    }
+
+    void test_legacyImportsHonorDownload_data()
+    {
+        QTest::addColumn<bool>("technic");
+        QTest::addColumn<bool>("download");
+        QTest::newRow("MultiMC-local") << false << false;
+        QTest::newRow("MultiMC-download-failure") << false << true;
+        QTest::newRow("Technic-local") << true << false;
+        QTest::newRow("Technic-download-failure") << true << true;
+    }
+
+    void test_legacyImportsHonorDownload()
+    {
+        QFETCH(bool, technic);
+        QFETCH(bool, download);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile settings(dir.filePath("prismlauncher.cfg"));
+        QVERIFY(settings.open(QIODevice::WriteOnly));
+        settings.write("[General]\nMetaURLOverride=http://127.0.0.1:1/\n");
+        settings.close();
+        const auto path = dir.filePath("legacy.zip");
+        MMCZip::ArchiveWriter archive(path);
+        QVERIFY(archive.open());
+        if (technic) {
+            QVERIFY(archive.addFile(QStringLiteral("bin/version.json"),
+                                    QByteArray(R"({"id":"fixture","inheritsFrom":"1.21.1","libraries":[]})")));
+        } else {
+            QVERIFY(archive.addFile(QStringLiteral("instance.cfg"), QByteArray("[General]\nInstanceType=OneSix\nname=fixture\n")));
+            QVERIFY(archive.addFile(QStringLiteral("mmc-pack.json"), QByteArray(R"({"formatVersion":1,"components":[
+                {"uid":"net.minecraft","version":"1.21.1","cachedVersion":"1.21.1"}]})")));
+        }
+        QVERIFY(archive.close());
+        QStringList arguments{ "-d", dir.path(), "instance", "create", "--name", "legacy fixture", "--from", path };
+        if (!download) {
+            arguments.append("--no-download");
+        }
+        const auto result = runLauncher(arguments);
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson(result.out, &parseError);
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        QVERIFY(document.isObject());
+        if (download) {
+            QCOMPARE(result.exitCode, int(Cli::ExitCode::Conflict));
+            QCOMPARE(errorCode(result.out), QString("download_failed"));
+            QCOMPARE(document.object().value("ok").toBool(), false);
+        } else {
+            QCOMPARE(result.exitCode, int(Cli::ExitCode::OK));
+            QVERIFY(!document.object().value("id").toString().isEmpty());
+        }
+    }
+
+    void test_modrinthImportDefaultsAndDownloadFailure_data()
+    {
+        QTest::addColumn<bool>("missingDownload");
+        QTest::newRow("optional-default-disabled") << false;
+        QTest::newRow("download-error-one-envelope") << true;
+    }
+
+    void test_modrinthImportDefaultsAndDownloadFailure()
+    {
+        QFETCH(bool, missingDownload);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QByteArray payload("optional configuration");
+        const auto source = dir.filePath(missingDownload ? "missing.cfg" : "source.cfg");
+        if (!missingDownload) {
+            QFile file(source);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(payload);
+        }
+        const QJsonObject entry{
+            { "path", "config/optional.cfg" },
+            { "env", QJsonObject{ { "client", missingDownload ? "required" : "optional" } } },
+            { "hashes",
+              QJsonObject{ { "sha512", QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha512).toHex()) } } },
+            { "downloads", QJsonArray{ QUrl::fromLocalFile(source).toString() } }
+        };
+        const QJsonObject manifest{
+            { "formatVersion", 1 },      { "game", "minecraft" },          { "versionId", "1" },
+            { "name", "local fixture" }, { "files", QJsonArray{ entry } }, { "dependencies", QJsonObject{ { "minecraft", "1.21.1" } } }
+        };
+        const auto path = dir.filePath("fixture.mrpack");
+        MMCZip::ArchiveWriter archive(path);
+        QVERIFY(archive.open());
+        QVERIFY(archive.addFile(QStringLiteral("modrinth.index.json"), QJsonDocument(manifest).toJson()));
+        QVERIFY(archive.close());
+        const auto result =
+            runLauncher({ "-d", dir.path(), "instance", "create", "--name", "local fixture", "--from", path, "--no-download" });
+        QJsonParseError parseError;
+        const auto document = QJsonDocument::fromJson(result.out, &parseError);
+        QCOMPARE(parseError.error, QJsonParseError::NoError);
+        QVERIFY(document.isObject());
+        if (missingDownload) {
+            QCOMPARE(result.exitCode, int(Cli::ExitCode::Conflict));
+            QCOMPARE(errorCode(result.out), QString("create_failed"));
+            QCOMPARE(document.object().value("ok").toBool(), false);
+        } else {
+            QCOMPARE(result.exitCode, int(Cli::ExitCode::OK));
+            const auto root = document.object().value("path").toString();
+            QVERIFY(QFileInfo::exists(root + "/minecraft/config/optional.cfg.disabled"));
+            QVERIFY(!QFileInfo::exists(root + "/minecraft/config/optional.cfg"));
+        }
+    }
+
     void test_uncachedRecommendedImportIsOneTypedError()
     {
         QTemporaryDir dir;
