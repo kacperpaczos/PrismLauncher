@@ -15,6 +15,10 @@
 #include "launch/LaunchTask.h"
 #include "launch/TaskStepWrapper.h"
 #include "minecraft/ComponentUpdateTask.h"
+#include "minecraft/MinecraftInstance.h"
+#include "minecraft/PackProfile.h"
+#include "minecraft/VersionFile.h"
+#include "settings/INISettingsObject.h"
 #include "minecraft/mod/tasks/ResourceFolderLoadTask.h"
 #include "modplatform/EnsureMetadataTask.h"
 #include "modplatform/modrinth/ModrinthCheckUpdate.h"
@@ -103,10 +107,44 @@ class BigConcurrentTaskThread : public QThread {
 class SharedMetadataTask : public Task {
    public:
     int starts = 0;
+    int startAttempts = 0;
+    void start() override
+    {
+        ++startAttempts;
+        // Count rejected attempts without relying on Debug-only assertions.
+        if (!isRunning()) {
+            Task::start();
+        }
+    }
     void complete() { emitSucceeded(); }
+    void fail() { emitFailed("metadata unavailable"); }
 
    protected:
     void executeTask() override { ++starts; }
+};
+
+class OfflineComponentLoadTask : public ComponentUpdateTask {
+   public:
+    explicit OfflineComponentLoadTask(PackProfile* profile) : ComponentUpdateTask(Mode::Resolution, Net::Mode::Offline, profile) {}
+    shared_qobject_ptr<SharedMetadataTask> metadata = makeShared<SharedMetadataTask>();
+    int cacheMisses = 0;
+    Net::Mode observedMode = Net::Mode::Online;
+
+   protected:
+    LoadResult loadComponent(ComponentPtr component, Task::Ptr& loadTask, Net::Mode mode) override
+    {
+        observedMode = mode;
+        if (component->m_loaded) {
+            return LoadResult::LoadedLocal;
+        }
+        if (component->getID() == "test.component") {
+            ++cacheMisses;
+            loadTask = metadata;
+            return LoadResult::RequiresRemote;
+        }
+        component->m_loaded = true;
+        return LoadResult::LoadedLocal;
+    }
 };
 
 class TerminalSignalTask : public Task {
@@ -186,6 +224,70 @@ class TaskTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_offlineMetadataCacheMiss_data()
+    {
+        QTest::addColumn<bool>("cached");
+        QTest::addColumn<bool>("metadataSucceeds");
+        QTest::newRow("cache-miss-success") << false << true;
+        QTest::newRow("cache-miss-failure") << false << false;
+        QTest::newRow("already-cached") << true << true;
+    }
+
+    void test_offlineMetadataCacheMiss()
+    {
+        QFETCH(bool, cached);
+        QFETCH(bool, metadataSucceeds);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        INISettingsObject globals(dir.filePath("global.cfg"));
+        for (const auto* name :
+             { "ShowGameTime", "RecordGameTime", "PreLoadCommand", "PreLaunchCommand", "WrapperCommand", "PostExitCommand", "ShowConsole",
+               "AutoCloseConsole", "ShowConsoleOnError", "LogPrePostOutput", "ConsoleMaxLines", "ConsoleOverflowStop" }) {
+            globals.registerSetting(name, false);
+        }
+        auto settings = std::make_unique<INISettingsObject>(dir.filePath("instance.cfg"));
+        settings->registerSetting("UseLatestMinecraftVersion", false);
+        MinecraftInstance instance(&globals, std::move(settings), dir.path());
+        auto* profile = instance.getPackProfile();
+        auto component = makeShared<Component>(profile, "test.component");
+        component->m_loaded = cached;
+        auto payload = std::make_shared<VersionFile>();
+        payload->uid = "test.component";
+        payload->version = "1";
+        payload->m_requires.insert(Meta::Require{ .uid = "missing.dependency", .equalsVersion = "1" });
+        if (cached) {
+            component->m_file = payload;
+        }
+        profile->appendComponent(component);
+        OfflineComponentLoadTask operation(profile);
+        if (!cached) {
+            connect(operation.metadata.get(), &Task::succeeded, &operation, [component, payload] { component->m_file = payload; });
+        }
+        QSignalSpy finished(&operation, &Task::finished);
+        operation.start();
+        QCOMPARE(operation.observedMode, Net::Mode::Offline);
+        if (!cached) {
+            QVERIFY(operation.isRunning());
+            QCOMPARE(finished.count(), 0);
+            QCOMPARE(operation.metadata->startAttempts, 1);
+            if (metadataSucceeds) {
+                operation.metadata->complete();
+            } else {
+                operation.metadata->fail();
+            }
+        }
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(operation.getState(), Task::State::Failed);
+        QCOMPARE(operation.cacheMisses, cached ? 0 : 1);
+        // Offline resolution must report the unmet requirement without adding it.
+        QVERIFY(!profile->getComponent("missing.dependency"));
+        if (metadataSucceeds) {
+            QVERIFY(operation.failReason().contains("unresolved dependencies"));
+        } else {
+            QVERIFY(operation.failReason().contains("metadata"));
+        }
+    }
+
     void test_waitingLaunchWrapperCancelsWithoutStartingChild()
     {
         EmptyLaunchOwner launch;
@@ -630,6 +732,7 @@ class TaskTest : public QObject {
         QVERIFY(first.wasSuccessful());
         QVERIFY(second.wasSuccessful());
         QCOMPARE(child->starts, 1);
+        QCOMPARE(child->startAttempts, 1);
     }
 
     void test_SetStatus_NoMultiStep()

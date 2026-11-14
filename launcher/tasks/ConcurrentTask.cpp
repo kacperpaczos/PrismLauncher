@@ -234,8 +234,8 @@ void ConcurrentTask::startSubTask(Task::Ptr next)
     QMetaObject::invokeMethod(
         this,
         [this, next] {
-            // Metadata loaders can be shared by more than one composite. Another
-            // owner may have started or completed it since we queued this callback.
+            // Start only while this parent is running and still tracks the child.
+            // Another parent may already be running the shared metadata loader.
             if (isRunning() && m_doing.contains(next.get()) && !next->isRunning()) {
                 next->start();
             }

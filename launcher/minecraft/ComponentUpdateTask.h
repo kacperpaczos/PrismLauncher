@@ -22,6 +22,9 @@ class ComponentUpdateTask : public Task {
     Net::Mode netMode();
 
    protected:
+    enum class LoadResult { LoadedLocal, RequiresRemote };
+    // Creates a metadata load without starting it; completion is coordinated by loadComponents().
+    virtual LoadResult loadComponent(ComponentPtr component, Task::Ptr& loadTask, Net::Mode netmode);
     void executeTask() override;
 
    private:

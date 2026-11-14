@@ -93,18 +93,7 @@ void ComponentUpdateTask::executeTask()
     loadComponents();
 }
 
-namespace {
-enum class LoadResult { LoadedLocal, RequiresRemote };
-
-LoadResult composeLoadResult(LoadResult a, LoadResult b)
-{
-    if (a < b) {
-        return b;
-    }
-    return a;
-}
-
-static LoadResult loadComponent(ComponentPtr component, Task::Ptr& loadTask, Net::Mode netmode)
+ComponentUpdateTask::LoadResult ComponentUpdateTask::loadComponent(ComponentPtr component, Task::Ptr& loadTask, Net::Mode netmode)
 {
     if (component->m_loaded) {
         qCDebug(instanceProfileResolveC) << component->getName() << "is already loaded";
@@ -174,8 +163,6 @@ static LoadResult loadPackProfile(ComponentPtr component, Task::Ptr& loadTask, N
 }
 */
 
-}  // namespace
-
 void ComponentUpdateTask::loadComponents()
 {
     LoadResult result = LoadResult::LoadedLocal;
@@ -214,7 +201,9 @@ void ComponentUpdateTask::loadComponents()
         if (singleResult == LoadResult::LoadedLocal) {
             component->updateCachedData();
         }
-        result = composeLoadResult(result, singleResult);
+        if (singleResult == LoadResult::RequiresRemote) {
+            result = singleResult;
+        }
         if (loadTask) {
             qCDebug(instanceProfileResolveC) << d->m_profile->d->m_instance->name() << "|"
                                              << "Remote loading is being run for" << component->getName();
@@ -746,7 +735,7 @@ void ComponentUpdateTask::finalizeComponents()
 
 void ComponentUpdateTask::remoteLoadSucceeded(size_t taskIndex)
 {
-    if (static_cast<size_t>(d->remoteLoadStatusList.size()) < taskIndex) {
+    if (static_cast<size_t>(d->remoteLoadStatusList.size()) <= taskIndex) {
         qCWarning(instanceProfileResolveC) << "Got task index outside of results" << taskIndex;
         return;
     }
@@ -773,7 +762,7 @@ void ComponentUpdateTask::remoteLoadSucceeded(size_t taskIndex)
 
 void ComponentUpdateTask::remoteLoadFailed(size_t taskIndex, const QString& msg)
 {
-    if (static_cast<size_t>(d->remoteLoadStatusList.size()) < taskIndex) {
+    if (static_cast<size_t>(d->remoteLoadStatusList.size()) <= taskIndex) {
         qCWarning(instanceProfileResolveC) << "Got task index outside of results" << taskIndex;
         return;
     }
@@ -804,7 +793,7 @@ void ComponentUpdateTask::checkIfAllFinished()
         // nothing bad happened... clear the temp load status and proceed with looking at dependencies
         d->remoteLoadStatusList.clear();
         performUpdateActions();
-        resolveDependencies(d->mode == Mode::Launch);
+        resolveDependencies(d->mode == Mode::Launch || d->netmode == Net::Mode::Offline);
     } else {
         // remote load failed... report error and bail
         QStringList allErrorsList;
