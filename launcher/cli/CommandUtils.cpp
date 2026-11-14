@@ -348,7 +348,7 @@ bool waitForModel(ResourceFolderModel* model)
 
     poll.start();
     timeout.start(g_ModelWaitMs);
-    model->update();
+    model->update(true);
     loop.exec();
 
     return !timedOut;

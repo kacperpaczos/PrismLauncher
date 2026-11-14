@@ -311,6 +311,11 @@ bool ResourceFolderModel::setResourceEnabled(const QModelIndexList& indexes, Ena
 
 bool ResourceFolderModel::update()
 {
+    return update(false);
+}
+
+bool ResourceFolderModel::update(bool unattended)
+{
     static QMutex s_updateTaskMutex;
     // We hold a lock here to prevent race conditions on the m_current_update_task reset.
     QMutexLocker lock(&s_updateTaskMutex);
@@ -318,6 +323,7 @@ bool ResourceFolderModel::update()
     // Already updating, so we schedule a future update and return.
     if (m_currentUpdateTask) {
         m_scheduledUpdate = true;
+        m_scheduledUnattended |= unattended;
         return false;
     }
 
@@ -326,6 +332,7 @@ bool ResourceFolderModel::update()
         return false;
     }
 
+    m_currentUpdateTask->setUnattended(unattended);
     connect(m_currentUpdateTask.get(), &Task::succeeded, this, &ResourceFolderModel::onUpdateSucceeded,
             Qt::ConnectionType::QueuedConnection);
     connect(m_currentUpdateTask.get(), &Task::failed, this, &ResourceFolderModel::onUpdateFailed, Qt::ConnectionType::QueuedConnection);
@@ -335,7 +342,9 @@ bool ResourceFolderModel::update()
             m_currentUpdateTask.reset();
             if (m_scheduledUpdate) {
                 m_scheduledUpdate = false;
-                update();
+                const bool unattended = m_scheduledUnattended;
+                m_scheduledUnattended = false;
+                update(unattended);
             } else {
                 emit updateFinished();
             }
@@ -347,6 +356,7 @@ bool ResourceFolderModel::update()
     if (preUpdate != nullptr) {
         auto* task = new SequentialTask("ResourceFolderModel::update");
 
+        task->setUnattended(unattended);
         task->addTask(preUpdate);
         task->addTask(m_currentUpdateTask);
 
@@ -392,6 +402,13 @@ void ResourceFolderModel::resolveResource(const Resource::Ptr& res)
         },
         Qt::ConnectionType::QueuedConnection);
 
+    if (m_currentUpdateTask && m_currentUpdateTask->isUnattended()) {
+        // Keep this scan's parsers out of the unrelated GUI resolver batch.
+        task->setUnattended(true);
+        m_resourceResolverThread.start();
+        QMetaObject::invokeMethod(task.get(), &Task::start, Qt::QueuedConnection);
+        return;
+    }
     m_resourceResolver.addTask(task);
 
     if (!m_resourceResolverRunning) {

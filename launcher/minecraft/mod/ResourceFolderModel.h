@@ -107,6 +107,8 @@ class ResourceFolderModel : public QAbstractListModel {
 
     /** Creates a new update task and start it. Returns false if no update was done, like when an update is already underway. */
     virtual bool update();
+    // Policy applies only to this scan and the parse tasks created by its result.
+    bool update(bool unattended);
 
     /** Creates a new parse task, if needed, for 'res' and start it.*/
     virtual void resolveResource(const Resource::Ptr& res);
@@ -275,6 +277,7 @@ class ResourceFolderModel : public QAbstractListModel {
 
     Task::Ptr m_currentUpdateTask = nullptr;
     bool m_scheduledUpdate = false;
+    bool m_scheduledUnattended = false;
 
     QList<Resource::Ptr> m_resources;
 

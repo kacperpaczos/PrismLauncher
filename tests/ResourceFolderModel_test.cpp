@@ -48,10 +48,64 @@
     VERIFY(EXEC);                                                 \
     QVERIFY2(spy.count() || spy.wait(10000), "Timer has expired. The update never finished.");
 
+namespace {
+class ScanPolicyTask : public Task {
+   public:
+    explicit ScanPolicyTask(std::atomic<int>& policy) : m_policy(policy) {}
+
+   protected:
+    void executeTask() override
+    {
+        m_policy.store(isUnattended());
+        emitSucceeded();
+    }
+
+   private:
+    std::atomic<int>& m_policy;
+};
+
+class ScanPolicyModel : public ModFolderModel {
+   public:
+    using ModFolderModel::ModFolderModel;
+    std::atomic<int> parsePolicy = -1;
+    Task::Ptr scanTask() const { return m_currentUpdateTask; }
+
+   protected:
+    Task* createParseTask(Resource&) override { return new ScanPolicyTask(parsePolicy); }
+    void onParseSucceeded(int, const QString&) override {}
+};
+}  // namespace
+
 class ResourceFolderModelTest : public QObject {
     Q_OBJECT
 
    private slots:
+    void test_scanPolicyStaysWithItsParsers_data()
+    {
+        QTest::addColumn<bool>("unattended");
+        QTest::newRow("GUI") << false;
+        QTest::newRow("CLI") << true;
+    }
+
+    void test_scanPolicyStaysWithItsParsers()
+    {
+        QFETCH(bool, unattended);
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile file(dir.filePath("fixture.jar"));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("fixture");
+        file.close();
+        ScanPolicyModel model(QDir(dir.path()), nullptr, false, false);
+        QSignalSpy finished(&model, &ResourceFolderModel::updateFinished);
+        QVERIFY(model.update(unattended));
+        QVERIFY(model.scanTask());
+        QCOMPARE(model.scanTask()->isUnattended(), unattended);
+        QVERIFY(finished.count() || finished.wait(10000));
+        QTRY_COMPARE(model.parsePolicy.load(), int(unattended));
+        QTRY_VERIFY(!model.hasPendingParseTasks());
+    }
+
     void test_unattendedToggleRejectsMissingRows()
     {
         QTemporaryDir dir;
