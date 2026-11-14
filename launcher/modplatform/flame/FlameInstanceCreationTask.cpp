@@ -648,7 +648,7 @@ void FlameCreationTask::setupDownloadJob()
         }
     }
 
-    connect(m_filesJob.get(), &NetJob::finished, this, [this]() {
+    connect(m_filesJob.get(), &NetJob::succeeded, this, [this]() {
         m_filesJob.reset();
         validateOtherResources();
     });
