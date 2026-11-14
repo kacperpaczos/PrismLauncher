@@ -1,6 +1,7 @@
 # CLI spike
 
-When resuming work on `spike/mod-cli`, read [docs/cli/HANDOFF.md](docs/cli/HANDOFF.md)
+The work tree is `/home/user/orca/PrismLauncher-kacperpaczos` on
+`spike/mod-cli-refresh`. When resuming work, read [docs/cli/HANDOFF.md](docs/cli/HANDOFF.md)
 first. It records the reviewed snapshots, remaining findings, and verification status.
 Consult [CONTRIBUTING.md](CONTRIBUTING.md) for repository conventions and upstream policy.
 

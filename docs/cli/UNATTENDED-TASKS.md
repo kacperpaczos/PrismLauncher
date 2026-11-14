@@ -1,8 +1,7 @@
 # Unattended task execution
 
-Status: reduced contract implemented locally after independent design review.
-This is an incremental CLI spike, not a claim of upstream acceptance.
-R2 corrections await another independent review; see [the finding map](R2-REVIEW-FIXES.md).
+This document describes the current task policy, cancellation acknowledgements
+and typed failures used by the CLI. The remaining ownership limits are explicit.
 
 ## Contract and scope
 
@@ -18,15 +17,7 @@ An incompatible running child is recorded as failed without being cancelled.
 The parent reports PolicyConflict after its owned active work has stopped. Failed policy changes can leave inactive
 children already configured; the caller must not start a rejected operation.
 
-```mermaid
-flowchart LR
-    CLI[mod install] --> Metadata[Project and version requests]
-    CLI --> Dependencies[Dependency task]
-    CLI --> Batch[Download composite]
-    Dependencies --> Late[Jobs added by callbacks]
-    Batch --> Resource[ResourceDownloadTask]
-    Resource --> Job[NetJob]
-```
+
 
 NetJob's effective `asksRetry()` is false when unattended, including after an
 explicit `setAskRetry(true)` and for jobs created before adoption. The failure
@@ -74,7 +65,8 @@ without starting its inactive child and ignores a later proceed call.
 NetJob inherits this same cancellation path directly. Child aborted handlers are disconnected
 while finished acknowledgements are observed. An abort failure uses Task's
 noninteractive failure emitter, bypassing NetJob's retry-dialog override. An
-idle running job also transitions to a terminal state when aborted. Audited
+idle running job also transitions to a terminal state when aborted. Component
+metadata cancellation reports Aborted after its pending loads finish. Audited
 wrappers acknowledge idle cancellation or forward a child completion; accepting
 an abort request alone is not a terminal acknowledgement. An unsupported child
 that never acknowledges completion remains retained after the runner deadline.
@@ -99,8 +91,9 @@ is promised. A task that never finishes stays retained until process exit.
 
 Task stores a FailureCode beside its message. Base failure/abort emitters set
 Failed/Cancelled, and success clears the code. The protected typed emitter is
-used for composite propagation and PolicyConflict. A lone child failure retains
-its code through ConcurrentTask or SequentialTask; aggregate failures stay Failed.
+used for composite propagation and PolicyConflict. A lone structured child failure
+retains its code through ConcurrentTask or SequentialTask without retry hooks;
+aggregate failures stay Failed and use the ordinary virtual failure hook.
 Legacy emitters that bypass these paths may be uncoded; composites treat that as
 Failed. The CLI currently originates Timeout, InvalidTask, NotFound and Incomplete.
 Its runner returns `Result<void, TaskError>` with the observed code and message.
@@ -134,13 +127,48 @@ refused and delayed cancellation, shared loaders, late-grandchild policy,
 explicit retry override, typed error mapping, and deferred timeout cleanup.
 The mod-install download-phase test uses an in-memory failing request with the
 real NetJob/composite runner, checks exit 7 and exactly one JSON envelope, and
-bounds completion to one second against a ten-second operation deadline without
+bounds completion to five seconds against a thirty-second operation deadline without
 external network access. Model-toggle coverage supplies a real dependency
 relationship and verifies the unattended path preserves the unselected dependent.
 An isolated subprocess checks inactive-task emission rejection. The prompt-policy
-predicate is tested with pre-existing headless and unattended jobs. A loopback-only
+failure path is tested with pre-existing headless and unattended jobs. A loopback-only
 metadata failure test covers the earlier refresh failure that aborts Debug builds.
 Whole-command success paths are exercised separately by the three network smokes.
 
 Verification on the implementation: container build PASS; CTest 37/37 PASS;
 network mod, pack and instance smoke scripts each PASS.
+
+## Cancellation producers
+
+A true abort return accepts a request; completion requires a terminal signal.
+The following producers have acknowledgement paths. This describes notification
+and acceptance, not universal quiescence of all lower-level work.
+
+| Tasks | Cancellation acknowledgement |
+| --- | --- |
+| Task, ConcurrentTask, NetJob | Base emitter or drained active set; inactive composites preserve state and queued work. |
+| AssetUpdateTask, LibrariesTask, LegacyFMLLibrariesTask, Java::ArchiveDownloadTask | A running wrapper without a download child acknowledges idle cancellation. |
+| ComponentUpdateTask | Snapshot pending loads, request cancellation, report Aborted when all loads finish. |
+| EnsureMetadataTask, ModrinthCheckUpdate | Preserve outgoing completion connections; replace phase advancement with cancellation completion; acknowledge idle cancellation. |
+| Technic::SingleZipPackInstallTask | Forward the download job's aborted signal. |
+| LaunchController, LaunchCommand, LauncherPartLaunch | Refuse cancellation of running preparation without a launch task or process that can accept it. |
+| AutoInstallJava | Preserve child cancellation refusal without finishing; acknowledge accepted requests. |
+| TaskStepWrapper | Cancel while waiting for proceed without starting the inactive child; ignore a later proceed. |
+| ResourceFolderLoadTask | Worker cancellation uses emitAborted rather than a bare finished signal. |
+| FlamePackExportTask, ModrinthPackExportTask | Return the delegated child's abort acceptance. |
+| Net::Request | Reply completion or immediate aborted/finished notifications; some legacy paths manipulate state directly. |
+| BaseEntityLoadTask | Base abort emitter plus delegated network cancellation. |
+| InstanceCopyTask, ExtractZipTask, ExportToZipTask, Hashing::Hasher | Future watcher completion/cancellation callbacks. |
+| LocalModParseTask, LocalShaderPackParseTask, LocalTexturePackParseTask, LocalWorldSaveParseTask | Abort flag checked at worker completion; invalid inputs also emit failure. |
+| LocalResourceUpdateTask, AuthFlow, TextPrint, LookupServerAddress, Java::ManifestDownloadTask | Direct abort emitter; manifest downloads also delegate network cancellation. |
+| InstanceTask, InstanceImportTask, InstanceStaging | Delegate current work with existing terminal callbacks; unsupported cancellation returns false; staging retries use a timer. |
+| MinecraftLoadAndCheck | Delegate current work or use the base/direct emitter, preserving child refusal. |
+| LaunchTask | Current step's completion/finalization callbacks. |
+| FlameCheckUpdate | Finished-driven phase chain has a terminal reporting path. |
+| Flame::FileResolvingTask | Delegate then base emitter when accepted. |
+| FlameCreationTask, ModrinthCreationTask, FTB PackInstallTask, legacy FTB PackInstallTask | Delegated phases plus InstanceTask/base terminal reporting. |
+| ATLPackInstallTask, Technic::SolderPackInstallTask | Active network callbacks; non-abortable phases refuse cancellation. |
+
+Legacy wrappers may finish before all lower-level work drains. Queued callbacks
+and raw instance/model pointers remain outside this contract. A child that accepts
+abort but never finishes stays owned by the runner after Incomplete is returned.

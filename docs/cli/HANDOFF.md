@@ -9,11 +9,22 @@ Stan zapisywany 2026-10-22 na polecenie użytkownika: zachować pracę lokalnie,
 udokumentować recenzje i zamknąć agentów projektu. To checkpoint, nie deklaracja
 gotowości produkcyjnej. W tej sesji nie wykonano push ani publikacji upstream.
 
+## Aktualizacja kontraktu unattended
+
+Bieżące drzewo: `/home/user/orca/PrismLauncher-kacperpaczos`, gałąź
+`spike/mod-cli-refresh`. Opis poniższego checkpointu pozostaje historyczny.
+Aktualny kontrakt i ścieżki anulowania opisuje [UNATTENDED-TASKS.md](UNATTENDED-TASKS.md).
+Timeout/lifetime (1) pozostaje częściowo otwarty: zakończone taski są zwalniane,
+kompozyty czekają na dzieci, ale surowe wskaźniki modeli i zagnieżdżona pętla
+zdarzeń nadal wymagają szerszego projektu. Retry per operacja (2) działa w
+adoptowanych drzewach; jawne preferencje i istniejące joby respektują flagę.
+Globalny bracket i fallback headless pozostają do migracji reszty komend.
+
 ## Wejście dla następnego agenta
 
-1. Otwórz `/home/user/prism-cli-spike`, sprawdź `git status --short`,
+1. Otwórz `/home/user/orca/PrismLauncher-kacperpaczos`, sprawdź `git status --short`,
    `git branch --show-current` i `git log -8 --oneline`. Oczekiwana gałąź:
-   `spike/mod-cli`. Zachowaj ewentualne nowe zmiany użytkownika.
+   `spike/mod-cli-refresh`. Zachowaj ewentualne nowe zmiany użytkownika.
 2. Przeczytaj ten plik, [recenzję Codexa](CODEX-REVIEW-2026-10-21.md),
    [rejestr rewizji](REVISION-LOG.md) oraz `CONTRIBUTING.md`.
 3. Uzgodnij rolę z użytkownikiem przed uruchamianiem innych agentów. Użytkownik
@@ -87,10 +98,11 @@ Poniższa lista bazuje na niezależnej recenzji `9a84365d0`; późniejsze zmiany
 mogły rozwiązać część uwag. Potwierdzaj na nowym, dokładnie oznaczonym SHA.
 
 1. **Timeout/lifetime:** zatrzymanie oczekiwania nadal pozwala na dalsze działanie
-   taska i kolejne operacje na jego modelu/instancji. `unfinishedTasks()` zachowuje
-   taski bez usuwania po zakończeniu. Potrzebne ownership, koordynacja i cleanup.
-2. **Retry per operacja:** globalny default nie obejmuje jawnego `askRetry=true`,
-   już istniejących jobów; może zmieniać zachowanie niezwiązanych z CLI jobów GUI.
+   taska i kolejne operacje na jego modelu/instancji. `unfinishedTasks()` zwalnia
+   taski po zakończeniu; brak ownership instancji/modelu i koordynacji mutacji.
+2. **Retry per operacja (częściowo):** flaga taska obejmuje jawne `askRetry=true`
+   i istniejące adoptowane joby; globalny default pozostaje dla nieprzeniesionych
+   komend i nadal może wpływać na niezwiązane joby GUI.
 3. **Import:** pozostałe dialogi Flame optional/blocked oraz pobieranie gry
    w importach MultiMC/Technic. Sprawdzić politykę bez interakcji dla wszystkich typów.
 4. **Ścieżki IPC:** GUI potrzebuje cwd klienta lub ścieżek rozwiązanych po stronie
