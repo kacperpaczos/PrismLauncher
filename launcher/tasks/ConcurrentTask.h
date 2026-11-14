@@ -45,7 +45,10 @@
 
 /*!
  * Runs a list of tasks concurrently (according to `max_concurrent` parameter).
- * Behaviour is the same as regular Task (e.g. starts using start())
+ * Behaviour is the same as regular Task (e.g. starts using start()).
+ * A single structured child failure preserves its code and bypasses emitFailed
+ * overrides (including interactive retry). Several child failures aggregate as
+ * Failed through emitFailed; no individual child code wins.
  */
 class ConcurrentTask : public Task {
     Q_OBJECT

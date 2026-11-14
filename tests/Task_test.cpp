@@ -216,6 +216,18 @@ class PolicyTrackedTask : public ConcurrentTask {
     bool recordedFailure(const Task::Ptr& task) const { return m_failed.contains(task.get()); }
 };
 
+class FailureHookTask : public ConcurrentTask {
+   public:
+    int failureHooks = 0;
+
+   protected:
+    void emitFailed(QString reason) override
+    {
+        ++failureHooks;
+        ConcurrentTask::emitFailed(reason);
+    }
+};
+
 class EmptyLaunchOwner : public LaunchTask {
    public:
     EmptyLaunchOwner() : LaunchTask(nullptr) {}
@@ -448,6 +460,36 @@ class TaskTest : public QObject {
         QCOMPARE(finished.count(), 1);
         unrelated->complete();
         QCOMPARE(finished.count(), 1);
+    }
+
+    void test_compositeStructuredFailureHook_data()
+    {
+        QTest::addColumn<int>("children");
+        QTest::newRow("single-structured-failure") << 1;
+        QTest::newRow("aggregate-failures") << 2;
+    }
+
+    void test_compositeStructuredFailureHook()
+    {
+        QFETCH(int, children);
+        FailureHookTask parent;
+        QList<shared_qobject_ptr<TerminalSignalTask>> tasks;
+        for (int i = 0; i < children; ++i) {
+            auto child = makeShared<TerminalSignalTask>();
+            tasks.append(child);
+            QVERIFY(parent.addTask(child));
+        }
+        parent.start();
+        for (const auto& child : tasks) {
+            QTRY_VERIFY(child->isRunning());
+        }
+        tasks[0]->emitFailedWithCode(Task::FailureCode::NotFound, "not found");
+        if (children > 1) {
+            tasks[1]->emitFailedWithCode(Task::FailureCode::Timeout, "timed out");
+        }
+        QTRY_VERIFY(parent.isFinished());
+        QCOMPARE(parent.failureCode(), children == 1 ? Task::FailureCode::NotFound : Task::FailureCode::Failed);
+        QCOMPARE(parent.failureHooks, children == 1 ? 0 : 1);
     }
 
     void test_compositePreservesFailureCode_data()
