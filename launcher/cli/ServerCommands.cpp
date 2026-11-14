@@ -87,14 +87,14 @@ QJsonObject serverToJson(const Server& server, int index)
 /**
  * The number of the players that are on a server.
  *
- * The result is empty when the server could not be reached.
+ * A failed optional ping remains a typed error until the caller maps it to null.
  */
-std::optional<int> pingServer(const QString& address)
+Result<int, TaskError> pingServer(const QString& address)
 {
     const auto target = MinecraftTarget::fromServerAddress(address);
     auto task = makeShared<ServerPingTask>(target.address, target.port);
-    if (!runTaskSync(task, g_PingTimeoutMs)) {
-        return std::nullopt;
+    if (auto result = runUnattendedTask(task, g_PingTimeoutMs); !result) {
+        return std::unexpected(result.error());
     }
     return task->m_outputOnlinePlayers;
 }
